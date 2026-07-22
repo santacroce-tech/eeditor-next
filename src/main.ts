@@ -3,7 +3,7 @@
 
 import { marked } from "marked";
 import { createEngineClient } from "./engine/client";
-import { createWorkspaceClient } from "./engine/workspace";
+import { createWorkspaceClient, type FileNode } from "./engine/workspace";
 import { createEditor, type ThemeName } from "./ui/editor";
 import { createRepl } from "./ui/repl";
 import { createSidebar } from "./ui/sidebar";
@@ -12,7 +12,12 @@ import { createQuickOpen } from "./ui/quickopen";
 import { createTagsPanel } from "./ui/tagspanel";
 import { createSearch } from "./ui/search";
 import { createCalendar } from "./ui/calendar";
+import { createAgendaSetup } from "./ui/agenda-setup";
+import { promptModal, confirmModal, showContextMenu, toast, type MenuItem } from "./ui/dialogs";
 import "./styles.css";
+
+const parentDir = (p: string): string => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
+const joinPath = (dir: string, name: string): string => (dir ? `${dir}/${name}` : name);
 
 function section(parent: HTMLElement, title: string, cls: string): { head: HTMLElement; body: HTMLElement } {
   const wrap = document.createElement("div");
@@ -80,19 +85,33 @@ function main(): void {
   const agendaSec = section(sidebarEl, "agenda", "agenda-section");
   const agendaBody = agendaSec.body;
 
-  // "open folder" button (native only — no-op in a browser)
+  // "new file" + "open folder" buttons in the files header
+  const newBtn = document.createElement("button");
+  newBtn.className = "side-btn";
+  newBtn.textContent = "＋";
+  newBtn.title = "New file";
   const openBtn = document.createElement("button");
   openBtn.className = "side-btn";
   openBtn.textContent = "open…";
   openBtn.title = "Open a folder";
-  filesSec.head.appendChild(openBtn);
+  const filesBtns = document.createElement("span");
+  filesBtns.className = "side-head-btns";
+  filesBtns.append(newBtn, openBtn);
+  filesSec.head.appendChild(filesBtns);
 
-  // calendar button in the agenda header
+  // rules/categories + calendar buttons in the agenda header
+  const setupBtn = document.createElement("button");
+  setupBtn.className = "side-btn";
+  setupBtn.textContent = "⚙";
+  setupBtn.title = "Rules & categories";
   const calBtn = document.createElement("button");
   calBtn.className = "side-btn";
   calBtn.textContent = "📅";
   calBtn.title = "Calendar";
-  agendaSec.head.appendChild(calBtn);
+  const agendaBtns = document.createElement("span");
+  agendaBtns.className = "side-head-btns";
+  agendaBtns.append(setupBtn, calBtn);
+  agendaSec.head.appendChild(agendaBtns);
 
   // theme (persisted) — applied to <html> before the editor is created
   let theme: ThemeName = localStorage.getItem("theme") === "light" ? "light" : "dark";
@@ -166,6 +185,8 @@ function main(): void {
   const agenda = createAgendaPanel(agendaBody, engine);
   const calendar = createCalendar(engine);
   calBtn.addEventListener("click", () => calendar.open());
+  const agendaSetup = createAgendaSetup(engine, () => void agenda.refresh());
+  setupBtn.addEventListener("click", () => agendaSetup.open());
 
   const openFile = async (path: string): Promise<void> => {
     const content = await ws.read(path);
@@ -177,7 +198,86 @@ function main(): void {
     if (previewing) renderPreview();
   };
 
-  const sidebar = createSidebar(filesSec.body, ws, (p) => void openFile(p));
+  // ── file CRUD (create / rename / delete), reconciling the open document ──
+  async function newFile(dir: string): Promise<void> {
+    const name = await promptModal("New file", "untitled.md", "Create");
+    if (!name) return;
+    const path = joinPath(dir, name);
+    try {
+      await ws.create(path, false);
+    } catch (e) {
+      toast(`Could not create ${path}: ${String(e)}`);
+      return;
+    }
+    await sidebar.refresh();
+    await tags.refresh();
+    await openFile(path);
+  }
+  async function newFolder(dir: string): Promise<void> {
+    const name = await promptModal("New folder", "", "Create");
+    if (!name) return;
+    try {
+      await ws.create(joinPath(dir, name), true);
+    } catch (e) {
+      toast(`Could not create folder: ${String(e)}`);
+      return;
+    }
+    await sidebar.refresh();
+  }
+  async function renameNode(node: FileNode): Promise<void> {
+    const name = await promptModal("Rename", node.name, "Rename");
+    if (!name || name === node.name) return;
+    const to = joinPath(parentDir(node.path), name);
+    try {
+      await ws.rename(node.path, to);
+    } catch (e) {
+      toast(`Could not rename: ${String(e)}`);
+      return;
+    }
+    // follow the open document if it (or its ancestor folder) was renamed
+    if (currentPath === node.path) currentPath = to;
+    else if (currentPath.startsWith(node.path + "/")) currentPath = to + currentPath.slice(node.path.length);
+    await sidebar.refresh();
+    await tags.refresh();
+    setHead();
+    sidebar.setActive(currentPath);
+  }
+  async function deleteNode(node: FileNode): Promise<void> {
+    const kind = node.isDir ? "folder" : "file";
+    const ok = await confirmModal(`Delete ${kind} "${node.name}"?`);
+    if (!ok) return;
+    try {
+      await ws.remove(node.path);
+    } catch (e) {
+      toast(`Could not delete: ${String(e)}`);
+      return;
+    }
+    if (currentPath === node.path || currentPath.startsWith(node.path + "/")) {
+      currentPath = "";
+      dirty = false;
+      editor.setDoc("");
+      setHead();
+    }
+    await sidebar.refresh();
+    await tags.refresh();
+  }
+
+  const fileMenu = (node: FileNode, ev: MouseEvent): void => {
+    const dir = node.isDir ? node.path : parentDir(node.path);
+    const items: MenuItem[] = [
+      { label: "New file…", action: () => void newFile(dir) },
+      { label: "New folder…", action: () => void newFolder(dir) },
+    ];
+    if (node.path !== "") {
+      // root itself can't be renamed/deleted
+      items.push({ label: "Rename…", action: () => void renameNode(node) });
+      items.push({ label: "Delete", action: () => void deleteNode(node), danger: true });
+    }
+    showContextMenu(ev.clientX, ev.clientY, items);
+  };
+
+  const sidebar = createSidebar(filesSec.body, ws, (p) => void openFile(p), fileMenu);
+  newBtn.addEventListener("click", () => void newFile(""));
   const quickOpen = createQuickOpen(() => sidebar.files(), (p) => void openFile(p));
   const search = createSearch(
     () => sidebar.files(),

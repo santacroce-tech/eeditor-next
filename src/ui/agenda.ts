@@ -14,6 +14,7 @@ interface AgItem {
   text: string;
   when: string;
   priority: string;
+  categories: string;
 }
 
 function s(v: JsonValue): string {
@@ -27,6 +28,7 @@ function parseItems(env: Envelope): AgItem[] {
       text: s(r.data.text),
       when: s(r.data.when),
       priority: s(r.data.priority),
+      categories: s(r.data.categories),
     }));
   }
   return [];
@@ -59,6 +61,10 @@ export function createAgendaPanel(parent: HTMLElement, engine: EngineClient): Ag
     main.appendChild(el("span", "ag-text", it.text));
     if (it.when) main.appendChild(el("span", "ag-when", it.when));
 
+    const cats = it.categories.split(",").map((x) => x.trim()).filter(Boolean);
+    const catsRow = el("div", "ag-cats");
+    for (const c of cats) catsRow.appendChild(el("span", "ag-cat", c));
+
     const editor = el("div", "ag-editor");
     editor.style.display = "none";
     const text = el("input", "ag-field");
@@ -88,7 +94,9 @@ export function createAgendaPanel(parent: HTMLElement, engine: EngineClient): Ag
       void engine.evalSrc(`(item-done ${it.id})`).then(() => refresh());
     });
 
-    row.append(main, editor);
+    row.append(main);
+    if (cats.length) row.append(catsRow);
+    row.append(editor);
     return row;
   }
 
