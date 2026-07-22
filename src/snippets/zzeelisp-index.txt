@@ -1,0 +1,458 @@
+zzeelisp — EELisp Utility Library Index
+120+ functions across 10 modules
+
+Usage:
+  (load "zz-text.eelisp")    ; load a specific module
+  (function-name args...)     ; call any function from it
+  (zzajuda)                   ; full index
+  (zzajuda :bitcoin)          ; filter by module
+  (zzzz "zzfunc")             ; details for one function
+
+════════════════════════════════════════════════════════════════
+MODULE: zz-text  — String & Text Utilities
+════════════════════════════════════════════════════════════════
+
+(zzalinhar text width align)
+  Align text in a field. align = :left :right :center
+  Example: (zzalinhar "hi" 10 :center)  → "    hi    "
+
+(zzcapitalize text)
+  Capitalize first letter of each word.
+  Example: (zzcapitalize "hello world")  → "Hello World"
+
+(zzcontapalavra text word)
+  Count occurrences of word in text (case-insensitive).
+  Example: (zzcontapalavra "the cat sat on the mat" "the")  → 2
+
+(zzdiffpalavra text1 text2)
+  Words in text1 not present in text2.
+  Example: (zzdiffpalavra "a b c" "b c d")  → ("a")
+
+(zzcolunar items width ncols)
+  Format list into columns.
+  Example: (zzcolunar '("a" "bb" "ccc") 6 3)
+
+(zzhsort text)
+  Sort lines in a block of text alphabetically.
+
+(zzshuffle list)
+  Randomly shuffle a list.
+  Example: (zzshuffle '(1 2 3 4 5))  → (3 1 5 2 4)
+
+(zztac text)
+  Reverse the lines of a text string.
+  Example: (zztac "a\nb\nc")  → "c\nb\na"
+
+(zzuniq list)
+  Remove consecutive duplicate elements.
+  Example: (zzuniq '(1 1 2 3 3))  → (1 2 3)
+
+(zzvira text)
+  Reverse words in text.
+  Example: (zzvira "hello world")  → "world hello"
+
+(zzlorem n)
+  Generate n words of Lorem Ipsum placeholder text.
+  Example: (zzlorem 10)
+
+(zzrepete char n)
+  Repeat a string n times. Building block for other functions.
+  Example: (zzrepete "-" 20)  → "--------------------"
+
+(zzsemacento text)
+  Remove accents/diacritics from text (Portuguese → ASCII).
+  Example: (zzsemacento "café")  → "cafe"
+
+(zzsqueeze text)
+  Collapse multiple spaces into one, trim.
+  Example: (zzsqueeze "  hello   world  ")  → "hello world"
+
+(zzwc text)
+  Word count stats: chars, words, lines.
+  Example: (zzwc "hello world\n")  → {:chars 12 :words 2 :lines 1}
+
+════════════════════════════════════════════════════════════════
+MODULE: zz-math  — Mathematics & Numbers
+════════════════════════════════════════════════════════════════
+
+(zzaleatorio min max)
+  Random integer between min and max inclusive.
+  Example: (zzaleatorio 1 100)  → 42
+
+(zzbissexto year)
+  Check if year is a leap year.
+  Example: (zzbissexto 2024)  → true
+
+(zzdivisores n)
+  List all divisors of n.
+  Example: (zzdivisores 12)  → (1 2 3 4 6 12)
+
+(zzfatorial n)
+  Factorial of n.
+  Example: (zzfatorial 10)  → 3628800
+
+(zzfatorar n)
+  Prime factorization of n.
+  Example: (zzfatorar 360)  → "2^3 × 3^2 × 5"
+
+(zzfibonacci n)
+  First n Fibonacci numbers.
+  Example: (zzfibonacci 8)  → (0 1 1 2 3 5 8 13)
+
+(zzgcd a b)
+  Greatest common divisor.
+  Example: (zzgcd 48 18)  → 6
+
+(zzimc weight-kg height-m)
+  BMI calculation with classification.
+  Example: (zzimc 70 1.75)  → {:bmi 22.9 :class "Normal"}
+
+(zzlcm a b)
+  Least common multiple.
+  Example: (zzlcm 4 6)  → 12
+
+(zzmat operation args...)
+  Math dispatcher. Operations: :sqrt :log :log2 :log10 :sin :cos :tan
+  Example: (zzmat :sqrt 144)  → 12.0
+
+(zznumero n lang)
+  Number to words. lang = :pt :en
+  Example: (zznumero 42 :en)  → "forty-two"
+
+(zzperfeito? n)
+  Check if n is a perfect number (sum of divisors = n).
+  Example: (zzperfeito? 28)  → true
+
+(zzporcento value percent operation)
+  Percentage calculator. operation = :of :from :add :sub
+  Example: (zzporcento 200 15 :of)  → 30.0
+
+(zzprimo? n)
+  Check if n is prime.
+  Example: (zzprimo? 97)  → true
+
+(zzromanos n)
+  Convert integer to Roman numerals.
+  Example: (zzromanos 2024)  → "MMXXIV"
+
+(zzseq start end step)
+  Generate arithmetic sequence.
+  Example: (zzseq 0 20 5)  → (0 5 10 15 20)
+
+(zztabuada n)
+  Multiplication table for n.
+  Example: (zztabuada 7)  → prints 7 × 1 = 7 ... 7 × 10 = 70
+
+(zztestar expr expected)
+  Micro test framework: test expression equals expected.
+  Example: (zztestar (+ 1 1) 2)  → "✓ PASS"
+
+(zzbase n base)
+  Convert decimal n to given base (2-36).
+  Example: (zzbase 255 16)  → "FF"
+
+════════════════════════════════════════════════════════════════
+MODULE: zz-date  — Date & Calendar
+════════════════════════════════════════════════════════════════
+
+(zzcarnaval year)
+  Carnival date (47 days before Easter).
+  Example: (zzcarnaval 2025)  → "2025-03-04"
+
+(zzcorpuschristi year)
+  Corpus Christi (60 days after Easter).
+  Example: (zzcorpuschristi 2025)  → "2025-06-19"
+
+(zzdataestelar date)
+  Convert date to Star Trek stardate.
+  Example: (zzdataestelar "2025-01-15")  → "102566.1"
+
+(zzdiasuteis start-date n)
+  Add n business days (Mon-Fri) to date.
+  Example: (zzdiasuteis "2025-01-10" 5)  → "2025-01-17"
+
+(zzferiado year country)
+  List public holidays. country = :br :us :pt
+  Example: (zzferiado 2025 :br)  → list of {:date :name}
+
+(zzpascoa year)
+  Easter Sunday date (Gaussian algorithm).
+  Example: (zzpascoa 2025)  → "2025-04-20"
+
+(zzsextapaixao year)
+  Good Friday (2 days before Easter).
+  Example: (zzsextapaixao 2025)  → "2025-04-18"
+
+════════════════════════════════════════════════════════════════
+MODULE: zz-convert  — Unit Conversions & Encoding
+════════════════════════════════════════════════════════════════
+
+(zzbyte n unit)
+  Convert bytes to human-readable. unit = :b :kb :mb :gb :tb or :auto
+  Example: (zzbyte 1536 :auto)  → "1.5 KB"
+
+(zzconverte value from to)
+  Unit converter. Supports: temp (:c :f :k), distance (:km :mi :m :ft),
+  weight (:kg :lb :g :oz), volume (:l :gal :ml)
+  Example: (zzconverte 100 :c :f)  → 212.0
+
+(zzcodchar code)
+  Decode HTML character entity or Unicode.
+  Example: (zzcodchar "&#9829;")  → "♥"
+
+(zzunescape text)
+  Unescape HTML entities (&amp; &lt; &gt; &quot; &#xxx;)
+  Example: (zzunescape "&lt;b&gt;")  → "<b>"
+
+(zzurlencode text)
+  URL-encode a string.
+  Example: (zzurlencode "hello world!")  → "hello%20world%21"
+
+(zzurldecode text)
+  URL-decode a string.
+  Example: (zzurldecode "hello%20world")  → "hello world"
+
+(zzstr2hexa text)
+  Convert string to hex representation.
+  Example: (zzstr2hexa "Hi")  → "48 69"
+
+(zzhexa2str hex)
+  Convert hex string to text.
+  Example: (zzhexa2str "48 69")  → "Hi"
+
+(zzansi2html text)
+  Convert ANSI color codes to HTML spans.
+
+════════════════════════════════════════════════════════════════
+MODULE: zz-crypto  — Encryption & Security
+════════════════════════════════════════════════════════════════
+
+(zzsenha length options)
+  Generate secure random password.
+  options = {:upper true :lower true :digits true :symbols true}
+  Example: (zzsenha 16 {:symbols true})  → "K#9mP@2xLq8rNv5!"
+
+(zzrot13 text)
+  ROT13 cipher (symmetric).
+  Example: (zzrot13 "Hello")  → "Uryyb"
+
+(zzrot47 text)
+  ROT47 cipher (all printable ASCII).
+  Example: (zzrot47 "Hello!")  → "w6==@)"
+
+(zzhash text)
+  DJB2 hash of text.
+  Example: (zzhash "hello")  → "210700827"
+
+(zzcesar text shift)
+  Caesar cipher with given shift.
+  Example: (zzcesar "Hello" 3)  → "Khoor"
+
+(zzatbash text)
+  Atbash cipher (reverse alphabet).
+  Example: (zzatbash "Hello")  → "Svool"
+
+(zzvigenere text key mode)
+  Vigenère cipher. mode = :encrypt :decrypt
+  Example: (zzvigenere "Hello" "KEY" :encrypt)  → "Rijvs"
+
+════════════════════════════════════════════════════════════════
+MODULE: zz-fun  — Fun & Games
+════════════════════════════════════════════════════════════════
+
+(zzcaracoroa)
+  Flip a coin: heads or tails.
+  Example: (zzcaracoroa)  → "Cara" or "Coroa"
+
+(zzdado n-faces)
+  Roll a die with n faces.
+  Example: (zzdado 6)  → 4
+
+(zzexcuse)
+  Random developer excuse for not finishing something.
+  Example: (zzexcuse)  → "The cosmic rays flipped a bit."
+
+(zznomealeatorio)
+  Generate a random Brazilian name (first + last).
+  Example: (zznomealeatorio)  → "Carlos Ferreira"
+
+(zzbicho)
+  Random animal name (Portuguese).
+  Example: (zzbicho)  → "capivara"
+
+(zzpalpite n-max tries)
+  Number guessing game.
+  Example: (zzpalpite 100 7)
+
+(zznatal year)
+  Days until Christmas of the given year.
+  Example: (zznatal 2025)  → "X days until Christmas 2025"
+
+════════════════════════════════════════════════════════════════
+MODULE: zz-reference  — Reference Data
+════════════════════════════════════════════════════════════════
+
+(zzalfabeto letter)
+  NATO phonetic alphabet for a letter.
+  Example: (zzalfabeto "A")  → "Alpha"
+
+(zzmorse text)
+  Convert text to Morse code.
+  Example: (zzmorse "SOS")  → "... --- ..."
+
+(zzascii)
+  Print ASCII table (32-127).
+
+(zzconstantes name)
+  Physical/mathematical constants.
+  name = :pi :e :phi :c :g :h :planck :avogadro :boltzmann :all
+  Example: (zzconstantes :c)  → {:value 299792458 :unit "m/s" :name "Speed of light"}
+
+(zzquimica symbol)
+  Periodic table element lookup.
+  Example: (zzquimica "Au")  → {:name "Gold" :number 79 :weight 196.97}
+
+(zzporta number)
+  Well-known TCP/UDP port information.
+  Example: (zzporta 443)  → {:service "HTTPS" :proto "TCP"}
+
+(zzpais code)
+  Country info by ISO 2-letter code.
+  Example: (zzpais "BR")  → {:name "Brazil" :capital "Brasília" :region "Americas"}
+
+(zzdomíniopais tld)
+  Country by top-level domain.
+  Example: (zzdomíniopais ".br")  → "Brazil"
+
+(zzsigla acronym)
+  Expand a common acronym/abbreviation.
+  Example: (zzsigla "HTTP")  → "HyperText Transfer Protocol"
+
+════════════════════════════════════════════════════════════════
+MODULE: zz-network  — Networking & IP
+════════════════════════════════════════════════════════════════
+
+(zzcalculaip ip mask)
+  Subnet calculator: network, broadcast, host range, count.
+  Example: (zzcalculaip "192.168.1.0" "255.255.255.0")
+
+(zzipinternet)
+  Get your public IP via ipify.org API.
+  Example: (zzipinternet)  → "203.0.113.42"
+
+(zzgeoip ip)
+  Geo-locate an IP address via ip-api.com.
+  Example: (zzgeoip "8.8.8.8")  → {:country "US" :city "Mountain View" :org "Google"}
+
+(zzvalidaip ip)
+  Validate IPv4 address format.
+  Example: (zzvalidaip "192.168.1.1")  → true
+
+(zzipclasse ip)
+  Determine IP address class (A/B/C/D/E).
+  Example: (zzipclasse "192.168.1.1")  → "C"
+
+(zzmacformat mac)
+  Normalize MAC address format.
+  Example: (zzmacformat "aa-bb-cc-dd-ee-ff")  → "AA:BB:CC:DD:EE:FF"
+
+════════════════════════════════════════════════════════════════
+MODULE: zz-timeat  — World Clock & Timezone Conversion
+════════════════════════════════════════════════════════════════
+
+(timeat location time)
+  Current time in a location, or convert a time.
+  Example: (timeat "brazil" "now")  → "14:30 BRT (UTC-3)"
+  Example: (timeat "tokyo" "now")   → "02:30 JST (UTC+9)"
+  Example: (timeat "all" "now")     → world clock
+
+(timeat source-time source-loc dest-loc)
+  Convert a time from one timezone to another.
+  Example: (timeat "3pm" "madrid" "brazil")  → "10:00 BRT"
+  Example: (timeat "9am" "new-york" "london")  → "14:00 GMT"
+
+Supported locations (100+): brazil, argentina, chile, mexico, colombia,
+peru, usa, new-york, los-angeles, chicago, london, paris, madrid, berlin,
+rome, amsterdam, lisbon, moscow, dubai, india, mumbai, singapore, hong-kong,
+tokyo, sydney, auckland, cairo, johannesburg, nigeria, and many more.
+
+════════════════════════════════════════════════════════════════
+MODULE: zz-bitcoin  — Bitcoin Utilities
+════════════════════════════════════════════════════════════════
+
+(zzbtc-setup url user pass)
+  Configure Bitcoin Core RPC connection.
+  Example: (zzbtc-setup "http://127.0.0.1:8332" "user" "pass")
+
+(zzbtc-rpc method params)
+  Raw JSON-RPC call to Bitcoin Core node.
+  Example: (zzbtc-rpc "getblockchaininfo" '())
+
+(zzbtc-price source)
+  Current BTC price. source = :mempool (default) or :coingecko
+  Example: (zzbtc-price)  → {:usd 45000 :source "mempool.space"}
+
+(zzbtc-info)
+  Full blockchain info from node: blocks, difficulty, mempool.
+  Requires: (zzbtc-setup ...) first
+  Example: (zzbtc-info)  → {:blocks 850000 :difficulty 78.3T ...}
+
+(zzbtc-hashrate mode)
+  Network hashrate. mode = :estimate (from difficulty) or :from-node
+  Formula: difficulty × 2^32 ÷ 600 seconds
+  Example: (zzbtc-hashrate :estimate)  → "600 EH/s"
+
+(zzbtc-difficulty)
+  Current mining difficulty from node.
+  Example: (zzbtc-difficulty)  → {:difficulty 7.83e13 :formatted "78.3T"}
+
+(zzbtc-mempool)
+  Mempool stats from node: size, bytes, fees.
+  Example: (zzbtc-mempool)  → {:size 15000 :bytes 25000000}
+
+(zzbtc-block height)
+  Block info by height. height = number or :latest
+  Example: (zzbtc-block :latest)  → {:height 850000 :hash "..." :time "..."}
+
+(zzbtc-validaddr address)
+  Validate Bitcoin address format.
+  Supports: P2PKH (1...), P2SH (3...), P2WPKH (bc1q 42), P2WSH (bc1q 62), P2TR (bc1p)
+  Example: (zzbtc-validaddr "1A1zP1...")  → {:valid true :type "P2PKH"}
+
+(zzbtc-halving)
+  Next halving info: era, current reward, blocks remaining, estimated date.
+  Example: (zzbtc-halving)  → {:era 4 :reward 3.125 :blocks-remaining 56000}
+
+(zzbtc-supply block)
+  Total circulating supply at given block height (pure math, no API).
+  block = number or :current
+  Example: (zzbtc-supply :current)  → {:supply 19700000 :percent-mined "93.8%"}
+
+(zzbtc-feecalc size-bytes fee-rate tx-type)
+  Transaction fee calculator.
+  tx-type = :legacy or :segwit
+  Example: (zzbtc-feecalc 250 10 :legacy)  → {:fee-sats 2500 :fee-btc 0.000025}
+
+════════════════════════════════════════════════════════════════
+MODULE: zz-index  — Help & Discovery
+════════════════════════════════════════════════════════════════
+
+(zzajuda)
+  Print full index of all zzeelisp functions with brief descriptions.
+
+(zzajuda module)
+  Filter index by module.
+  module = :text :math :date :convert :crypto :fun :reference :network :timeat :bitcoin
+  Example: (zzajuda :bitcoin)
+
+(zzzz name)
+  Detailed help for a specific function.
+  Example: (zzzz "zzbtc-price")
+
+════════════════════════════════════════════════════════════════
+
+Total: 120+ functions across 10 modules
+Load individual modules or all at once:
+  (load "zz-text.eelisp")
+  (load "zz-bitcoin.eelisp")
+  ; etc.

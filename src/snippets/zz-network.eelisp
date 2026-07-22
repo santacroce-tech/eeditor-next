@@ -1,0 +1,121 @@
+;; zz-network.eelisp
+;; Network utilities — ported from Funções ZZ
+;;
+;; IP calculator, external IP lookup, geolocation, and more.
+;;
+;; Usage:
+;;   (zzcalculaip "192.168.1.100" 24)
+;;   (zzipinternet)
+;;   (zzgeoip "8.8.8.8")
+
+;; ─── zzcalculaip — IP/subnet calculator ────────────────────────────────
+;; Calculates network address, broadcast, and host range from IP + CIDR.
+;; (zzcalculaip "192.168.1.100" 24)
+;; → {:ip "192.168.1.100" :cidr 24 :netmask "255.255.255.0"
+;;    :network "192.168.1.0" :broadcast "192.168.1.255"
+;;    :first-host "192.168.1.1" :last-host "192.168.1.254"
+;;    :total-hosts 254}
+(defn zzcalculaip (ip cidr)
+  (let (octets  (map ->number (str-split ip "."))
+        ;; Build netmask from CIDR
+        mask-bits cidr
+        mask-octets (list
+          (zzcidr-octet mask-bits 0)
+          (zzcidr-octet mask-bits 1)
+          (zzcidr-octet mask-bits 2)
+          (zzcidr-octet mask-bits 3))
+        ;; Network = IP AND mask
+        net-octets (map (fn (pair)
+          (let (ip-oct (head pair) mask-oct (nth pair 1))
+            (floor (mod (* ip-oct mask-oct) 256))))
+          (zip octets mask-octets))
+        ;; Broadcast = Network OR (NOT mask)
+        bcast-octets (map (fn (pair)
+          (let (net-oct (head pair) mask-oct (nth pair 1)
+                inv-mask (- 255 mask-oct))
+            (+ net-oct inv-mask)))
+          (zip net-octets mask-octets))
+        ;; Host range
+        first-host (append (take 3 net-octets) (list (+ (nth net-octets 3) 1)))
+        last-host  (append (take 3 bcast-octets) (list (- (nth bcast-octets 3) 1)))
+        total-hosts (- (pow 2 (- 32 cidr)) 2))
+    (str "IP:         " ip "\n"
+         "CIDR:       /" cidr "\n"
+         "Netmask:    " (str-join (map ->string mask-octets) ".") "\n"
+         "Network:    " (str-join (map ->string net-octets) ".") "\n"
+         "Broadcast:  " (str-join (map ->string bcast-octets) ".") "\n"
+         "First Host: " (str-join (map ->string first-host) ".") "\n"
+         "Last Host:  " (str-join (map ->string last-host) ".") "\n"
+         "Total Hosts: " (max 0 total-hosts))))
+
+;; Helper: compute netmask octet from CIDR for octet position (0-3)
+(defn zzcidr-octet (cidr pos)
+  (let (bits-for-octet (max 0 (min 8 (- cidr (* pos 8)))))
+    (- 256 (pow 2 (- 8 bits-for-octet)))))
+
+;; ─── zzipinternet — External IP address ────────────────────────────────
+;; Uses a public API to get your external IP.
+;; (zzipinternet)
+(defn zzipinternet ()
+  (let (response (http-get "https://api.ipify.org?format=json"))
+    (if (= (dict-get response :status) 200)
+      (let (data (json-parse (dict-get response :body)))
+        (dict-get data "ip" "Unknown"))
+      "Could not determine external IP")))
+
+;; ─── zzgeoip — IP geolocation ──────────────────────────────────────────
+;; (zzgeoip "8.8.8.8")
+(defn zzgeoip (ip)
+  (let (response (http-get (str "http://ip-api.com/json/" ip)))
+    (if (= (dict-get response :status) 200)
+      (let (data (json-parse (dict-get response :body)))
+        (str "IP:       " ip "\n"
+             "Country:  " (dict-get data "country" "Unknown") "\n"
+             "Region:   " (dict-get data "regionName" "Unknown") "\n"
+             "City:     " (dict-get data "city" "Unknown") "\n"
+             "ISP:      " (dict-get data "isp" "Unknown") "\n"
+             "Lat/Lon:  " (dict-get data "lat" "") ", " (dict-get data "lon" "")))
+      (str "Could not geolocate IP: " ip))))
+
+;; ─── zzvalidaip — Validate IP address ──────────────────────────────────
+;; (zzvalidaip "192.168.1.1")   → true
+;; (zzvalidaip "999.999.999.999") → false
+(defn zzvalidaip (ip)
+  (let (octets (str-split ip "."))
+    (and (= (length octets) 4)
+         (every? (fn (o)
+           (let (n (->number o))
+             (and (zztestar o)
+                  (>= n 0)
+                  (<= n 255))))
+           octets))))
+
+;; ─── zzipclasse — IP address class ─────────────────────────────────────
+;; (zzipclasse "192.168.1.1") → "Class C (Private)"
+(defn zzipclasse (ip)
+  (let (first-octet (->number (head (str-split ip ".")))
+        second-octet (->number (nth (str-split ip ".") 1)))
+    (cond
+      (< first-octet 0)   "Invalid"
+      (< first-octet 128)
+      (if (= first-octet 10) "Class A (Private: 10.0.0.0/8)"
+        (str "Class A (" first-octet ".0.0.0/8)"))
+      (< first-octet 192)
+      (if (and (= first-octet 172) (>= second-octet 16) (<= second-octet 31))
+        "Class B (Private: 172.16.0.0/12)"
+        (str "Class B (" first-octet "." second-octet ".0.0/16)"))
+      (< first-octet 224)
+      (if (and (= first-octet 192) (= second-octet 168))
+        "Class C (Private: 192.168.0.0/16)"
+        (str "Class C (" first-octet "." second-octet ".x.0/24)"))
+      (< first-octet 240) "Class D (Multicast)"
+      true                 "Class E (Reserved)")))
+
+;; ─── zzmacformat — Format MAC address ──────────────────────────────────
+;; (zzmacformat "AABBCCDDEEFF")        → "AA:BB:CC:DD:EE:FF"
+;; (zzmacformat "AA-BB-CC-DD-EE-FF")   → "AA:BB:CC:DD:EE:FF"
+(defn zzmacformat (mac)
+  (let (clean (str-upper (str-replace (str-replace mac ":" "") "-" ""))
+        pairs (map (fn (i) (substr clean (* i 2) (+ (* i 2) 2)))
+                   (range 0 6)))
+    (str-join pairs ":")))

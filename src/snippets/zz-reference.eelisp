@@ -1,0 +1,366 @@
+;; zz-reference.eelisp
+;; Lookup tables and reference utilities — ported from Funções ZZ
+;;
+;; NATO alphabet, ASCII table, constants, periodic table,
+;; country codes, network ports, and more.
+;;
+;; Usage:
+;;   (zzalfabeto "nato")
+;;   (zzconstantes :pi)
+;;   (zzquimica "Fe")
+;;   (zzporta 80)
+
+;; ─── zzalfabeto — Alphabet systems ─────────────────────────────────────
+;; (zzalfabeto "nato")     → NATO phonetic alphabet
+;; (zzalfabeto "nato" "S") → "Sierra"
+;; (zzalfabeto "morse")    → Morse code table
+(defn zzalfabeto (system . letter-arg)
+  (let (nato {:A "Alfa"     :B "Bravo"    :C "Charlie" :D "Delta"
+              :E "Echo"     :F "Foxtrot"  :G "Golf"    :H "Hotel"
+              :I "India"    :J "Juliet"   :K "Kilo"    :L "Lima"
+              :M "Mike"     :N "November" :O "Oscar"   :P "Papa"
+              :Q "Quebec"   :R "Romeo"    :S "Sierra"  :T "Tango"
+              :U "Uniform"  :V "Victor"   :W "Whiskey" :X "X-ray"
+              :Y "Yankee"   :Z "Zulu"}
+        morse {:A ".-"    :B "-..."  :C "-.-."  :D "-.."
+               :E "."     :F "..-."  :G "--."   :H "...."
+               :I ".."    :J ".---"  :K "-.-"   :L ".-.."
+               :M "--"    :N "-."    :O "---"   :P ".--."
+               :Q "--.-"  :R ".-."   :S "..."   :T "-"
+               :U "..-"   :V "...-"  :W ".--"   :X "-..-"
+               :Y "-.--"  :Z "--.."
+               :0 "-----" :1 ".----" :2 "..---" :3 "...--"
+               :4 "....-" :5 "....." :6 "-...." :7 "--..."
+               :8 "---.." :9 "----."}
+        table (cond
+          (= (str-lower system) "nato")  nato
+          (= (str-lower system) "morse") morse
+          true nato))
+    (if (empty? letter-arg)
+      ;; Show full table
+      (str-join
+        (map (fn (k) (str k " → " (dict-get table k)))
+             (dict-keys table))
+        "\n")
+      ;; Lookup specific letter
+      (let (key (str-upper (head letter-arg)))
+        (dict-get table key (str "Unknown: " key))))))
+
+;; ─── zzmorse — Text to Morse code ─────────────────────────────────────
+;; (zzmorse "SOS") → "... --- ..."
+(defn zzmorse (text)
+  (let (morse {:A ".-"    :B "-..."  :C "-.-."  :D "-.."
+               :E "."     :F "..-."  :G "--."   :H "...."
+               :I ".."    :J ".---"  :K "-.-"   :L ".-.."
+               :M "--"    :N "-."    :O "---"   :P ".--."
+               :Q "--.-"  :R ".-."   :S "..."   :T "-"
+               :U "..-"   :V "...-"  :W ".--"   :X "-..-"
+               :Y "-.--"  :Z "--.."
+               :0 "-----" :1 ".----" :2 "..---" :3 "...--"
+               :4 "....-" :5 "....." :6 "-...." :7 "--..."
+               :8 "---.." :9 "----."
+               :space "/"}
+        chars (str-split (str-upper text) ""))
+    (str-join
+      (map (fn (ch)
+        (if (= ch " ") "/"
+          (dict-get morse ch ch)))
+      chars)
+      " ")))
+
+;; ─── zzascii — ASCII table ─────────────────────────────────────────────
+;; (zzascii)      → full printable ASCII table
+;; (zzascii 65)   → "A"
+;; (zzascii "A")  → 65
+(defn zzascii (. args)
+  (if (empty? args)
+    ;; Full table
+    (str-join
+      (map (fn (code)
+        (str (zzpad (->string code) 3 " " :left) " "
+             (zzfromcharcode code) "  "))
+      (range 32 127))
+      "")
+    ;; Lookup
+    (let (input (head args))
+      (if (number? input)
+        (zzfromcharcode input)
+        (zzcharcode input)))))
+
+;; ─── zzconstantes — Math and physics constants ─────────────────────────
+;; (zzconstantes :pi)      → 3.14159265358979
+;; (zzconstantes :e)       → 2.71828182845905
+;; (zzconstantes :all)     → list all constants
+(defn zzconstantes (name)
+  (let (constants
+    {:pi          {:value 3.14159265358979  :desc "Pi - ratio of circumference to diameter"}
+     :e           {:value 2.71828182845905  :desc "Euler's number"}
+     :phi         {:value 1.61803398874989  :desc "Golden ratio"}
+     :sqrt2       {:value 1.41421356237310  :desc "Square root of 2"}
+     :sqrt3       {:value 1.73205080756888  :desc "Square root of 3"}
+     :ln2         {:value 0.69314718055995  :desc "Natural log of 2"}
+     :ln10        {:value 2.30258509299405  :desc "Natural log of 10"}
+     :c           {:value 299792458         :desc "Speed of light (m/s)"}
+     :g           {:value 9.80665           :desc "Standard gravity (m/s^2)"}
+     :G           {:value 6.67430e-11       :desc "Gravitational constant (N*m^2/kg^2)"}
+     :h           {:value 6.62607e-34       :desc "Planck constant (J*s)"}
+     :k           {:value 1.38065e-23       :desc "Boltzmann constant (J/K)"}
+     :Na          {:value 6.02214e23        :desc "Avogadro's number (1/mol)"}
+     :R           {:value 8.31446           :desc "Gas constant (J/(mol*K))"}
+     :atm         {:value 101325            :desc "Standard atmosphere (Pa)"}
+     :au          {:value 149597870700      :desc "Astronomical unit (m)"}
+     :ly          {:value 9.461e15          :desc "Light year (m)"}})
+    (if (= name :all)
+      (str-join
+        (map (fn (k)
+          (let (entry (dict-get constants k))
+            (str (zzpad (->string k) 8 " " :right)
+                 " = " (dict-get entry :value)
+                 "  " (dict-get entry :desc))))
+        (dict-keys constants))
+        "\n")
+      (let (entry (dict-get constants name))
+        (if entry
+          (dict-get entry :value)
+          (str "Unknown constant: " name))))))
+
+;; ─── zzquimica — Periodic table lookup ─────────────────────────────────
+;; (zzquimica "Fe") → "Iron — Atomic number: 26, Mass: 55.845"
+;; (zzquimica 26)   → same as above
+(defn zzquimica (input)
+  (let (elements (list
+    (list 1   "H"  "Hydrogen"      1.008)
+    (list 2   "He" "Helium"        4.003)
+    (list 3   "Li" "Lithium"       6.941)
+    (list 4   "Be" "Beryllium"     9.012)
+    (list 5   "B"  "Boron"         10.811)
+    (list 6   "C"  "Carbon"        12.011)
+    (list 7   "N"  "Nitrogen"      14.007)
+    (list 8   "O"  "Oxygen"        15.999)
+    (list 9   "F"  "Fluorine"      18.998)
+    (list 10  "Ne" "Neon"          20.180)
+    (list 11  "Na" "Sodium"        22.990)
+    (list 12  "Mg" "Magnesium"     24.305)
+    (list 13  "Al" "Aluminum"      26.982)
+    (list 14  "Si" "Silicon"       28.086)
+    (list 15  "P"  "Phosphorus"    30.974)
+    (list 16  "S"  "Sulfur"        32.065)
+    (list 17  "Cl" "Chlorine"      35.453)
+    (list 18  "Ar" "Argon"         39.948)
+    (list 19  "K"  "Potassium"     39.098)
+    (list 20  "Ca" "Calcium"       40.078)
+    (list 21  "Sc" "Scandium"      44.956)
+    (list 22  "Ti" "Titanium"      47.867)
+    (list 23  "V"  "Vanadium"      50.942)
+    (list 24  "Cr" "Chromium"      51.996)
+    (list 25  "Mn" "Manganese"     54.938)
+    (list 26  "Fe" "Iron"          55.845)
+    (list 27  "Co" "Cobalt"        58.933)
+    (list 28  "Ni" "Nickel"        58.693)
+    (list 29  "Cu" "Copper"        63.546)
+    (list 30  "Zn" "Zinc"          65.380)
+    (list 31  "Ga" "Gallium"       69.723)
+    (list 32  "Ge" "Germanium"     72.630)
+    (list 33  "As" "Arsenic"       74.922)
+    (list 34  "Se" "Selenium"      78.971)
+    (list 35  "Br" "Bromine"       79.904)
+    (list 36  "Kr" "Krypton"       83.798)
+    (list 37  "Rb" "Rubidium"      85.468)
+    (list 38  "Sr" "Strontium"     87.620)
+    (list 39  "Y"  "Yttrium"       88.906)
+    (list 40  "Zr" "Zirconium"     91.224)
+    (list 41  "Nb" "Niobium"       92.906)
+    (list 42  "Mo" "Molybdenum"    95.950)
+    (list 43  "Tc" "Technetium"    98.000)
+    (list 44  "Ru" "Ruthenium"     101.07)
+    (list 45  "Rh" "Rhodium"       102.91)
+    (list 46  "Pd" "Palladium"     106.42)
+    (list 47  "Ag" "Silver"        107.87)
+    (list 48  "Cd" "Cadmium"       112.41)
+    (list 49  "In" "Indium"        114.82)
+    (list 50  "Sn" "Tin"           118.71)
+    (list 51  "Sb" "Antimony"      121.76)
+    (list 52  "Te" "Tellurium"     127.60)
+    (list 53  "I"  "Iodine"        126.90)
+    (list 54  "Xe" "Xenon"         131.29)
+    (list 55  "Cs" "Cesium"        132.91)
+    (list 56  "Ba" "Barium"        137.33)
+    (list 57  "La" "Lanthanum"     138.91)
+    (list 58  "Ce" "Cerium"        140.12)
+    (list 59  "Pr" "Praseodymium"  140.91)
+    (list 60  "Nd" "Neodymium"     144.24)
+    (list 79  "Au" "Gold"          196.97)
+    (list 80  "Hg" "Mercury"       200.59)
+    (list 82  "Pb" "Lead"          207.20)
+    (list 92  "U"  "Uranium"       238.03)
+    (list 94  "Pu" "Plutonium"     244.00)))
+        found (if (number? input)
+                (head (filter (fn (e) (= (head e) input)) elements))
+                (head (filter (fn (e) (= (str-lower (nth e 1)) (str-lower (->string input)))) elements))))
+    (if found
+      (str (nth found 2) " (" (nth found 1) ") — Atomic number: " (head found)
+           ", Mass: " (nth found 3))
+      (str "Element not found: " input))))
+
+;; ─── zzporta — Well-known TCP/UDP ports ────────────────────────────────
+;; (zzporta 80)   → "HTTP (Hypertext Transfer Protocol)"
+;; (zzporta "ssh") → "22 — SSH (Secure Shell)"
+(defn zzporta (input)
+  (let (ports (list
+    (list 20   "ftp-data" "FTP Data Transfer")
+    (list 21   "ftp"      "FTP Control")
+    (list 22   "ssh"      "SSH (Secure Shell)")
+    (list 23   "telnet"   "Telnet")
+    (list 25   "smtp"     "SMTP (Simple Mail Transfer)")
+    (list 53   "dns"      "DNS (Domain Name System)")
+    (list 67   "dhcp"     "DHCP Server")
+    (list 68   "dhcp"     "DHCP Client")
+    (list 80   "http"     "HTTP (Hypertext Transfer Protocol)")
+    (list 110  "pop3"     "POP3 (Post Office Protocol)")
+    (list 123  "ntp"      "NTP (Network Time Protocol)")
+    (list 143  "imap"     "IMAP (Internet Message Access)")
+    (list 161  "snmp"     "SNMP (Simple Network Management)")
+    (list 389  "ldap"     "LDAP (Lightweight Directory Access)")
+    (list 443  "https"    "HTTPS (HTTP Secure)")
+    (list 445  "smb"      "SMB (Server Message Block)")
+    (list 465  "smtps"    "SMTPS (SMTP Secure)")
+    (list 514  "syslog"   "Syslog")
+    (list 587  "submission" "SMTP Submission")
+    (list 636  "ldaps"    "LDAPS (LDAP Secure)")
+    (list 993  "imaps"    "IMAPS (IMAP Secure)")
+    (list 995  "pop3s"    "POP3S (POP3 Secure)")
+    (list 1433 "mssql"    "Microsoft SQL Server")
+    (list 1521 "oracle"   "Oracle Database")
+    (list 3306 "mysql"    "MySQL / MariaDB")
+    (list 3389 "rdp"      "RDP (Remote Desktop)")
+    (list 5432 "pgsql"    "PostgreSQL")
+    (list 5900 "vnc"      "VNC (Virtual Network Computing)")
+    (list 6379 "redis"    "Redis")
+    (list 8080 "http-alt" "HTTP Alternate (proxy)")
+    (list 8443 "https-alt" "HTTPS Alternate")
+    (list 9200 "elasticsearch" "Elasticsearch")
+    (list 27017 "mongodb" "MongoDB")))
+        found (if (number? input)
+                (head (filter (fn (p) (= (head p) input)) ports))
+                (head (filter (fn (p) (= (str-lower (nth p 1)) (str-lower (->string input)))) ports))))
+    (if found
+      (str "Port " (head found) " — " (nth found 2))
+      (str "Port not found: " input))))
+
+;; ─── zzpais — Country list with codes ──────────────────────────────────
+;; (zzpais "br") → "Brazil (BR) — Capital: Brasilia"
+;; (zzpais "brazil") → same
+(defn zzpais (input)
+  (let (countries (list
+    (list "AF" "Afghanistan"      "Kabul")
+    (list "AR" "Argentina"        "Buenos Aires")
+    (list "AU" "Australia"        "Canberra")
+    (list "BR" "Brazil"           "Brasilia")
+    (list "CA" "Canada"           "Ottawa")
+    (list "CL" "Chile"            "Santiago")
+    (list "CN" "China"            "Beijing")
+    (list "CO" "Colombia"         "Bogota")
+    (list "DE" "Germany"          "Berlin")
+    (list "EG" "Egypt"            "Cairo")
+    (list "ES" "Spain"            "Madrid")
+    (list "FR" "France"           "Paris")
+    (list "GB" "United Kingdom"   "London")
+    (list "IN" "India"            "New Delhi")
+    (list "IT" "Italy"            "Rome")
+    (list "JP" "Japan"            "Tokyo")
+    (list "KR" "South Korea"      "Seoul")
+    (list "MX" "Mexico"           "Mexico City")
+    (list "NG" "Nigeria"          "Abuja")
+    (list "NL" "Netherlands"      "Amsterdam")
+    (list "PE" "Peru"             "Lima")
+    (list "PL" "Poland"           "Warsaw")
+    (list "PT" "Portugal"         "Lisbon")
+    (list "RU" "Russia"           "Moscow")
+    (list "SA" "Saudi Arabia"     "Riyadh")
+    (list "SE" "Sweden"           "Stockholm")
+    (list "TR" "Turkey"           "Ankara")
+    (list "US" "United States"    "Washington D.C.")
+    (list "UY" "Uruguay"          "Montevideo")
+    (list "VE" "Venezuela"        "Caracas")
+    (list "ZA" "South Africa"     "Pretoria")))
+        query (str-lower (->string input))
+        found (head (filter (fn (c)
+          (or (= (str-lower (head c)) query)
+              (str-contains (str-lower (nth c 1)) query)))
+          countries)))
+    (if found
+      (str (nth found 1) " (" (head found) ") — Capital: " (nth found 2))
+      (str "Country not found: " input))))
+
+;; ─── zzdomíniopais — Country domain codes ──────────────────────────────
+;; (zzdomíniopais ".br") → "Brazil"
+;; (zzdomíniopais "de")  → "Germany"
+(defn zzdomíniopais (domain)
+  (let (tlds {:br "Brazil"     :pt "Portugal"   :us "United States"
+              :uk "United Kingdom" :de "Germany" :fr "France"
+              :es "Spain"      :it "Italy"      :jp "Japan"
+              :cn "China"      :kr "South Korea" :ru "Russia"
+              :au "Australia"  :ca "Canada"     :mx "Mexico"
+              :ar "Argentina"  :cl "Chile"      :co "Colombia"
+              :pe "Peru"       :uy "Uruguay"    :in "India"
+              :se "Sweden"     :no "Norway"     :fi "Finland"
+              :nl "Netherlands" :be "Belgium"   :ch "Switzerland"
+              :at "Austria"    :pl "Poland"     :cz "Czech Republic"
+              :ie "Ireland"    :za "South Africa" :ng "Nigeria"
+              :eg "Egypt"      :tr "Turkey"     :il "Israel"
+              :sa "Saudi Arabia" :ae "UAE"      :nz "New Zealand"}
+        clean (str-lower (str-replace (->string domain) "." "")))
+    (dict-get tlds clean (str "Unknown domain: ." clean))))
+
+;; ─── zzsigla — Common acronyms ─────────────────────────────────────────
+;; (zzsigla "API") → "Application Programming Interface"
+(defn zzsigla (acronym)
+  (let (siglas {:API "Application Programming Interface"
+                :CSS "Cascading Style Sheets"
+                :DNS "Domain Name System"
+                :FTP "File Transfer Protocol"
+                :HTML "Hypertext Markup Language"
+                :HTTP "Hypertext Transfer Protocol"
+                :HTTPS "HTTP Secure"
+                :IDE "Integrated Development Environment"
+                :JSON "JavaScript Object Notation"
+                :JWT "JSON Web Token"
+                :ORM "Object-Relational Mapping"
+                :REST "Representational State Transfer"
+                :SDK "Software Development Kit"
+                :SQL "Structured Query Language"
+                :SSH "Secure Shell"
+                :SSL "Secure Sockets Layer"
+                :TLS "Transport Layer Security"
+                :TCP "Transmission Control Protocol"
+                :UDP "User Datagram Protocol"
+                :URI "Uniform Resource Identifier"
+                :URL "Uniform Resource Locator"
+                :XML "Extensible Markup Language"
+                :YAML "YAML Ain't Markup Language"
+                :ASCII "American Standard Code for Information Interchange"
+                :BIOS "Basic Input/Output System"
+                :CPU "Central Processing Unit"
+                :GPU "Graphics Processing Unit"
+                :RAM "Random Access Memory"
+                :ROM "Read-Only Memory"
+                :SSD "Solid State Drive"
+                :USB "Universal Serial Bus"
+                :WIFI "Wireless Fidelity"
+                :VPN "Virtual Private Network"
+                :CLI "Command Line Interface"
+                :GUI "Graphical User Interface"
+                :CRUD "Create Read Update Delete"
+                :FIFO "First In First Out"
+                :LIFO "Last In First Out"
+                :REGEX "Regular Expression"
+                :EOF "End of File"
+                :MIME "Multipurpose Internet Mail Extensions"
+                :SMTP "Simple Mail Transfer Protocol"
+                :IMAP "Internet Message Access Protocol"
+                :POP "Post Office Protocol"
+                :NTP "Network Time Protocol"
+                :DHCP "Dynamic Host Configuration Protocol"
+                :LDAP "Lightweight Directory Access Protocol"})
+        key (str-upper (->string acronym)))
+    (dict-get siglas key (str "Unknown acronym: " key))))

@@ -1,0 +1,520 @@
+;; zz-bitcoin.eelisp
+;; Bitcoin utilities — wallet, node RPC, price, and mining calculations
+;;
+;; Covers:
+;;   - Satoshi/BTC conversions and formatting
+;;   - Address validation (P2PKH, P2SH, Bech32)
+;;   - Supply, halving, and fee calculations
+;;   - Bitcoin Core JSON-RPC node queries
+;;   - Difficulty and hashrate derived from node data
+;;   - Price from public APIs (mempool.space, coingecko)
+;;
+;; Quick start:
+;;   (zzbtc-setup "http://localhost:8332" "alice" "secret")
+;;   (zzbtc-info)
+;;   (zzbtc-price :usd)
+;;   (zzbtc-validaddr "1A1zP1eP5QGefi2DMPTfTL5SLmv7Divf")
+
+;; ─── RPC configuration ─────────────────────────────────────────────────
+;; Store node connection settings in mutable vars.
+;; Call (zzbtc-setup ...) before using any RPC functions.
+(def zzbtc-rpc-url  "http://localhost:8332")
+(def zzbtc-rpc-user "bitcoin")
+(def zzbtc-rpc-pass "bitcoin")
+
+(defn zzbtc-setup (url user pass)
+  (set! zzbtc-rpc-url  url)
+  (set! zzbtc-rpc-user user)
+  (set! zzbtc-rpc-pass pass)
+  (str "Node configured: " url))
+
+;; ─── Helper: base64 encode (for Basic Auth) ────────────────────────────
+;; Simple base64 for ASCII strings (covers typical user:pass pairs).
+(defn zzbtc-b64 (s)
+  (let (chars (str-split s "")
+        table "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+        codes (map (fn (ch) (zzcharcode ch)) chars))
+    (loop (result "" i 0)
+      (if (>= i (length codes))
+        result
+        (let (a  (nth codes i)
+              b  (if (< (+ i 1) (length codes)) (nth codes (+ i 1)) 0)
+              c  (if (< (+ i 2) (length codes)) (nth codes (+ i 2)) 0)
+              n  (+ (* a 65536) (* b 256) c)
+              i1 (floor (/ n 262144))
+              i2 (mod (floor (/ n 4096)) 64)
+              i3 (mod (floor (/ n 64)) 64)
+              i4 (mod n 64)
+              pad (- 3 (min 3 (- (length codes) i)))
+              c1 (substr table i1 (+ i1 1))
+              c2 (substr table i2 (+ i2 1))
+              c3 (if (>= pad 2) "=" (substr table i3 (+ i3 1)))
+              c4 (if (>= pad 1) "=" (substr table i4 (+ i4 1))))
+          (recur (str result c1 c2 c3 c4) (+ i 3)))))))
+
+;; ─── Helper: JSON-RPC call ─────────────────────────────────────────────
+(defn zzbtc-rpc (method . params)
+  (let (body (str "{\"jsonrpc\":\"1.0\",\"id\":\"eelisp\","
+                  "\"method\":\"" method "\","
+                  "\"params\":" (zzbtc-json-list params) "}")
+        auth (str "Basic " (zzbtc-b64 (str zzbtc-rpc-user ":" zzbtc-rpc-pass)))
+        response (http-post zzbtc-rpc-url body
+                    :headers {"Content-Type" "application/json"
+                              "Authorization" auth}))
+    (if (= (dict-get response :status) 200)
+      (let (data (json-parse (dict-get response :body)))
+        (let (err (dict-get data "error"))
+          (if (and err (!= err nil))
+            (str "RPC error: " (dict-get err "message" (->string err)))
+            (dict-get data "result"))))
+      (str "HTTP error " (dict-get response :status)
+           ": " (dict-get response :body)))))
+
+;; Helper: params list → JSON array
+(defn zzbtc-json-list (params)
+  (if (empty? params)
+    "[]"
+    (str "[" (str-join (map zzbtc-json-val params) ",") "]")))
+
+;; Helper: value → JSON representation
+(defn zzbtc-json-val (v)
+  (cond
+    (nil? v)    "null"
+    (bool? v)   (if v "true" "false")
+    (number? v) (->string v)
+    (list? v)   (zzbtc-json-list v)
+    true        (str "\"" v "\"")))
+
+;; ─── ─── ─── NODE RPC FUNCTIONS ─── ─── ───────────────────────────────
+
+;; ─── zzbtc-blockcount — Current block height ───────────────────────────
+;; (zzbtc-blockcount) → 840000
+(defn zzbtc-blockcount ()
+  (zzbtc-rpc "getblockcount"))
+
+;; ─── zzbtc-info — Full blockchain info ─────────────────────────────────
+;; (zzbtc-info)
+(defn zzbtc-info ()
+  (let (info (zzbtc-rpc "getblockchaininfo"))
+    (if (string? info)
+      info  ;; error message
+      (str "Chain:      " (dict-get info "chain") "\n"
+           "Blocks:     " (dict-get info "blocks") "\n"
+           "Headers:    " (dict-get info "headers") "\n"
+           "Best Block: " (dict-get info "bestblockhash") "\n"
+           "Difficulty: " (dict-get info "difficulty") "\n"
+           "Progress:   " (round (* (dict-get info "verificationprogress" 0) 100) 4) "%\n"
+           "Pruned:     " (dict-get info "pruned" false) "\n"
+           "Size (GB):  " (round (/ (dict-get info "size_on_disk" 0) 1073741824) 2)))))
+
+;; ─── zzbtc-difficulty — Current difficulty ──────────────────────────────
+;; (zzbtc-difficulty)
+(defn zzbtc-difficulty ()
+  (let (info (zzbtc-rpc "getblockchaininfo"))
+    (if (string? info) info
+      (dict-get info "difficulty"))))
+
+;; ─── zzbtc-hashrate — Estimated network hashrate ────────────────────────
+;; Calculated from difficulty: hashrate ≈ difficulty × 2^32 / 600
+;; Bitcoin adjusts every 2016 blocks targeting 600s (10min) per block.
+;; The factor 2^32 = 4,294,967,296 comes from the SHA-256 probability model.
+;;
+;; (zzbtc-hashrate)               → hashrate in H/s
+;; (zzbtc-hashrate :eh)           → in exahashes/s
+;; (zzbtc-hashrate :from-node)    → uses getnetworkhashps directly
+(defn zzbtc-hashrate (. args)
+  (let (mode (if (empty? args) :eh (head args)))
+    (if (= mode :from-node)
+      ;; Direct RPC call — more accurate, uses last 120 blocks by default
+      (let (hs (zzbtc-rpc "getnetworkhashps" 120 -1))
+        (if (string? hs) hs
+          (zzbtc-format-hashrate hs)))
+      ;; Derived from difficulty
+      (let (diff (zzbtc-difficulty))
+        (if (string? diff) diff
+          (let (hs (* diff (pow 2 32) (/ 1.0 600)))
+            (zzbtc-format-hashrate hs)))))))
+
+;; Helper: format hashrate into human-readable units
+(defn zzbtc-format-hashrate (hs)
+  (cond
+    (>= hs 1e18) (str (round (/ hs 1e18) 2) " EH/s")
+    (>= hs 1e15) (str (round (/ hs 1e15) 2) " PH/s")
+    (>= hs 1e12) (str (round (/ hs 1e12) 2) " TH/s")
+    (>= hs 1e9)  (str (round (/ hs 1e9)  2) " GH/s")
+    (>= hs 1e6)  (str (round (/ hs 1e6)  2) " MH/s")
+    (>= hs 1e3)  (str (round (/ hs 1e3)  2) " KH/s")
+    true         (str (round hs 2) " H/s")))
+
+;; ─── zzbtc-mining — Mining statistics ──────────────────────────────────
+;; Combines difficulty, hashrate, and block time from the node.
+;; (zzbtc-mining)
+(defn zzbtc-mining ()
+  (let (chain-info  (zzbtc-rpc "getblockchaininfo")
+        mining-info (zzbtc-rpc "getmininginfo"))
+    (if (string? chain-info) chain-info
+      (let (diff      (dict-get chain-info "difficulty")
+            hs-raw    (zzbtc-rpc "getnetworkhashps" 144 -1)
+            ;; Difficulty adjustment: next in (2016 - blocks%2016) blocks
+            height    (dict-get chain-info "blocks" 0)
+            blocks-in-period (mod height 2016)
+            blocks-to-adj (- 2016 blocks-in-period))
+        (str "Difficulty:       " diff "\n"
+             "Hashrate:         " (if (string? hs-raw) hs-raw (zzbtc-format-hashrate hs-raw)) "\n"
+             "Block Height:     " height "\n"
+             "Next Adjustment:  in " blocks-to-adj " blocks\n"
+             "Blocks in Period: " blocks-in-period " / 2016\n"
+             ;; Target bits for difficulty
+             "Target (EH/s):    " (if (string? hs-raw) "?" (round (/ hs-raw 1e18) 4)))))))
+
+;; ─── zzbtc-mempool — Mempool information ───────────────────────────────
+;; (zzbtc-mempool)
+(defn zzbtc-mempool ()
+  (let (info (zzbtc-rpc "getmempoolinfo"))
+    (if (string? info) info
+      (str "Transactions:  " (dict-get info "size") "\n"
+           "Memory (MB):   " (round (/ (dict-get info "bytes" 0) 1048576) 2) "\n"
+           "Max Memory:    " (round (/ (dict-get info "maxmempool" 0) 1048576) 2) " MB\n"
+           "Min Fee:       " (dict-get info "mempoolminfee" 0) " BTC/kB\n"
+           "Total Fees:    " (dict-get info "total_fee" 0) " BTC"))))
+
+;; ─── zzbtc-fee — Fee estimation ────────────────────────────────────────
+;; (zzbtc-fee 1)   → fee estimate for 1-block confirmation
+;; (zzbtc-fee 6)   → fee estimate for 6-block confirmation (~1 hour)
+(defn zzbtc-fee (. args)
+  (let (blocks (if (empty? args) 3 (head args))
+        result (zzbtc-rpc "estimatesmartfee" blocks))
+    (if (string? result) result
+      (let (rate (dict-get result "feerate"))
+        (if rate
+          (str "Fee rate:     " rate " BTC/kB\n"
+               "            = " (round (* rate 1e5) 2) " sat/vByte\n"
+               "Estimated:    " (dict-get result "blocks") " blocks")
+          (str "Not enough data for " blocks "-block estimate"))))))
+
+;; ─── zzbtc-block — Block details ───────────────────────────────────────
+;; (zzbtc-block "hash")     → block details by hash
+;; (zzbtc-block 840000)     → block by height (looks up hash first)
+(defn zzbtc-block (id)
+  (let (hash (if (number? id)
+               (zzbtc-rpc "getblockhash" id)
+               (->string id))
+        block (zzbtc-rpc "getblock" hash 1))
+    (if (string? block) block
+      (str "Hash:       " (dict-get block "hash") "\n"
+           "Height:     " (dict-get block "height") "\n"
+           "Time:       " (date-format (dict-get block "time") "yyyy-MM-dd HH:mm:ss") "\n"
+           "Txns:       " (length (dict-get block "tx" (list))) "\n"
+           "Size:       " (dict-get block "size") " bytes\n"
+           "Weight:     " (dict-get block "weight") " WU\n"
+           "Difficulty: " (dict-get block "difficulty") "\n"
+           "Nonce:      " (dict-get block "nonce") "\n"
+           "Merkle:     " (dict-get block "merkleroot")))))
+
+;; ─── zzbtc-tx — Transaction details ────────────────────────────────────
+;; (zzbtc-tx "txid")
+;; Note: requires txindex=1 in bitcoin.conf for non-wallet txns.
+(defn zzbtc-tx (txid)
+  (let (tx (zzbtc-rpc "getrawtransaction" txid true))
+    (if (string? tx) tx
+      (str "TXID:       " (dict-get tx "txid") "\n"
+           "Version:    " (dict-get tx "version") "\n"
+           "Size:       " (dict-get tx "size") " bytes\n"
+           "vSize:      " (dict-get tx "vsize") " vBytes\n"
+           "Weight:     " (dict-get tx "weight") "\n"
+           "LockTime:   " (dict-get tx "locktime") "\n"
+           "Inputs:     " (length (dict-get tx "vin" (list))) "\n"
+           "Outputs:    " (length (dict-get tx "vout" (list))) "\n"
+           "Confirmed:  " (if (dict-get tx "blockhash") "Yes" "No (mempool)")))))
+
+;; ─── zzbtc-peers — Network peers ───────────────────────────────────────
+;; (zzbtc-peers)
+(defn zzbtc-peers ()
+  (let (info (zzbtc-rpc "getnetworkinfo"))
+    (if (string? info) info
+      (str "Version:    " (dict-get info "version") "\n"
+           "Subversion: " (dict-get info "subversion") "\n"
+           "Protocol:   " (dict-get info "protocolversion") "\n"
+           "Connections:" (dict-get info "connections") "\n"
+           "Inbound:    " (dict-get info "connections_in" "?") "\n"
+           "Outbound:   " (dict-get info "connections_out" "?") "\n"
+           "Reachable:  " (str-join
+                           (filter (fn (n) (dict-get n "reachable" false))
+                                   (dict-get info "networks" (list)))
+                           ", ")))))
+
+;; ─── zzbtc-balance — Wallet balance ────────────────────────────────────
+;; Requires wallet loaded in Bitcoin Core.
+;; (zzbtc-balance) → "1.23456789 BTC"
+(defn zzbtc-balance ()
+  (let (bal (zzbtc-rpc "getbalance"))
+    (if (string? bal) bal
+      (str bal " BTC"))))
+
+;; ─── zzbtc-walletinfo — Wallet info ────────────────────────────────────
+(defn zzbtc-walletinfo ()
+  (let (info (zzbtc-rpc "getwalletinfo"))
+    (if (string? info) info
+      (str "Wallet:     " (dict-get info "walletname") "\n"
+           "Balance:    " (dict-get info "balance") " BTC\n"
+           "Unconfirmed:" (dict-get info "unconfirmed_balance") " BTC\n"
+           "Immature:   " (dict-get info "immature_balance") " BTC\n"
+           "Tx Count:   " (dict-get info "txcount") "\n"
+           "HD Seed:    " (if (dict-get info "hdseedid") "Yes" "No")))))
+
+;; ─── ─── ─── PRICE FUNCTIONS ─── ─── ──────────────────────────────────
+
+;; ─── zzbtc-price — Bitcoin price from public APIs ───────────────────────
+;; (zzbtc-price)       → price in USD from mempool.space
+;; (zzbtc-price :eur)  → price in EUR
+;; (zzbtc-price :all)  → all currencies
+(defn zzbtc-price (. args)
+  (let (currency (if (empty? args) :usd (head args))
+        response (http-get "https://mempool.space/api/v1/prices"))
+    (if (!= (dict-get response :status) 200)
+      ;; Fallback: CoinGecko
+      (let (r2 (http-get "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd,eur,gbp,brl,jpy"))
+        (if (!= (dict-get r2 :status) 200)
+          "Could not fetch price"
+          (let (data (json-parse (dict-get r2 :body)))
+            (zzbtc-format-price data currency))))
+      (let (data (json-parse (dict-get response :body)))
+        (if (= currency :all)
+          (str "BTC Price\n"
+               "  USD: $" (zzbtc-format-number (dict-get data "USD" 0)) "\n"
+               "  EUR: €" (zzbtc-format-number (dict-get data "EUR" 0)) "\n"
+               "  GBP: £" (zzbtc-format-number (dict-get data "GBP" 0)) "\n"
+               "  BRL: R$" (zzbtc-format-number (dict-get data "BRL" 0)) "\n"
+               "  JPY: ¥" (zzbtc-format-number (dict-get data "JPY" 0)))
+          (let (symbol (cond
+                 (= currency :usd) "$"
+                 (= currency :eur) "€"
+                 (= currency :gbp) "£"
+                 (= currency :brl) "R$"
+                 (= currency :jpy) "¥"
+                 true ""))
+                key (str-upper (->string (if (keyword? currency) currency (str currency)))))
+            (str symbol (zzbtc-format-number (dict-get data key 0)) " " key)))))))
+
+;; Helper: format price with commas
+(defn zzbtc-format-number (n)
+  (let (int-part (floor n)
+        dec-part (round (- n int-part) 2))
+    (str (zznumero int-part ",")
+         (if (> dec-part 0) (str "." (substr (->string dec-part) 2)) ""))))
+
+;; ─── zzbtc-market — Market data ────────────────────────────────────────
+;; (zzbtc-market)
+(defn zzbtc-market ()
+  (let (r (http-get "https://api.coingecko.com/api/v3/coins/bitcoin?localization=false&tickers=false&community_data=false&developer_data=false"))
+    (if (!= (dict-get r :status) 200)
+      "Could not fetch market data"
+      (let (data (json-parse (dict-get r :body)))
+        (let (md (dict-get data "market_data"))
+          (str "Bitcoin Market Data\n"
+               "Price (USD):   $" (zzbtc-format-number (dict-get (dict-get md "current_price") "usd" 0)) "\n"
+               "24h Change:    " (round (dict-get (dict-get md "price_change_percentage_24h_in_currency") "usd" 0) 2) "%\n"
+               "7d Change:     " (round (dict-get md "price_change_percentage_7d" 0) 2) "%\n"
+               "Market Cap:    $" (zzbtc-format-number (dict-get (dict-get md "market_cap") "usd" 0)) "\n"
+               "24h Volume:    $" (zzbtc-format-number (dict-get (dict-get md "total_volume") "usd" 0)) "\n"
+               "ATH (USD):     $" (zzbtc-format-number (dict-get (dict-get md "ath") "usd" 0)) "\n"
+               "Circulating:  " (zzbtc-format-number (dict-get md "circulating_supply" 0)) " BTC"))))))
+
+;; ─── ─── ─── WALLET & CALCULATION FUNCTIONS ─── ─── ─────────────────
+
+;; ─── zzbtc-sat — Satoshi ↔ BTC conversions ─────────────────────────────
+;; (zzbtc-sat 0.001)       → 100000 satoshis
+;; (zzbtc-sat 100000 :btc) → 0.001 BTC
+(defn zzbtc-sat (value . args)
+  (let (mode (if (empty? args) :sat (head args)))
+    (if (= mode :btc)
+      ;; satoshis → BTC
+      (round (/ value 100000000) 8)
+      ;; BTC → satoshis
+      (round (* value 100000000) 0))))
+
+;; ─── zzbtc-validaddr — Validate Bitcoin address ─────────────────────────
+;; Checks format for P2PKH (1...), P2SH (3...), and Bech32 (bc1...).
+;; (zzbtc-validaddr "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa") → true (P2PKH)
+;; (zzbtc-validaddr "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4") → true (Bech32)
+(defn zzbtc-validaddr (addr)
+  (let (len (str-len addr))
+    (cond
+      ;; P2PKH: starts with 1, length 25-34
+      (and (str-starts-with addr "1")
+           (>= len 25) (<= len 34)
+           (zzbtc-valid-b58 addr))
+      {:valid true :type "P2PKH (Legacy)" :network "mainnet"}
+
+      ;; P2SH: starts with 3, length 25-34
+      (and (str-starts-with addr "3")
+           (>= len 25) (<= len 34)
+           (zzbtc-valid-b58 addr))
+      {:valid true :type "P2SH (SegWit compatible)" :network "mainnet"}
+
+      ;; Bech32 P2WPKH: bc1q + 39 chars
+      (and (str-starts-with (str-lower addr) "bc1q")
+           (= len 42))
+      {:valid true :type "P2WPKH (Native SegWit)" :network "mainnet"}
+
+      ;; Bech32 P2WSH: bc1q + 59 chars
+      (and (str-starts-with (str-lower addr) "bc1q")
+           (= len 62))
+      {:valid true :type "P2WSH (Native SegWit)" :network "mainnet"}
+
+      ;; Taproot P2TR: bc1p + 59 chars
+      (and (str-starts-with (str-lower addr) "bc1p")
+           (= len 62))
+      {:valid true :type "P2TR (Taproot)" :network "mainnet"}
+
+      ;; Testnet P2PKH: starts with m or n
+      (and (or (str-starts-with addr "m") (str-starts-with addr "n"))
+           (>= len 25) (<= len 34))
+      {:valid true :type "P2PKH" :network "testnet"}
+
+      ;; Testnet P2SH: starts with 2
+      (and (str-starts-with addr "2") (>= len 25) (<= len 34))
+      {:valid true :type "P2SH" :network "testnet"}
+
+      ;; Testnet Bech32
+      (str-starts-with (str-lower addr) "tb1")
+      {:valid true :type "Bech32" :network "testnet"}
+
+      true
+      {:valid false :type "Unknown" :network "unknown"})))
+
+;; Helper: validate base58 charset
+(defn zzbtc-valid-b58 (s)
+  (let (b58 "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+        chars (str-split s ""))
+    (every? (fn (ch) (str-contains b58 ch)) chars)))
+
+;; ─── zzbtc-addrtype — Describe address type ────────────────────────────
+;; (zzbtc-addrtype "bc1p...") → "P2TR (Taproot)"
+(defn zzbtc-addrtype (addr)
+  (let (result (zzbtc-validaddr addr))
+    (if (dict-get result :valid)
+      (str (dict-get result :type) " — " (dict-get result :network))
+      "Invalid address")))
+
+;; ─── zzbtc-halving — Halving information ────────────────────────────────
+;; (zzbtc-halving) → current halving era and next halving block
+(defn zzbtc-halving (. args)
+  (let (height (if (empty? args)
+                 (zzbtc-blockcount)
+                 (head args)))
+    (if (string? height) height
+      (let (halving-interval 210000
+            current-era      (floor (/ height halving-interval))
+            next-halving     (* (+ current-era 1) halving-interval)
+            blocks-remaining (- next-halving height)
+            ;; Current block reward: 50 / 2^era
+            reward           (/ 50.0 (pow 2 current-era))
+            ;; Estimated time remaining (10 min/block)
+            mins-remaining   (* blocks-remaining 10)
+            days-remaining   (round (/ mins-remaining 1440) 1))
+        (str "Block Height:    " height "\n"
+             "Halving Era:     #" current-era " (of 33 total)\n"
+             "Block Reward:    " reward " BTC\n"
+             "Next Halving:    Block " next-halving "\n"
+             "Blocks Until:    " blocks-remaining "\n"
+             "Est. Days Left:  ~" days-remaining " days")))))
+
+;; ─── zzbtc-supply — Circulating supply calculation ──────────────────────
+;; Pure math — no API needed.
+;; (zzbtc-supply) → current theoretical max issued supply
+;; (zzbtc-supply 840000) → supply at block 840000
+(defn zzbtc-supply (. args)
+  (let (height (if (empty? args) 840000 (head args))
+        halving-interval 210000
+        ;; Sum rewards across all eras
+        supply (loop (supply 0.0 era 0)
+          (let (era-start (* era halving-interval)
+                era-end   (* (+ era 1) halving-interval)
+                reward    (/ 50.0 (pow 2 era)))
+            (cond
+              (>= era-start height) supply
+              (>= era 33)           supply  ;; reward rounds to 0
+              (>= era-end height)
+              (+ supply (* (- height era-start) reward))
+              true
+              (recur (+ supply (* halving-interval reward))
+                     (+ era 1))))))
+    (str "Block:    " height "\n"
+         "Supply:   " (round supply 8) " BTC\n"
+         "Max:      20,999,999.9769 BTC")))
+
+;; ─── zzbtc-feecalc — Transaction fee calculator ─────────────────────────
+;; Estimates fee for a transaction given inputs/outputs and fee rate.
+;; P2PKH input ≈ 148 bytes, P2PKH output ≈ 34 bytes, overhead ≈ 10 bytes
+;; P2WPKH input ≈ 68 vBytes, P2WPKH output ≈ 31 vBytes
+;;
+;; (zzbtc-feecalc 2 2 10)          → fee for 2in/2out at 10 sat/vByte (legacy)
+;; (zzbtc-feecalc 2 2 10 :segwit)  → same for SegWit
+(defn zzbtc-feecalc (n-inputs n-outputs sat-per-vbyte . args)
+  (let (mode (if (empty? args) :legacy (head args))
+        vsize (if (= mode :segwit)
+                ;; SegWit vsize = (non-witness + witness/4) rounded up
+                (ceil (+ 10.5 (* n-inputs 68) (* n-outputs 31)))
+                ;; Legacy
+                (+ 10 (* n-inputs 148) (* n-outputs 34)))
+        fee-sat   (* vsize sat-per-vbyte)
+        fee-btc   (round (/ fee-sat 100000000) 8))
+    (str "Type:         " (if (= mode :segwit) "SegWit" "Legacy") "\n"
+         "Inputs:       " n-inputs "\n"
+         "Outputs:      " n-outputs "\n"
+         "vSize:        ~" vsize " vBytes\n"
+         "Fee Rate:     " sat-per-vbyte " sat/vByte\n"
+         "Fee (sat):    " fee-sat " sat\n"
+         "Fee (BTC):    " fee-btc " BTC")))
+
+;; ─── zzbtc-difficulty-target — Compute target from difficulty ───────────
+;; The target is: 0x00000000FFFF0000.../difficulty
+;; (zzbtc-difficulty-target) → target hex prefix
+(defn zzbtc-difficulty-target (. args)
+  (let (diff (if (empty? args) (zzbtc-difficulty) (head args)))
+    (if (string? diff) diff
+      (let (;; max_target = 0x00000000FFFF * 2^208
+            ;; leading zeros ≈ log2(difficulty) / 4
+            leading-zeros (floor (/ (log diff) (log 16)))
+            target-approx (/ 1 diff))
+        (str "Difficulty:     " diff "\n"
+             "Leading zeros:  ~" (+ 8 leading-zeros) " hex digits\n"
+             "Target (approx): 0x" (zzrepete "0" (+ 8 leading-zeros)) "...")))))
+
+;; ─── zzbtc-blocktime — Average block time ───────────────────────────────
+;; Queries last N blocks to compute average inter-block time.
+;; (zzbtc-blocktime 144) → average block time over last 144 blocks (~1 day)
+(defn zzbtc-blocktime (. args)
+  (let (n-blocks (if (empty? args) 144 (head args))
+        tip-hash  (zzbtc-rpc "getbestblockhash")
+        tip-block (zzbtc-rpc "getblock" tip-hash 1)
+        tip-time  (dict-get tip-block "time" 0)
+        tip-height (dict-get tip-block "height" 0)
+        ;; Get block N blocks ago
+        old-hash  (zzbtc-rpc "getblockhash" (- tip-height n-blocks))
+        old-block (zzbtc-rpc "getblock" old-hash 1)
+        old-time  (dict-get old-block "time" 0)
+        elapsed   (- tip-time old-time)
+        avg-secs  (round (/ elapsed n-blocks) 1)
+        avg-mins  (round (/ avg-secs 60) 2))
+    (str "Blocks sampled: " n-blocks "\n"
+         "Avg block time: " avg-secs "s (" avg-mins " min)\n"
+         "vs target:      600s (10.0 min)\n"
+         "Delta:          " (round (- avg-secs 600) 1) "s")))
+
+;; ─── zzbtc-dashboard — All-in-one overview ──────────────────────────────
+;; (zzbtc-dashboard) → combines blockchain + mempool + price
+(defn zzbtc-dashboard ()
+  (let (sep "────────────────────────────────────\n")
+    (str "⚡ Bitcoin Dashboard\n"
+         sep
+         (zzbtc-info) "\n"
+         sep
+         "Hashrate: " (zzbtc-hashrate :from-node) "\n"
+         sep
+         "Mempool:\n" (zzbtc-mempool) "\n"
+         sep
+         "Fees:\n" (zzbtc-fee 1) "\n"
+         sep
+         "Price:\n" (zzbtc-price :all))))

@@ -7,6 +7,7 @@ import { EditorState, Compartment } from "@codemirror/state";
 import { basicSetup } from "codemirror";
 import { markdown } from "@codemirror/lang-markdown";
 import { oneDark } from "@codemirror/theme-one-dark";
+import { autocompletion, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
 
 import { eelispBlockAt } from "../core/blocks";
 import { wikiLinkAt } from "../core/wikilink";
@@ -26,6 +27,8 @@ export interface EditorOptions {
   onRunBlock?: (code: string) => void;
   /** Cmd/Ctrl+click on a [[link]] → navigate to that note. */
   onWikiLink?: (name: string) => void;
+  /** Candidate note names offered as autocompletions after typing `[[`. */
+  wikiTargets?: () => string[];
   theme?: ThemeName;
 }
 
@@ -79,22 +82,35 @@ export function createEditor(parent: HTMLElement, doc: string, opts: EditorOptio
     },
   });
 
+  // Autocomplete note names after "[[".
+  const wikiComplete = (ctx: CompletionContext): CompletionResult | null => {
+    const before = ctx.matchBefore(/\[\[[^\]\n]*/);
+    if (!before || !opts.wikiTargets) return null;
+    const names = opts.wikiTargets();
+    if (names.length === 0) return null;
+    return {
+      from: before.from + 2, // after the "[["
+      options: names.map((n) => ({ label: n, type: "text", apply: n + "]]" })),
+      validFor: /^[^\]\n]*$/,
+    };
+  };
+
+  const extensions = [
+    runBlock, // before basicSetup so it wins the keybinding
+    basicSetup,
+    markdown(),
+    EditorView.lineWrapping,
+    wikiLinks,
+    themeCompartment.of(themeExt(opts.theme ?? "dark")),
+    EditorView.updateListener.of((u) => {
+      if (u.docChanged && opts.onChange) opts.onChange(u.state.doc.toString());
+    }),
+  ];
+  if (opts.wikiTargets) extensions.push(autocompletion({ override: [wikiComplete] }));
+
   const view = new EditorView({
     parent,
-    state: EditorState.create({
-      doc,
-      extensions: [
-        runBlock, // before basicSetup so it wins the keybinding
-        basicSetup,
-        markdown(),
-        EditorView.lineWrapping,
-        wikiLinks,
-        themeCompartment.of(themeExt(opts.theme ?? "dark")),
-        EditorView.updateListener.of((u) => {
-          if (u.docChanged && opts.onChange) opts.onChange(u.state.doc.toString());
-        }),
-      ],
-    }),
+    state: EditorState.create({ doc, extensions }),
   });
 
   return {

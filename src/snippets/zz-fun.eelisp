@@ -1,0 +1,173 @@
+;; zz-fun.eelisp
+;; Fun and games utilities — ported from Funções ZZ
+;;
+;; Coin flips, dice rolls, excuse generators, random names,
+;; animal lottery, and more.
+;;
+;; Usage:
+;;   (zzcaracoroa)
+;;   (zzdado 3)
+;;   (zzexcuse)
+
+;; ─── zzcaracoroa — Coin flip ───────────────────────────────────────────
+;; (zzcaracoroa) → "Cara" or "Coroa" (Heads or Tails)
+(defn zzcaracoroa ()
+  (if (even? (floor (* 1000 (- (now) (today)))))
+    "Cara (Heads)"
+    "Coroa (Tails)"))
+
+;; ─── zzdado — Dice roller ──────────────────────────────────────────────
+;; (zzdado)   → rolls 1d6
+;; (zzdado 3) → rolls 3d6, returns list and total
+(defn zzdado (. args)
+  (let (n (if (empty? args) 1 (head args))
+        rolls (map (fn (i)
+                (+ 1 (mod (floor (* 10000 (- (now) (today)))) 6)))
+              (range 0 n))
+        total (reduce + 0 rolls))
+    (if (= n 1)
+      (str "🎲 " (head rolls))
+      (str "🎲 " (str-join (map ->string rolls) " + ")
+           " = " total))))
+
+;; ─── zzexcuse — Developer excuse generator ─────────────────────────────
+;; (zzexcuse) → random developer excuse
+(defn zzexcuse ()
+  (let (excuses
+    (list
+      "It works on my machine."
+      "That's not a bug, it's a feature."
+      "It must be a cache issue."
+      "The specs changed at the last minute."
+      "I thought the deadline was next week."
+      "The tests were passing locally."
+      "Someone else must have changed that file."
+      "It's a known issue with the framework."
+      "That's a race condition, very hard to reproduce."
+      "The documentation is misleading."
+      "Works fine in production... wait, it doesn't?"
+      "I haven't touched that code in months."
+      "Must be a problem with the database."
+      "It was working before the merge."
+      "The network must be flaky."
+      "Let me just restart the server."
+      "The API changed and nobody told me."
+      "It's probably a timezone issue."
+      "I was refactoring and forgot to commit that part."
+      "That code was written by an intern."
+      "The previous developer didn't document anything."
+      "It compiled fine on Friday."
+      "Have you tried clearing your browser cache?"
+      "That's an edge case nobody could have predicted."
+      "I'll fix it in the next sprint."
+      "The requirements were ambiguous."
+      "It's not slow, it's thorough."
+      "That's legacy code, we don't touch it."
+      "The monitoring system gave false positives."
+      "It must be a dependency update that broke it.")
+        idx (mod (floor (* 100000 (- (now) (today)))) (length excuses)))
+    (nth excuses idx)))
+
+;; ─── zznomealeatorio — Random name generator ───────────────────────────
+;; (zznomealeatorio) → "Carlos Silva"
+;; (zznomealeatorio :full) → "Maria Fernanda Santos Oliveira"
+(defn zznomealeatorio (. args)
+  (let (mode (if (empty? args) :simple (head args))
+        first-names (list "Carlos" "Maria" "João" "Ana" "Pedro" "Juliana"
+                          "Lucas" "Fernanda" "Marcos" "Patricia" "Rafael"
+                          "Camila" "Gabriel" "Beatriz" "Felipe" "Larissa"
+                          "Bruno" "Amanda" "Diego" "Isabella" "Thiago"
+                          "Leticia" "Ricardo" "Daniela" "Gustavo" "Natalia"
+                          "Alice" "Bob" "Charlie" "Diana" "Eve" "Frank")
+        last-names (list "Silva" "Santos" "Oliveira" "Souza" "Lima"
+                         "Pereira" "Costa" "Ferreira" "Rodrigues" "Almeida"
+                         "Nascimento" "Carvalho" "Araujo" "Ribeiro" "Gomes"
+                         "Martins" "Rocha" "Barbosa" "Moreira" "Moura")
+        middle-names (list "Fernanda" "Augusto" "Helena" "Eduardo" "Cristina"
+                           "Roberto" "Lucia" "Antonio" "Regina" "Henrique")
+        seed (floor (* 100000 (- (now) (today))))
+        first (nth first-names (mod seed (length first-names)))
+        last  (nth last-names (mod (+ seed 7) (length last-names))))
+    (if (= mode :full)
+      (let (mid (nth middle-names (mod (+ seed 13) (length middle-names)))
+            last2 (nth last-names (mod (+ seed 23) (length last-names))))
+        (str first " " mid " " last " " last2))
+      (str first " " last))))
+
+;; ─── zzbicho — Animal lottery game (Jogo do Bicho) ────────────────────
+;; Brazilian popular lottery game with 25 animal groups.
+;; (zzbicho 7) → "Carneiro (Ram) — Group 7: 25-26-27-28"
+;; (zzbicho)   → random animal
+(defn zzbicho (. args)
+  (let (animals (list
+    (list 1  "Avestruz"    "Ostrich"     (list "01" "02" "03" "04"))
+    (list 2  "Aguia"       "Eagle"       (list "05" "06" "07" "08"))
+    (list 3  "Burro"       "Donkey"      (list "09" "10" "11" "12"))
+    (list 4  "Borboleta"   "Butterfly"   (list "13" "14" "15" "16"))
+    (list 5  "Cachorro"    "Dog"         (list "17" "18" "19" "20"))
+    (list 6  "Cabra"       "Goat"        (list "21" "22" "23" "24"))
+    (list 7  "Carneiro"    "Ram"         (list "25" "26" "27" "28"))
+    (list 8  "Camelo"      "Camel"       (list "29" "30" "31" "32"))
+    (list 9  "Cobra"       "Snake"       (list "33" "34" "35" "36"))
+    (list 10 "Coelho"      "Rabbit"      (list "37" "38" "39" "40"))
+    (list 11 "Cavalo"      "Horse"       (list "41" "42" "43" "44"))
+    (list 12 "Elefante"    "Elephant"    (list "45" "46" "47" "48"))
+    (list 13 "Galo"        "Rooster"     (list "49" "50" "51" "52"))
+    (list 14 "Gato"        "Cat"         (list "53" "54" "55" "56"))
+    (list 15 "Jacare"      "Alligator"   (list "57" "58" "59" "60"))
+    (list 16 "Leao"        "Lion"        (list "61" "62" "63" "64"))
+    (list 17 "Macaco"      "Monkey"      (list "65" "66" "67" "68"))
+    (list 18 "Porco"       "Pig"         (list "69" "70" "71" "72"))
+    (list 19 "Pavao"       "Peacock"     (list "73" "74" "75" "76"))
+    (list 20 "Peru"        "Turkey"      (list "77" "78" "79" "80"))
+    (list 21 "Touro"       "Bull"        (list "81" "82" "83" "84"))
+    (list 22 "Tigre"       "Tiger"       (list "85" "86" "87" "88"))
+    (list 23 "Urso"        "Bear"        (list "89" "90" "91" "92"))
+    (list 24 "Veado"       "Deer"        (list "93" "94" "95" "96"))
+    (list 25 "Vaca"        "Cow"         (list "97" "98" "99" "00"))))
+        group (if (empty? args)
+                (+ 1 (mod (floor (* 100000 (- (now) (today)))) 25))
+                (head args))
+        animal (nth animals (- group 1))
+        nums (nth animal 3))
+    (str (nth animal 1) " (" (nth animal 2) ") — Group " (head animal)
+         ": " (str-join nums "-"))))
+
+;; ─── zzpalpite — Lottery number generator ──────────────────────────────
+;; (zzpalpite 6 60)  → 6 unique numbers from 1-60 (Mega-Sena style)
+;; (zzpalpite 5 50)  → 5 unique numbers from 1-50
+(defn zzpalpite (count max-num)
+  (loop (nums (list) i 0)
+    (if (= (length nums) count)
+      (sort-by (fn (a b) (< a b)) nums)
+      (let (n (+ 1 (mod (floor (* (+ 100000 (* i 9973)) (- (now) (today)))) max-num)))
+        (if (some? (fn (x) (= x n)) nums)
+          (recur nums (+ i 1))
+          (recur (cons n nums) (+ i 1)))))))
+
+;; ─── zznatal — "Merry Christmas" in many languages ────────────────────
+;; (zznatal) → displays greetings in multiple languages
+(defn zznatal ()
+  (str-join
+    (list
+      "🎄 Merry Christmas / Feliz Natal"
+      "  English:    Merry Christmas"
+      "  Portuguese: Feliz Natal"
+      "  Spanish:    Feliz Navidad"
+      "  French:     Joyeux Noel"
+      "  German:     Frohe Weihnachten"
+      "  Italian:    Buon Natale"
+      "  Dutch:      Vrolijk Kerstfeest"
+      "  Japanese:   メリークリスマス"
+      "  Chinese:    圣诞快乐"
+      "  Russian:    С Рождеством"
+      "  Arabic:     عيد ميلاد مجيد"
+      "  Hindi:      शुभ क्रिसमस"
+      "  Korean:     메리 크리스마스"
+      "  Swedish:    God Jul"
+      "  Finnish:    Hyvaa Joulua"
+      "  Polish:     Wesolych Swiat"
+      "  Turkish:    Mutlu Noeller"
+      "  Greek:      Καλα Χριστουγεννα"
+      "  Hebrew:     חג מולד שמח")
+    "\n"))

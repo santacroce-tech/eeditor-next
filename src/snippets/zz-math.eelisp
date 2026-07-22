@@ -1,0 +1,253 @@
+;; zz-math.eelisp
+;; Math and number utilities — ported from Funções ZZ (funcoeszz.net)
+;;
+;; 20+ functions for random numbers, prime factorization, Roman numerals,
+;; number formatting, BMI calculator, and more.
+;;
+;; Usage:
+;;   (zzaleatorio 1 100)
+;;   (zzromanos 2024)
+;;   (zzfatorar 360)
+
+;; ─── zzaleatorio — Random number generator ─────────────────────────────
+;; (zzaleatorio 1 100)   → random integer between 1 and 100
+;; (zzaleatorio 6)       → random integer between 1 and 6
+(defn zzaleatorio (. args)
+  (let (lo (if (= (length args) 1) 1 (head args))
+        hi (if (= (length args) 1) (head args) (nth args 1)))
+    (+ lo (mod (floor (* (abs (- (* 1103515245 (floor (* 100000 (- (now) (today))))) 12345)) 0.0001)) (+ 1 (- hi lo))))))
+
+;; ─── zzbissexto — Leap year checker ────────────────────────────────────
+;; (zzbissexto 2024) → true
+;; (zzbissexto 1900) → false
+(defn zzbissexto (year)
+  (or (and (= (mod year 4) 0) (!= (mod year 100) 0))
+      (= (mod year 400) 0)))
+
+;; ─── zzcalcula — Expression calculator ─────────────────────────────────
+;; Evaluates a string math expression using eelisp eval.
+;; (zzcalcula "(+ 2 (* 3 4))") → 14
+(defn zzcalcula (expr)
+  (eval (parse expr)))
+
+;; ─── zzclassnum — Classify a number ────────────────────────────────────
+;; (zzclassnum 7) → "odd prime positive"
+(defn zzclassnum (n)
+  (let (props (list)
+        props (if (> n 0) (append props (list "positive"))
+                (if (< n 0) (append props (list "negative"))
+                  (append props (list "zero"))))
+        props (if (even? n) (append props (list "even"))
+                (append props (list "odd")))
+        props (if (zzprimo? (abs n)) (append props (list "prime")) props)
+        props (if (zzperfeito? (abs n)) (append props (list "perfect")) props))
+    (str-join props " ")))
+
+;; ─── Helper: prime check ───────────────────────────────────────────────
+(defn zzprimo? (n)
+  (if (<= n 1) false
+    (if (<= n 3) true
+      (if (or (= (mod n 2) 0) (= (mod n 3) 0)) false
+        (loop (i 5)
+          (if (> (* i i) n) true
+            (if (or (= (mod n i) 0) (= (mod n (+ i 2)) 0)) false
+              (recur (+ i 6)))))))))
+
+;; ─── Helper: perfect number check ──────────────────────────────────────
+(defn zzperfeito? (n)
+  (if (<= n 1) false
+    (let (divisors (filter (fn (i) (= (mod n i) 0)) (range 1 n)))
+      (= (reduce + 0 divisors) n))))
+
+;; ─── zzdivisores — List all divisors ───────────────────────────────────
+;; (zzdivisores 36) → (1 2 3 4 6 9 12 18 36)
+(defn zzdivisores (n)
+  (let (absn (abs n))
+    (filter (fn (i) (= (mod absn i) 0))
+            (range 1 (+ absn 1)))))
+
+;; ─── zzfatorar — Prime factorization ───────────────────────────────────
+;; (zzfatorar 360) → (2 2 2 3 3 5)
+(defn zzfatorar (n)
+  (let (absn (abs n))
+    (loop (num absn factors (list) d 2)
+      (cond
+        (< num 2)     (reverse factors)
+        (= (mod num d) 0) (recur (/ num d) (cons d factors) d)
+        true          (recur num factors (+ d 1))))))
+
+;; ─── zzmat — Math functions ────────────────────────────────────────────
+
+;; Factorial
+;; (zzmat :factorial 10) → 3628800
+(defn zzfatorial (n)
+  (if (<= n 1) 1
+    (reduce * 1 (range 1 (+ n 1)))))
+
+;; Fibonacci
+;; (zzmat :fibonacci 10) → 55
+(defn zzfibonacci (n)
+  (loop (a 0 b 1 i 0)
+    (if (>= i n) a
+      (recur b (+ a b) (+ i 1)))))
+
+;; GCD (Greatest Common Divisor)
+;; (zzgcd 12 8) → 4
+(defn zzgcd (a b)
+  (loop (x (abs a) y (abs b))
+    (if (= y 0) x
+      (recur y (mod x y)))))
+
+;; LCM (Least Common Multiple)
+;; (zzlcm 12 8) → 24
+(defn zzlcm (a b)
+  (/ (* (abs a) (abs b)) (zzgcd a b)))
+
+;; Square root (Newton's method)
+;; (zzsqrt 144) → 12.0
+(defn zzsqrt (n)
+  (if (< n 0) nil
+    (loop (guess (/ n 2.0) i 0)
+      (if (or (>= i 50) (< (abs (- (* guess guess) n)) 0.0001))
+        (round guess 6)
+        (recur (/ (+ guess (/ n guess)) 2.0) (+ i 1))))))
+
+;; Power (integer exponent)
+(defn zzpow (base exp)
+  (pow base exp))
+
+;; Math dispatcher
+;; (zzmat :factorial 10)
+;; (zzmat :fibonacci 10)
+;; (zzmat :gcd 12 8)
+;; (zzmat :sqrt 144)
+(defn zzmat (op . args)
+  (cond
+    (= op :factorial)  (zzfatorial (head args))
+    (= op :fibonacci)  (zzfibonacci (head args))
+    (= op :gcd)        (zzgcd (head args) (nth args 1))
+    (= op :lcm)        (zzlcm (head args) (nth args 1))
+    (= op :sqrt)       (zzsqrt (head args))
+    (= op :pow)        (zzpow (head args) (nth args 1))
+    (= op :primo)      (zzprimo? (head args))
+    (= op :perfeito)   (zzperfeito? (head args))
+    true               (str "Unknown operation: " op)))
+
+;; ─── zznumero — Number formatter ───────────────────────────────────────
+;; Formats a number with thousands separator.
+;; (zznumero 1234567) → "1.234.567"
+;; (zznumero 1234567 ",") → "1,234,567"
+(defn zznumero (n . sep-arg)
+  (let (sep    (if (empty? sep-arg) "." (head sep-arg))
+        s      (->string (floor (abs n)))
+        len    (str-len s)
+        groups (loop (result (list) i len)
+                 (if (<= i 0)
+                   result
+                   (let (start (max 0 (- i 3)))
+                     (recur (cons (substr s start i) result)
+                            start)))))
+    (let (formatted (str-join groups sep))
+      (if (< n 0) (str "-" formatted) formatted))))
+
+;; ─── zzporcento — Percentage calculator ────────────────────────────────
+;; (zzporcento 15 200)       → 30    (15% of 200)
+;; (zzporcento :of 30 200)   → 15    (30 is what % of 200)
+(defn zzporcento (. args)
+  (cond
+    (= (head args) :of)
+    (round (* (/ (nth args 1) (nth args 2)) 100) 2)
+
+    true
+    (round (* (/ (head args) 100) (nth args 1)) 2)))
+
+;; ─── zzromanos — Roman numeral converter ───────────────────────────────
+;; (zzromanos 2024) → "MMXXIV"
+;; (zzromanos "XIV") → 14
+(defn zzromanos (input)
+  (if (number? input)
+    ;; Number to Roman
+    (let (values  (list 1000 900 500 400 100 90 50 40 10 9 5 4 1)
+          symbols (list "M" "CM" "D" "CD" "C" "XC" "L" "XL" "X" "IX" "V" "IV" "I"))
+      (loop (result "" num input pairs (zip values symbols))
+        (if (or (empty? pairs) (<= num 0))
+          result
+          (let (val (head (head pairs))
+                sym (nth (head pairs) 1))
+            (if (>= num val)
+              (recur (str result sym) (- num val) pairs)
+              (recur result num (tail pairs)))))))
+    ;; Roman to Number
+    (let (s      (str-upper (->string input))
+          values {:I 1 :V 5 :X 10 :L 50 :C 100 :D 500 :M 1000})
+      (loop (total 0 i 0)
+        (if (>= i (str-len s))
+          total
+          (let (curr-char (substr s i (+ i 1))
+                next-char (if (< (+ i 1) (str-len s)) (substr s (+ i 1) (+ i 2)) "")
+                curr-val  (dict-get values (->string curr-char) 0)
+                next-val  (dict-get values (->string next-char) 0))
+            (if (< curr-val next-val)
+              (recur (- total curr-val) (+ i 1))
+              (recur (+ total curr-val) (+ i 1)))))))))
+
+;; ─── zzseq — Sequence generator ───────────────────────────────────────
+;; (zzseq 1 10)     → (1 2 3 4 5 6 7 8 9 10)
+;; (zzseq 0 20 5)   → (0 5 10 15 20)
+(defn zzseq (start end . step-arg)
+  (let (step (if (empty? step-arg) 1 (head step-arg)))
+    (range start (+ end 1) step)))
+
+;; ─── zztabuada — Multiplication table ──────────────────────────────────
+;; (zztabuada 7)
+(defn zztabuada (n)
+  (str-join
+    (map (fn (i)
+      (str n " x " i " = " (* n i)))
+    (range 1 11))
+    "\n"))
+
+;; ─── zztestar — Number validity tester ─────────────────────────────────
+;; (zztestar "42")     → true
+;; (zztestar "hello")  → false
+(defn zztestar (text)
+  (let (trimmed (str-trim text))
+    (if (str-matches trimmed "^-?\\d+\\.?\\d*$") true false)))
+
+;; ─── zzimc — BMI calculator ────────────────────────────────────────────
+;; (zzimc 70 1.75) → "BMI: 22.86 (Normal weight)"
+(defn zzimc (weight-kg height-m)
+  (let (bmi (round (/ weight-kg (* height-m height-m)) 2)
+        category (cond
+          (< bmi 18.5) "Underweight"
+          (< bmi 25.0) "Normal weight"
+          (< bmi 30.0) "Overweight"
+          (< bmi 35.0) "Obesity class I"
+          (< bmi 40.0) "Obesity class II"
+          true         "Obesity class III"))
+    (str "BMI: " bmi " (" category ")")))
+
+;; ─── zzbase — Base converter ───────────────────────────────────────────
+;; (zzbase 255 10 16) → "FF"
+;; (zzbase 42 10 2)   → "101010"
+(defn zzbase (n from-base to-base)
+  (let (digits "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        ;; Convert to decimal first
+        decimal (if (= from-base 10)
+                  (->number n)
+                  (let (s (str-upper (->string n)))
+                    (reduce (fn (acc ch)
+                      (+ (* acc from-base)
+                         (loop (i 0)
+                           (if (= (substr digits i (+ i 1)) ch) i
+                             (recur (+ i 1))))))
+                      0 (str-split s "")))))
+    ;; Convert decimal to target base
+    (if (= to-base 10)
+      (->string decimal)
+      (if (= decimal 0) "0"
+        (loop (result "" num (abs decimal))
+          (if (= num 0)
+            (if (< decimal 0) (str "-" result) result)
+            (recur (str (substr digits (mod num to-base) (+ (mod num to-base) 1)) result)
+                   (floor (/ num to-base)))))))))

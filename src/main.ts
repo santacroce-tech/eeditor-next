@@ -13,8 +13,10 @@ import { createTagsPanel } from "./ui/tagspanel";
 import { createSearch } from "./ui/search";
 import { createCalendar } from "./ui/calendar";
 import { createAgendaSetup } from "./ui/agenda-setup";
+import { createSnippets } from "./ui/snippets";
 import { promptModal, confirmModal, showContextMenu, toast, type MenuItem } from "./ui/dialogs";
 import { resolveWikiLink } from "./core/fuzzy";
+import { backlinksTo } from "./core/backlinks";
 import { linkifyWikiLinks } from "./ui/wikilinks";
 import "./styles.css";
 
@@ -132,25 +134,116 @@ function main(): void {
   headRight.append(themeBtn, previewBtn);
   editorPane.head.append(nameEl, headRight);
 
+  const tabBar = document.createElement("div");
+  tabBar.className = "etabbar";
+  tabBar.style.display = "none";
   const editorHost = document.createElement("div");
   editorHost.className = "editor-host";
   const previewHost = document.createElement("div");
   previewHost.className = "preview-host markdown-body";
   previewHost.style.display = "none";
-  editorPane.body.append(editorHost, previewHost);
+  const backlinksBar = document.createElement("div");
+  backlinksBar.className = "backlinks-bar";
+  backlinksBar.style.display = "none";
+  editorPane.body.append(tabBar, editorHost, previewHost, backlinksBar);
 
   // ── repl pane ──
   const replPane = pane(shell, "repl-pane");
-  replPane.head.textContent = "eelisp";
+  const replLabel = document.createElement("span");
+  replLabel.textContent = "eelisp";
+  const snippetsBtn = document.createElement("button");
+  snippetsBtn.className = "head-btn";
+  snippetsBtn.textContent = "snippets";
+  snippetsBtn.title = "Standard EELisp bundle (zzeelisp)";
+  replPane.head.append(replLabel, snippetsBtn);
 
-  // ── state ──
+  // ── state ── (currentPath/dirty mirror the active tab)
+  interface Tab {
+    path: string;
+    content: string;
+    dirty: boolean;
+  }
+  let tabs: Tab[] = [];
+  let activeIdx = -1;
+  let suppressChange = false; // guards programmatic setDoc from marking the doc dirty
   let currentPath = "";
   let dirty = false;
   let previewing = false;
 
+  const basename = (p: string): string => p.split("/").pop() ?? p;
   const setHead = () => {
     nameEl.textContent = (currentPath || "untitled") + (dirty ? " •" : "");
   };
+  function setEditorDoc(content: string): void {
+    suppressChange = true;
+    editor.setDoc(content);
+    suppressChange = false;
+  }
+
+  function renderTabs(): void {
+    tabBar.style.display = tabs.length ? "" : "none";
+    tabBar.innerHTML = "";
+    tabs.forEach((t, i) => {
+      const tab = document.createElement("div");
+      tab.className = "etab" + (i === activeIdx ? " active" : "");
+      const label = document.createElement("span");
+      label.className = "etab-label";
+      label.textContent = basename(t.path) + (t.dirty ? " •" : "");
+      label.title = t.path;
+      label.addEventListener("click", () => switchTab(i));
+      const close = document.createElement("button");
+      close.className = "etab-close";
+      close.textContent = "×";
+      close.title = "Close tab";
+      close.addEventListener("click", (e) => {
+        e.stopPropagation();
+        closeTab(i);
+      });
+      tab.append(label, close);
+      tabBar.appendChild(tab);
+    });
+  }
+
+  function switchTab(idx: number): void {
+    if (idx < 0 || idx >= tabs.length) return;
+    if (activeIdx >= 0 && activeIdx < tabs.length) {
+      tabs[activeIdx].content = editor.getDoc(); // snapshot outgoing tab
+      tabs[activeIdx].dirty = dirty;
+    }
+    activeIdx = idx;
+    const t = tabs[idx];
+    setEditorDoc(t.content);
+    currentPath = t.path;
+    dirty = t.dirty;
+    setHead();
+    sidebar.setActive(t.path);
+    renderTabs();
+    if (previewing) renderPreview();
+    void refreshBacklinks();
+  }
+
+  function closeTab(idx: number): void {
+    if (idx < 0 || idx >= tabs.length) return;
+    const wasActive = idx === activeIdx;
+    tabs.splice(idx, 1);
+    if (tabs.length === 0) {
+      activeIdx = -1;
+      currentPath = "";
+      dirty = false;
+      setEditorDoc("");
+      setHead();
+      renderTabs();
+      renderBacklinks([]);
+      return;
+    }
+    if (wasActive) {
+      activeIdx = -1; // don't snapshot the just-removed tab
+      switchTab(Math.min(idx, tabs.length - 1));
+    } else {
+      if (idx < activeIdx) activeIdx -= 1;
+      renderTabs();
+    }
+  }
 
   // autosave — debounced 1s (matches EEditorCore/AutoSaveService)
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -160,18 +253,24 @@ function main(): void {
   }
 
   const repl = createRepl(replPane.body, engine);
+  const snippets = createSnippets(engine, repl);
+  snippetsBtn.addEventListener("click", () => snippets.open());
 
   const editor = createEditor(editorHost, "", {
     theme,
     onChange: () => {
+      if (suppressChange) return;
       if (!dirty) {
         dirty = true;
+        if (activeIdx >= 0) tabs[activeIdx].dirty = true;
         setHead();
+        renderTabs();
       }
       scheduleSave();
     },
     onRunBlock: (code) => void repl.run(code),
     onWikiLink: (name) => openWikiLink(name),
+    wikiTargets: () => sidebar.files().map((f) => f.name.replace(/\.[^./]+$/, "")),
   });
 
   // [[wiki-link]] → open the matching note (Cmd/Ctrl+click in the editor, or click in the preview)
@@ -199,14 +298,49 @@ function main(): void {
   setupBtn.addEventListener("click", () => agendaSetup.open());
 
   const openFile = async (path: string): Promise<void> => {
+    const existing = tabs.findIndex((t) => t.path === path);
+    if (existing >= 0) {
+      switchTab(existing);
+      return;
+    }
     const content = await ws.read(path);
-    editor.setDoc(content);
-    currentPath = path;
-    dirty = false;
-    setHead();
-    sidebar.setActive(path);
-    if (previewing) renderPreview();
+    contentCache.set(path, content);
+    tabs.push({ path, content, dirty: false });
+    switchTab(tabs.length - 1);
   };
+
+  // ── backlinks: which notes link here via [[…]] ──
+  const contentCache = new Map<string, string>();
+  function renderBacklinks(links: string[]): void {
+    backlinksBar.innerHTML = "";
+    if (links.length === 0) {
+      backlinksBar.style.display = "none";
+      return;
+    }
+    backlinksBar.style.display = "";
+    backlinksBar.appendChild(document.createTextNode(`↩ ${links.length} backlink${links.length > 1 ? "s" : ""}: `));
+    links.forEach((p, i) => {
+      if (i > 0) backlinksBar.appendChild(document.createTextNode(", "));
+      const a = document.createElement("a");
+      a.className = "backlink";
+      a.textContent = p;
+      a.addEventListener("click", () => void openFile(p));
+      backlinksBar.appendChild(a);
+    });
+  }
+  async function refreshBacklinks(): Promise<void> {
+    if (!currentPath) return renderBacklinks([]);
+    const entries = sidebar.files();
+    await Promise.all(
+      entries.map((f) =>
+        contentCache.has(f.path)
+          ? Promise.resolve()
+          : ws.read(f.path).then((c) => contentCache.set(f.path, c)).catch(() => contentCache.set(f.path, "")),
+      ),
+    );
+    const files = entries.map((f) => ({ path: f.path, content: contentCache.get(f.path) ?? "" }));
+    renderBacklinks(backlinksTo(currentPath, files, entries));
+  }
 
   // ── file CRUD (create / rename / delete), reconciling the open document ──
   async function newFile(dir: string): Promise<void> {
@@ -244,12 +378,18 @@ function main(): void {
       toast(`Could not rename: ${String(e)}`);
       return;
     }
-    // follow the open document if it (or its ancestor folder) was renamed
-    if (currentPath === node.path) currentPath = to;
-    else if (currentPath.startsWith(node.path + "/")) currentPath = to + currentPath.slice(node.path.length);
+    // follow the renamed file/folder across any open tabs (and the active document)
+    const renamePath = (p: string): string =>
+      p === node.path ? to : p.startsWith(node.path + "/") ? to + p.slice(node.path.length) : p;
+    tabs.forEach((t) => {
+      t.path = renamePath(t.path);
+    });
+    if (currentPath) currentPath = renamePath(currentPath);
+    contentCache.delete(node.path);
     await sidebar.refresh();
     await tags.refresh();
     setHead();
+    renderTabs();
     sidebar.setActive(currentPath);
   }
   async function deleteNode(node: FileNode): Promise<void> {
@@ -262,14 +402,28 @@ function main(): void {
       toast(`Could not delete: ${String(e)}`);
       return;
     }
-    if (currentPath === node.path || currentPath.startsWith(node.path + "/")) {
-      currentPath = "";
-      dirty = false;
-      editor.setDoc("");
-      setHead();
+    // close any tabs under the deleted path and reconcile the active document
+    const gone = (p: string): boolean => p === node.path || p.startsWith(node.path + "/");
+    if (tabs.some((t) => gone(t.path))) {
+      const activePath = tabs[activeIdx]?.path;
+      tabs = tabs.filter((t) => !gone(t.path));
+      if (tabs.length === 0) {
+        activeIdx = -1;
+        currentPath = "";
+        dirty = false;
+        setEditorDoc("");
+        setHead();
+        renderTabs();
+      } else {
+        const idx = activePath && !gone(activePath) ? tabs.findIndex((t) => t.path === activePath) : 0;
+        activeIdx = -1; // avoid snapshotting a removed tab
+        switchTab(idx >= 0 ? idx : 0);
+      }
     }
+    contentCache.delete(node.path);
     await sidebar.refresh();
     await tags.refresh();
+    void refreshBacklinks();
   }
 
   const fileMenu = (node: FileNode, ev: MouseEvent): void => {
@@ -317,8 +471,12 @@ function main(): void {
   const save = async (): Promise<void> => {
     if (!currentPath) return;
     await ws.write(currentPath, editor.getDoc());
+    contentCache.set(currentPath, editor.getDoc());
     dirty = false;
+    if (activeIdx >= 0) tabs[activeIdx].dirty = false;
     setHead();
+    renderTabs();
+    void refreshBacklinks();
   };
 
   function renderPreview(): void {

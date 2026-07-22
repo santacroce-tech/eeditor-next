@@ -8,6 +8,8 @@ import { renderModelEl } from "./results";
 
 export interface Repl {
   run(src: string): Promise<void>;
+  /** Append an informational line to the scrollback (used by the snippets loader). */
+  note(text: string): void;
   focus(): void;
 }
 
@@ -83,6 +85,7 @@ export function createRepl(parent: HTMLElement, engine: EngineClient): Repl {
 
   return {
     run,
+    note: (text: string) => append("repl-output", text),
     focus: () => input.focus(),
   };
 }

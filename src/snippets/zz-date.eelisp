@@ -1,0 +1,185 @@
+;; zz-date.eelisp
+;; Date and time utilities — ported from Funções ZZ (funcoeszz.net)
+;;
+;; 15+ functions for date arithmetic, format conversion, business days,
+;; Easter calculation, and liturgical/holiday dates.
+;;
+;; Usage:
+;;   (zzdata "2024-03-15" 30)    → date + 30 days
+;;   (zzpascoa 2024)             → Easter Sunday
+;;   (zzdiasuteis "2024-03-01" "2024-03-31")
+
+;; ─── zzdata — Date calculator ──────────────────────────────────────────
+;; Add or subtract days from a date.
+;; (zzdata "2024-03-15" 30)  → date 30 days later
+;; (zzdata "2024-03-15" -10) → date 10 days earlier
+(defn zzdata (date-str days)
+  (date-add date-str days :days))
+
+;; ─── zzdatafmt — Date format converter ─────────────────────────────────
+;; Converts between date formats.
+;; (zzdatafmt "2024-03-15" "dd/MM/yyyy") → "15/03/2024"
+;; (zzdatafmt (now) "EEEE, MMMM d, yyyy") → "Friday, March 15, 2024"
+(defn zzdatafmt (date fmt)
+  (date-format date fmt))
+
+;; ─── zzdiadasemana — Day of the week ───────────────────────────────────
+;; (zzdiadasemana "2024-03-15") → "Friday"
+(defn zzdiadasemana (date-str)
+  (date-format date-str "EEEE"))
+
+;; ─── zzdiadasemana-pt — Day of the week (Portuguese) ──────────────────
+(defn zzdiadasemana-pt (date-str)
+  (let (en (date-format date-str "EEEE"))
+    (cond
+      (= en "Sunday")    "Domingo"
+      (= en "Monday")    "Segunda-feira"
+      (= en "Tuesday")   "Terça-feira"
+      (= en "Wednesday") "Quarta-feira"
+      (= en "Thursday")  "Quinta-feira"
+      (= en "Friday")    "Sexta-feira"
+      (= en "Saturday")  "Sábado"
+      true               en)))
+
+;; ─── zzdiasuteis — Business days calculator ────────────────────────────
+;; Counts business days (Mon-Fri) between two dates.
+;; (zzdiasuteis "2024-03-01" "2024-03-31") → 22
+(defn zzdiasuteis (start-date end-date)
+  (let (total-days (date-diff end-date start-date))
+    (loop (count 0 i 0)
+      (if (> i total-days) count
+        (let (d     (date-add start-date i :days)
+              dow   (date-format d "c"))
+          ;; c: 1=Sunday .. 7=Saturday; Mon-Fri = 2..6
+          (recur (if (and (>= (->number dow) 2) (<= (->number dow) 6))
+                   (+ count 1) count)
+                 (+ i 1)))))))
+
+;; ─── zzhora — Time arithmetic ──────────────────────────────────────────
+;; Add/subtract hours and minutes.
+;; (zzhora "14:30" "02:45")  → "17:15"
+;; (zzhora "14:30" "-01:15") → "13:15"
+(defn zzhora (time-a time-b)
+  (let (parse-time (fn (t)
+         (let (negative (str-starts-with t "-")
+               clean    (if negative (substr t 1) t)
+               parts    (str-split clean ":")
+               h        (->number (head parts))
+               m        (->number (nth parts 1)))
+           (let (total (+ (* h 60) m))
+             (if negative (- 0 total) total))))
+        total-a (parse-time time-a)
+        total-b (parse-time time-b)
+        total   (+ total-a total-b)
+        sign    (if (< total 0) "-" "")
+        abs-t   (abs total)
+        hours   (floor (/ abs-t 60))
+        mins    (mod abs-t 60))
+    (str sign (zzpad (->string hours) 2 "0" :left) ":"
+         (zzpad (->string mins) 2 "0" :left))))
+
+;; ─── zzhoramin — Hours to minutes converter ────────────────────────────
+;; (zzhoramin "2:30")  → 150
+;; (zzhoramin 150)     → "2:30"
+(defn zzhoramin (input)
+  (if (string? input)
+    (let (parts (str-split input ":")
+          h     (->number (head parts))
+          m     (->number (nth parts 1)))
+      (+ (* h 60) m))
+    (let (h (floor (/ (abs input) 60))
+          m (mod (abs input) 60))
+      (str (zzpad (->string h) 2 "0" :left) ":"
+           (zzpad (->string m) 2 "0" :left)))))
+
+;; ─── zzpascoa — Easter date (Gauss/Anonymous algorithm) ────────────────
+;; Returns Easter Sunday date for a given year.
+;; (zzpascoa 2024) → "2024-03-31"
+(defn zzpascoa (year)
+  (let (a   (mod year 19)
+        b   (floor (/ year 100))
+        c   (mod year 100)
+        d   (floor (/ b 4))
+        e   (mod b 4)
+        f   (floor (/ (+ b 8) 25))
+        g   (floor (/ (+ (- b f) 1) 3))
+        h   (mod (+ (- (- (+ (* 19 a) b) d) g) 15) 30)
+        i   (floor (/ c 4))
+        k   (mod c 4)
+        l   (mod (+ (- (- (+ 32 (* 2 e)) (* 2 i)) h) k) 7)
+        m   (floor (/ (+ a (* 11 h) (* 22 l)) 451))
+        month (floor (/ (+ (- (+ h l) (* 7 m)) 114) 31))
+        day   (+ (mod (+ (- (+ h l) (* 7 m)) 114) 31) 1))
+    (str year "-"
+         (zzpad (->string month) 2 "0" :left) "-"
+         (zzpad (->string day) 2 "0" :left))))
+
+;; ─── zzcarnaval — Carnival date ────────────────────────────────────────
+;; 47 days before Easter Sunday.
+;; (zzcarnaval 2024) → "2024-02-13"
+(defn zzcarnaval (year)
+  (date-add (zzpascoa year) -47 :days))
+
+;; ─── zzcorpuschristi — Corpus Christi date ─────────────────────────────
+;; 60 days after Easter Sunday.
+;; (zzcorpuschristi 2024) → "2024-05-30"
+(defn zzcorpuschristi (year)
+  (date-add (zzpascoa year) 60 :days))
+
+;; ─── zzsextapaixao — Good Friday ───────────────────────────────────────
+;; 2 days before Easter Sunday.
+;; (zzsextapaixao 2024) → "2024-03-29"
+(defn zzsextapaixao (year)
+  (date-add (zzpascoa year) -2 :days))
+
+;; ─── zzdataestelar — Star Trek stardate calculator ─────────────────────
+;; Converts a date to Star Trek-style stardate.
+;; (zzdataestelar "2024-03-15") → "77706.8"
+(defn zzdataestelar (date-str)
+  (let (year  (->number (substr (->string date-str) 0 4))
+        month (->number (substr (->string date-str) 5 7))
+        day   (->number (substr (->string date-str) 8 10))
+        ;; TNG-era stardate: year 2000 = stardate 54000
+        base-year  2000
+        base-star  54000
+        year-diff  (- year base-year)
+        ;; Each year ≈ 1000 stardates; each day ≈ 2.74
+        day-of-year (+ (* (- month 1) 30.44) day)
+        stardate   (+ base-star (* year-diff 1000) (* day-of-year 2.74)))
+    (->string (round stardate 1))))
+
+;; ─── zzferiado — Holiday checker ───────────────────────────────────────
+;; Check if a date is a common holiday. Returns holiday name or nil.
+;; (zzferiado "2024-12-25") → "Christmas"
+(defn zzferiado (date-str)
+  (let (md (substr (->string date-str) 5 10)
+        year (->number (substr (->string date-str) 0 4)))
+    (cond
+      (= md "01-01") "New Year's Day"
+      (= md "05-01") "Labour Day"
+      (= md "12-25") "Christmas"
+      (= md "12-31") "New Year's Eve"
+      ;; Brazilian holidays
+      (= md "04-21") "Tiradentes (BR)"
+      (= md "09-07") "Independence Day (BR)"
+      (= md "10-12") "Nossa Senhora Aparecida (BR)"
+      (= md "11-02") "Finados (BR)"
+      (= md "11-15") "Proclamation of the Republic (BR)"
+      ;; Moving holidays
+      (= (->string date-str) (zzpascoa year))        "Easter Sunday"
+      (= (->string date-str) (zzsextapaixao year))    "Good Friday"
+      (= (->string date-str) (zzcarnaval year))       "Carnival"
+      (= (->string date-str) (zzcorpuschristi year))  "Corpus Christi"
+      true nil)))
+
+;; ─── zzdias-entre — Days between two dates ─────────────────────────────
+;; (zzdias-entre "2024-01-01" "2024-12-31") → 365
+(defn zzdias-entre (date-a date-b)
+  (abs (date-diff date-b date-a)))
+
+;; ─── zzidade — Age calculator ──────────────────────────────────────────
+;; (zzidade "1990-05-20") → "33 years"
+(defn zzidade (birth-date)
+  (let (days (date-diff (today) birth-date)
+        years (floor (/ days 365.25)))
+    (str years " years")))
