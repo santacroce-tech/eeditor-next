@@ -14,6 +14,7 @@ import { createSearch } from "./ui/search";
 import { createCalendar } from "./ui/calendar";
 import { createAgendaSetup } from "./ui/agenda-setup";
 import { createSnippets } from "./ui/snippets";
+import { exportPdf } from "./ui/pdf";
 import { promptModal, confirmModal, showContextMenu, toast, type MenuItem } from "./ui/dialogs";
 import { resolveWikiLink } from "./core/fuzzy";
 import { backlinksTo } from "./core/backlinks";
@@ -131,7 +132,11 @@ function main(): void {
   const previewBtn = document.createElement("button");
   previewBtn.className = "head-btn";
   previewBtn.textContent = "preview";
-  headRight.append(themeBtn, previewBtn);
+  const pdfBtn = document.createElement("button");
+  pdfBtn.className = "head-btn";
+  pdfBtn.textContent = "PDF";
+  pdfBtn.title = "Export to PDF";
+  headRight.append(themeBtn, previewBtn, pdfBtn);
   editorPane.head.append(nameEl, headRight);
 
   const tabBar = document.createElement("div");
@@ -497,6 +502,11 @@ function main(): void {
     previewBtn.textContent = previewing ? "edit" : "preview";
   }
   previewBtn.addEventListener("click", togglePreview);
+  pdfBtn.addEventListener("click", () => {
+    const html = marked.parse(editor.getDoc()) as string;
+    const title = currentPath ? basename(currentPath).replace(/\.[^./]+$/, "") : "untitled";
+    exportPdf(title, html, (m) => toast(m));
+  });
 
   document.addEventListener("keydown", (e) => {
     const mod = e.metaKey || e.ctrlKey;
