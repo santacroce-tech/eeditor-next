@@ -9,6 +9,7 @@ import { markdown } from "@codemirror/lang-markdown";
 import { oneDark } from "@codemirror/theme-one-dark";
 
 import { eelispBlockAt } from "../core/blocks";
+import { wikiLinkAt } from "../core/wikilink";
 
 export type ThemeName = "dark" | "light";
 
@@ -23,6 +24,8 @@ export interface Editor {
 export interface EditorOptions {
   onChange?: (doc: string) => void;
   onRunBlock?: (code: string) => void;
+  /** Cmd/Ctrl+click on a [[link]] → navigate to that note. */
+  onWikiLink?: (name: string) => void;
   theme?: ThemeName;
 }
 
@@ -61,6 +64,21 @@ export function createEditor(parent: HTMLElement, doc: string, opts: EditorOptio
     },
   ]);
 
+  // Cmd/Ctrl+click on a [[wiki-link]] navigates to the referenced note.
+  const wikiLinks = EditorView.domEventHandlers({
+    mousedown(event, view) {
+      if (!(event.metaKey || event.ctrlKey) || !opts.onWikiLink) return false;
+      const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+      if (pos == null) return false;
+      const line = view.state.doc.lineAt(pos);
+      const name = wikiLinkAt(line.text, pos - line.from);
+      if (name == null) return false;
+      event.preventDefault();
+      opts.onWikiLink(name);
+      return true;
+    },
+  });
+
   const view = new EditorView({
     parent,
     state: EditorState.create({
@@ -70,6 +88,7 @@ export function createEditor(parent: HTMLElement, doc: string, opts: EditorOptio
         basicSetup,
         markdown(),
         EditorView.lineWrapping,
+        wikiLinks,
         themeCompartment.of(themeExt(opts.theme ?? "dark")),
         EditorView.updateListener.of((u) => {
           if (u.docChanged && opts.onChange) opts.onChange(u.state.doc.toString());

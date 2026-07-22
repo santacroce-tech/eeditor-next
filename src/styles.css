@@ -95,6 +95,9 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-s
 .markdown-body pre { background: var(--bg-2); padding: 10px 12px; border-radius: 6px; overflow-x: auto; }
 .markdown-body pre code { background: none; padding: 0; }
 .markdown-body a { color: var(--accent); }
+.markdown-body a.wikilink, .wikilink { color: var(--accent); text-decoration: none; cursor: pointer;
+  border-bottom: 1px dashed var(--accent); }
+.markdown-body a.wikilink:hover { border-bottom-style: solid; }
 .markdown-body blockquote { border-left: 3px solid var(--border); margin: 0; padding-left: 12px; color: var(--muted); }
 .markdown-body ul, .markdown-body ol { padding-left: 1.4em; }
 .markdown-body table { border-collapse: collapse; }
@@ -169,6 +172,22 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-s
 .ag-cats { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 2px 6px 2px; }
 .ag-cat { display: inline-block; background: var(--bg-2); color: var(--muted);
   border: 1px solid var(--border); border-radius: 8px; padding: 0 6px; font: 10px var(--mono); }
+.ag-notes { background: var(--bg); color: var(--fg); border: 1px solid var(--border);
+  border-radius: 5px; padding: 4px 8px; font: 12px var(--mono); outline: none; resize: vertical; }
+.ag-notes:focus { border-color: var(--accent); }
+.ag-cat-edit { display: flex; flex-direction: column; gap: 4px; }
+.ag-cat-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.ag-cat-chip { display: inline-flex; align-items: center; gap: 3px; }
+.ag-cat-x { background: none; border: none; color: var(--muted); cursor: pointer; padding: 0;
+  font-size: 13px; line-height: 1; }
+.ag-cat-x:hover { color: var(--err); }
+.ag-cat-add { display: flex; gap: 4px; }
+.ag-cat-input { flex: 1; min-width: 0; background: var(--bg); color: var(--fg); border: 1px solid var(--border);
+  border-radius: 5px; padding: 3px 8px; font: 11px var(--mono); outline: none; }
+.ag-cat-input:focus { border-color: var(--accent); }
+.ag-cat-add-btn { background: var(--bg); color: var(--fg); border: 1px solid var(--border);
+  border-radius: 5px; padding: 2px 9px; font-size: 12px; cursor: pointer; }
+.ag-cat-add-btn:hover { border-color: var(--accent); }
 
 /* ── header button groups (files/agenda) ── */
 .side-head-btns { display: flex; gap: 4px; }

@@ -4,6 +4,7 @@ import { extractTags, tagCounts } from "./tags";
 import { monthGrid, countByDate } from "./calendar";
 import { eelispBlockAt } from "./blocks";
 import { searchFiles } from "./search";
+import { wikiLinkAt, wikiLinkTargets } from "./wikilink";
 
 describe("fuzzy", () => {
   const files = [
@@ -112,5 +113,22 @@ describe("full-text search", () => {
   it("honors case sensitivity and empty query", () => {
     expect(searchFiles(files, "beta", true)).toEqual([]);
     expect(searchFiles(files, "")).toEqual([]);
+  });
+});
+
+describe("wiki-links", () => {
+  const line = "see [[Roadmap]] and [[notes/todo]] here";
+
+  it("resolves the target under a column, else null", () => {
+    expect(wikiLinkAt(line, 8)).toBe("Roadmap"); // inside [[Roadmap]]
+    expect(wikiLinkAt(line, 4)).toBe("Roadmap"); // on the opening bracket
+    expect(wikiLinkAt(line, 25)).toBe("notes/todo");
+    expect(wikiLinkAt(line, 0)).toBeNull(); // before any link
+    expect(wikiLinkAt(line, 17)).toBeNull(); // between the two links
+  });
+
+  it("extracts and trims all targets", () => {
+    expect(wikiLinkTargets("[[ A ]] x [[B]]")).toEqual(["A", "B"]);
+    expect(wikiLinkTargets("no links")).toEqual([]);
   });
 });
