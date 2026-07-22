@@ -14,6 +14,8 @@ import { createSearch } from "./ui/search";
 import { createCalendar } from "./ui/calendar";
 import { createAgendaSetup } from "./ui/agenda-setup";
 import { promptModal, confirmModal, showContextMenu, toast, type MenuItem } from "./ui/dialogs";
+import { resolveWikiLink } from "./core/fuzzy";
+import { linkifyWikiLinks } from "./ui/wikilinks";
 import "./styles.css";
 
 const parentDir = (p: string): string => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
@@ -169,7 +171,15 @@ function main(): void {
       scheduleSave();
     },
     onRunBlock: (code) => void repl.run(code),
+    onWikiLink: (name) => openWikiLink(name),
   });
+
+  // [[wiki-link]] → open the matching note (Cmd/Ctrl+click in the editor, or click in the preview)
+  const openWikiLink = (name: string): void => {
+    const hit = resolveWikiLink(name, sidebar.files());
+    if (hit) void openFile(hit.path);
+    else toast(`No note matching "${name}"`);
+  };
 
   // theme toggle (label shows the theme you'd switch TO)
   const applyTheme = (t: ThemeName): void => {
@@ -313,7 +323,14 @@ function main(): void {
 
   function renderPreview(): void {
     previewHost.innerHTML = marked.parse(editor.getDoc()) as string;
+    linkifyWikiLinks(previewHost);
   }
+  previewHost.addEventListener("click", (e) => {
+    const a = (e.target as HTMLElement).closest<HTMLElement>(".wikilink");
+    if (!a) return;
+    e.preventDefault();
+    if (a.dataset.target) openWikiLink(a.dataset.target);
+  });
   function togglePreview(): void {
     previewing = !previewing;
     if (previewing) renderPreview();

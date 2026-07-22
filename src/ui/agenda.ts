@@ -3,7 +3,7 @@
 
 import type { EngineClient } from "../engine/client";
 import type { Envelope, JsonValue } from "../engine/types";
-import { isResultSet } from "../engine/types";
+import { isResultSet, isItem } from "../engine/types";
 
 export interface AgendaPanel {
   refresh(): Promise<void>;
@@ -54,6 +54,14 @@ export function createAgendaPanel(parent: HTMLElement, engine: EngineClient): Ag
   root.append(addRow, list);
   parent.appendChild(root);
 
+  // Available category names for the assign datalist — parsed from the engine's (categories) tree.
+  async function fetchCategoryNames(): Promise<string[]> {
+    const env = await engine.evalSrc("(categories)");
+    const str = env.ok && typeof env.result === "string" ? env.result : "";
+    if (!str || str.startsWith("(no categories")) return [];
+    return str.split("\n").map((l) => l.trim().replace(/\s*\[exclusive\]$/, "")).filter(Boolean);
+  }
+
   function renderItem(it: AgItem): HTMLElement {
     const row = el("div", "ag-item");
     const main = el("div", "ag-item-main");
@@ -61,9 +69,9 @@ export function createAgendaPanel(parent: HTMLElement, engine: EngineClient): Ag
     main.appendChild(el("span", "ag-text", it.text));
     if (it.when) main.appendChild(el("span", "ag-when", it.when));
 
-    const cats = it.categories.split(",").map((x) => x.trim()).filter(Boolean);
-    const catsRow = el("div", "ag-cats");
-    for (const c of cats) catsRow.appendChild(el("span", "ag-cat", c));
+    let cats = it.categories.split(",").map((x) => x.trim()).filter(Boolean);
+    const mainCats = el("div", "ag-cats"); // read-only chips shown under the row
+    const editCats = el("div", "ag-cat-chips"); // editable chips (with ×) in the editor
 
     const editor = el("div", "ag-editor");
     editor.style.display = "none";
@@ -76,27 +84,105 @@ export function createAgendaPanel(parent: HTMLElement, engine: EngineClient): Ag
     const pri = el("input", "ag-field ag-pri-field");
     pri.value = it.priority;
     pri.placeholder = "priority";
+    const notes = el("textarea", "ag-notes");
+    notes.placeholder = "notes";
+    notes.rows = 2;
+
+    // per-item category assignment: chips (× to unassign) + an add box with a datalist of known cats
+    const catEdit = el("div", "ag-cat-edit");
+    const catAddRow = el("div", "ag-cat-add");
+    const catInput = el("input", "ag-cat-input");
+    catInput.placeholder = "add category…";
+    const listId = `ag-cats-${it.id}`;
+    const datalist = document.createElement("datalist");
+    datalist.id = listId;
+    catInput.setAttribute("list", listId);
+    const catAddBtn = el("button", "ag-cat-add-btn", "＋");
+    catAddRow.append(catInput, datalist, catAddBtn);
+    catEdit.append(editCats, catAddRow);
+
     const actions = el("div", "ag-actions");
     const save = el("button", "ag-btn", "Save");
     const done = el("button", "ag-btn ag-done", "Done");
     actions.append(save, done);
-    editor.append(text, when, pri, actions);
+    editor.append(text, when, pri, notes, catEdit, actions);
+
+    function renderCatChips(): void {
+      mainCats.innerHTML = "";
+      editCats.innerHTML = "";
+      for (const c of cats) {
+        mainCats.appendChild(el("span", "ag-cat", c));
+        const chip = el("span", "ag-cat ag-cat-chip");
+        chip.appendChild(document.createTextNode(c));
+        const x = el("button", "ag-cat-x", "×");
+        x.addEventListener("click", () => {
+          void engine.evalSrc(`(unassign ${it.id} ${JSON.stringify(c)})`).then(() => {
+            cats = cats.filter((k) => k !== c);
+            renderCatChips();
+          });
+        });
+        chip.appendChild(x);
+        editCats.appendChild(chip);
+      }
+      mainCats.style.display = cats.length ? "" : "none";
+    }
+    renderCatChips();
+
+    async function reloadCats(): Promise<void> {
+      const env = await engine.evalSrc(`(item-get ${it.id})`);
+      if (env.ok && isItem(env.result)) cats = env.result.$item.categories.slice();
+      renderCatChips();
+    }
+    function assignCat(name: string): void {
+      const c = name.trim();
+      catInput.value = "";
+      if (!c || cats.includes(c)) return;
+      // assign may drop exclusive siblings, so re-read the item's categories after
+      void engine.evalSrc(`(assign ${it.id} ${JSON.stringify(c)})`).then(() => reloadCats());
+    }
+    catAddBtn.addEventListener("click", () => assignCat(catInput.value));
+    catInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        assignCat(catInput.value);
+      }
+    });
+
+    // lazily load notes + the known-category list the first time the editor opens
+    let loaded = false;
+    async function loadDetail(): Promise<void> {
+      const [detail, avail] = await Promise.all([engine.evalSrc(`(item-get ${it.id})`), fetchCategoryNames()]);
+      if (detail.ok && isItem(detail.result)) {
+        notes.value = detail.result.$item.notes;
+        cats = detail.result.$item.categories.slice();
+        renderCatChips();
+      }
+      datalist.innerHTML = "";
+      for (const name of avail) {
+        const o = document.createElement("option");
+        o.value = name;
+        datalist.appendChild(o);
+      }
+      loaded = true;
+    }
 
     main.addEventListener("click", () => {
-      editor.style.display = editor.style.display === "none" ? "flex" : "none";
-      if (editor.style.display !== "none") text.focus();
+      const show = editor.style.display === "none";
+      editor.style.display = show ? "flex" : "none";
+      if (show) {
+        if (!loaded) void loadDetail();
+        text.focus();
+      }
     });
     save.addEventListener("click", () => {
-      const src = `(item-set ${it.id} :text ${JSON.stringify(text.value)} :when ${JSON.stringify(when.value)} :priority ${JSON.stringify(pri.value)})`;
+      const src = `(item-set ${it.id} :text ${JSON.stringify(text.value)} :when ${JSON.stringify(when.value)} :priority ${JSON.stringify(pri.value)} :notes ${JSON.stringify(notes.value)})`;
       void engine.evalSrc(src).then(() => refresh());
     });
     done.addEventListener("click", () => {
       void engine.evalSrc(`(item-done ${it.id})`).then(() => refresh());
     });
 
-    row.append(main);
-    if (cats.length) row.append(catsRow);
-    row.append(editor);
+    row.append(main, mainCats, editor);
     return row;
   }
 
