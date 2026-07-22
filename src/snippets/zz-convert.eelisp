@@ -1,0 +1,221 @@
+;; zz-convert.eelisp
+;; Unit and encoding conversion utilities — ported from Funções ZZ
+;;
+;; 15+ functions for byte units, temperature, distance, weight,
+;; URL encoding, hex conversion, HTML entities, and more.
+;;
+;; Usage:
+;;   (zzbyte 1024 :kb :mb)
+;;   (zzconverte 100 :celsius :fahrenheit)
+;;   (zzurlencode "hello world")
+
+;; ─── zzbyte — Byte unit conversions ────────────────────────────────────
+;; (zzbyte 1024 :b :kb)     → 1
+;; (zzbyte 1.5 :gb :mb)     → 1536
+;; (zzbyte 1000000 :b :mb)  → 0.953674
+(defn zzbyte (value from to)
+  (let (units {:b 0 :kb 1 :mb 2 :gb 3 :tb 4 :pb 5}
+        from-exp (dict-get units from 0)
+        to-exp   (dict-get units to 0)
+        diff     (- from-exp to-exp)
+        result   (* value (pow 1024 diff)))
+    (round result 6)))
+
+;; ─── zzconverte — Unit converter ───────────────────────────────────────
+;; Temperature:
+;;   (zzconverte 100 :celsius :fahrenheit)    → 212
+;;   (zzconverte 32 :fahrenheit :celsius)     → 0
+;;   (zzconverte 100 :celsius :kelvin)        → 373.15
+;; Distance:
+;;   (zzconverte 1 :km :miles)               → 0.621371
+;;   (zzconverte 1 :miles :km)               → 1.60934
+;;   (zzconverte 1 :m :feet)                 → 3.28084
+;;   (zzconverte 1 :inch :cm)               → 2.54
+;; Weight:
+;;   (zzconverte 1 :kg :lbs)                → 2.20462
+;;   (zzconverte 1 :lbs :kg)                → 0.453592
+;; Volume:
+;;   (zzconverte 1 :liter :gallon)           → 0.264172
+;;   (zzconverte 1 :gallon :liter)           → 3.78541
+(defn zzconverte (value from to)
+  (cond
+    ;; Temperature
+    (and (= from :celsius) (= to :fahrenheit))
+    (round (+ (* value 1.8) 32) 2)
+
+    (and (= from :fahrenheit) (= to :celsius))
+    (round (/ (- value 32) 1.8) 2)
+
+    (and (= from :celsius) (= to :kelvin))
+    (round (+ value 273.15) 2)
+
+    (and (= from :kelvin) (= to :celsius))
+    (round (- value 273.15) 2)
+
+    (and (= from :fahrenheit) (= to :kelvin))
+    (round (+ (/ (- value 32) 1.8) 273.15) 2)
+
+    (and (= from :kelvin) (= to :fahrenheit))
+    (round (+ (* (- value 273.15) 1.8) 32) 2)
+
+    ;; Distance
+    (and (= from :km) (= to :miles))     (round (* value 0.621371) 6)
+    (and (= from :miles) (= to :km))     (round (* value 1.60934) 6)
+    (and (= from :m) (= to :feet))       (round (* value 3.28084) 6)
+    (and (= from :feet) (= to :m))       (round (* value 0.3048) 6)
+    (and (= from :inch) (= to :cm))      (round (* value 2.54) 6)
+    (and (= from :cm) (= to :inch))      (round (/ value 2.54) 6)
+    (and (= from :m) (= to :yard))       (round (* value 1.09361) 6)
+    (and (= from :yard) (= to :m))       (round (* value 0.9144) 6)
+
+    ;; Weight
+    (and (= from :kg) (= to :lbs))       (round (* value 2.20462) 6)
+    (and (= from :lbs) (= to :kg))       (round (* value 0.453592) 6)
+    (and (= from :kg) (= to :oz))        (round (* value 35.274) 6)
+    (and (= from :oz) (= to :kg))        (round (/ value 35.274) 6)
+    (and (= from :g) (= to :oz))         (round (* value 0.035274) 6)
+    (and (= from :oz) (= to :g))         (round (/ value 0.035274) 6)
+
+    ;; Volume
+    (and (= from :liter) (= to :gallon)) (round (* value 0.264172) 6)
+    (and (= from :gallon) (= to :liter)) (round (* value 3.78541) 6)
+    (and (= from :liter) (= to :cup))    (round (* value 4.22675) 6)
+    (and (= from :cup) (= to :liter))    (round (/ value 4.22675) 6)
+    (and (= from :ml) (= to :oz-fl))     (round (* value 0.033814) 6)
+    (and (= from :oz-fl) (= to :ml))     (round (/ value 0.033814) 6)
+
+    ;; Same unit
+    (= from to) value
+
+    true (str "Conversion not supported: " from " → " to)))
+
+;; ─── zzcodchar — Character to HTML entity ──────────────────────────────
+;; (zzcodchar "&") → "&amp;"
+;; (zzcodchar "<") → "&lt;"
+(defn zzcodchar (text)
+  (let (s text
+        s (str-replace s "&" "&amp;")
+        s (str-replace s "<" "&lt;")
+        s (str-replace s ">" "&gt;")
+        s (str-replace s "\"" "&quot;")
+        s (str-replace s "'" "&#39;"))
+    s))
+
+;; ─── zzunescape — HTML entity to character ─────────────────────────────
+;; (zzunescape "&amp;") → "&"
+;; (zzunescape "&lt;hello&gt;") → "<hello>"
+(defn zzunescape (text)
+  (let (s text
+        s (str-replace s "&lt;" "<")
+        s (str-replace s "&gt;" ">")
+        s (str-replace s "&quot;" "\"")
+        s (str-replace s "&#39;" "'")
+        s (str-replace s "&nbsp;" " ")
+        s (str-replace s "&#x27;" "'")
+        s (str-replace s "&#x2F;" "/")
+        s (str-replace s "&amp;" "&"))
+    s))
+
+;; ─── zzurlencode — URL encode ──────────────────────────────────────────
+;; (zzurlencode "hello world") → "hello%20world"
+;; (zzurlencode "café") → "caf%C3%A9"
+(defn zzurlencode (text)
+  (let (safe "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~"
+        chars (str-split text ""))
+    (str-join
+      (map (fn (ch)
+        (if (str-contains safe ch) ch
+          (str "%" (str-upper (zzstr2hexa ch)))))
+      chars)
+      "")))
+
+;; ─── zzurldecode — URL decode ──────────────────────────────────────────
+;; (zzurldecode "hello%20world") → "hello world"
+(defn zzurldecode (text)
+  (let (s (str-replace text "+" " "))
+    ;; Handle %XX sequences
+    (loop (result "" i 0)
+      (if (>= i (str-len s))
+        result
+        (let (ch (substr s i (+ i 1)))
+          (if (and (= ch "%") (< (+ i 2) (str-len s)))
+            (let (hex (substr s (+ i 1) (+ i 3)))
+              (recur (str result (zzhexa2str hex)) (+ i 3)))
+            (recur (str result ch) (+ i 1))))))))
+
+;; ─── zzstr2hexa — String to hexadecimal ────────────────────────────────
+;; (zzstr2hexa "A") → "41"
+;; (zzstr2hexa "Hi") → "4869"
+(defn zzstr2hexa (text)
+  (let (chars (str-split text "")
+        hex-digits "0123456789abcdef")
+    (str-join
+      (map (fn (ch)
+        ;; Simple ASCII mapping for common chars
+        (let (code (zzcharcode ch))
+          (if code
+            (str (substr hex-digits (floor (/ code 16)) (+ (floor (/ code 16)) 1))
+                 (substr hex-digits (mod code 16) (+ (mod code 16) 1)))
+            "3f")))  ;; '?' for unknown
+      chars)
+      "")))
+
+;; ─── zzhexa2str — Hexadecimal to string ────────────────────────────────
+;; (zzhexa2str "41") → "A"
+;; (zzhexa2str "4869") → "Hi"
+(defn zzhexa2str (hex)
+  (let (s (str-lower hex))
+    (loop (result "" i 0)
+      (if (>= i (str-len s))
+        result
+        (let (h1 (substr s i (+ i 1))
+              h2 (substr s (+ i 1) (+ i 2))
+              val (+ (* (zzhexval h1) 16) (zzhexval h2))
+              ch  (zzfromcharcode val))
+          (recur (str result ch) (+ i 2)))))))
+
+;; ─── Helper: hex digit value ───────────────────────────────────────────
+(defn zzhexval (ch)
+  (let (c (str-lower ch))
+    (cond
+      (= c "0") 0  (= c "1") 1  (= c "2") 2  (= c "3") 3
+      (= c "4") 4  (= c "5") 5  (= c "6") 6  (= c "7") 7
+      (= c "8") 8  (= c "9") 9  (= c "a") 10 (= c "b") 11
+      (= c "c") 12 (= c "d") 13 (= c "e") 14 (= c "f") 15
+      true 0)))
+
+;; ─── Helper: char code (ASCII subset) ──────────────────────────────────
+(defn zzcharcode (ch)
+  (let (table " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~")
+    (loop (i 0)
+      (if (>= i (str-len table)) nil
+        (if (= (substr table i (+ i 1)) ch) (+ i 32)
+          (recur (+ i 1)))))))
+
+;; ─── Helper: from char code (ASCII subset) ─────────────────────────────
+(defn zzfromcharcode (code)
+  (let (table " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
+        idx (- code 32))
+    (if (and (>= idx 0) (< idx (str-len table)))
+      (substr table idx (+ idx 1))
+      "?")))
+
+;; ─── zzansi2html — ANSI color codes to HTML ───────────────────────────
+;; Converts basic ANSI escape sequences to HTML spans.
+(defn zzansi2html (text)
+  (let (s text
+        ;; Reset
+        s (str-replace s "\033[0m" "</span>")
+        s (str-replace s "\033[m" "</span>")
+        ;; Bold
+        s (str-replace s "\033[1m" "<span style=\"font-weight:bold\">")
+        ;; Colors (foreground)
+        s (str-replace s "\033[30m" "<span style=\"color:#000\">")
+        s (str-replace s "\033[31m" "<span style=\"color:#c00\">")
+        s (str-replace s "\033[32m" "<span style=\"color:#0a0\">")
+        s (str-replace s "\033[33m" "<span style=\"color:#aa0\">")
+        s (str-replace s "\033[34m" "<span style=\"color:#00a\">")
+        s (str-replace s "\033[35m" "<span style=\"color:#a0a\">")
+        s (str-replace s "\033[36m" "<span style=\"color:#0aa\">")
+        s (str-replace s "\033[37m" "<span style=\"color:#aaa\">"))
+    s))

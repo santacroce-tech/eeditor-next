@@ -15,7 +15,15 @@ interface AgItem {
   when: string;
   priority: string;
   categories: string;
+  recurrence: string;
 }
+
+const RECUR_OPTIONS: [string, string][] = [
+  ["", "no repeat"],
+  ["daily", "daily"],
+  ["weekly", "weekly"],
+  ["monthly", "monthly"],
+];
 
 function s(v: JsonValue): string {
   return typeof v === "string" ? v : v == null ? "" : String(v);
@@ -29,6 +37,7 @@ function parseItems(env: Envelope): AgItem[] {
       when: s(r.data.when),
       priority: s(r.data.priority),
       categories: s(r.data.categories),
+      recurrence: s(r.data.recurrence),
     }));
   }
   return [];
@@ -67,6 +76,7 @@ export function createAgendaPanel(parent: HTMLElement, engine: EngineClient): Ag
     const main = el("div", "ag-item-main");
     if (it.priority) main.appendChild(el("span", "ag-pri", it.priority));
     main.appendChild(el("span", "ag-text", it.text));
+    if (it.recurrence) main.appendChild(el("span", "ag-recur", "⟳"));
     if (it.when) main.appendChild(el("span", "ag-when", it.when));
 
     let cats = it.categories.split(",").map((x) => x.trim()).filter(Boolean);
@@ -84,6 +94,14 @@ export function createAgendaPanel(parent: HTMLElement, engine: EngineClient): Ag
     const pri = el("input", "ag-field ag-pri-field");
     pri.value = it.priority;
     pri.placeholder = "priority";
+    const recur = el("select", "ag-field ag-recur-field");
+    for (const [val, label] of RECUR_OPTIONS) {
+      const o = document.createElement("option");
+      o.value = val;
+      o.textContent = `repeat: ${label}`;
+      recur.appendChild(o);
+    }
+    recur.value = it.recurrence;
     const notes = el("textarea", "ag-notes");
     notes.placeholder = "notes";
     notes.rows = 2;
@@ -105,7 +123,7 @@ export function createAgendaPanel(parent: HTMLElement, engine: EngineClient): Ag
     const save = el("button", "ag-btn", "Save");
     const done = el("button", "ag-btn ag-done", "Done");
     actions.append(save, done);
-    editor.append(text, when, pri, notes, catEdit, actions);
+    editor.append(text, when, pri, recur, notes, catEdit, actions);
 
     function renderCatChips(): void {
       mainCats.innerHTML = "";
@@ -155,6 +173,8 @@ export function createAgendaPanel(parent: HTMLElement, engine: EngineClient): Ag
       if (detail.ok && isItem(detail.result)) {
         notes.value = detail.result.$item.notes;
         cats = detail.result.$item.categories.slice();
+        const rec = detail.result.$item.properties.recurrence;
+        recur.value = typeof rec === "string" ? rec : "";
         renderCatChips();
       }
       datalist.innerHTML = "";
@@ -175,7 +195,7 @@ export function createAgendaPanel(parent: HTMLElement, engine: EngineClient): Ag
       }
     });
     save.addEventListener("click", () => {
-      const src = `(item-set ${it.id} :text ${JSON.stringify(text.value)} :when ${JSON.stringify(when.value)} :priority ${JSON.stringify(pri.value)} :notes ${JSON.stringify(notes.value)})`;
+      const src = `(item-set ${it.id} :text ${JSON.stringify(text.value)} :when ${JSON.stringify(when.value)} :priority ${JSON.stringify(pri.value)} :notes ${JSON.stringify(notes.value)} :recurrence ${JSON.stringify(recur.value)})`;
       void engine.evalSrc(src).then(() => refresh());
     });
     done.addEventListener("click", () => {

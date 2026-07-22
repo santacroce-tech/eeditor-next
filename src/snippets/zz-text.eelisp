@@ -1,0 +1,367 @@
+;; zz-text.eelisp
+;; Text manipulation utilities — ported from Funções ZZ (funcoeszz.net)
+;;
+;; 30+ functions for text alignment, case conversion, line operations,
+;; word counting, formatting, and more.
+;;
+;; Usage: load this file, then call any zz* function.
+;;   (zzalinhar "hello" 20 :center)
+;;   (zzcapitalize "hello world")
+;;   (zzlorem 3)
+
+;; ─── zzalinhar — Text alignment ────────────────────────────────────────
+;; Aligns text to left, right, center, or justified within a given width.
+;; (zzalinhar "hello" 20 :left)    → "hello               "
+;; (zzalinhar "hello" 20 :right)   → "               hello"
+;; (zzalinhar "hello" 20 :center)  → "       hello        "
+(defn zzalinhar (text width align)
+  (let (len   (str-len text)
+        pad   (max 0 (- width len)))
+    (cond
+      (= align :right)
+      (str (zzrepete " " pad) text)
+
+      (= align :center)
+      (let (left-pad  (floor (/ pad 2))
+            right-pad (- pad left-pad))
+        (str (zzrepete " " left-pad) text (zzrepete " " right-pad)))
+
+      ;; :left or default
+      true
+      (str text (zzrepete " " pad)))))
+
+;; ─── zzalinhar-bloco — Align a block of text ──────────────────────────
+;; Aligns each line of a multi-line string.
+(defn zzalinhar-bloco (text width align)
+  (let (lines (str-split text "\n"))
+    (str-join (map (fn (line) (zzalinhar line width align)) lines) "\n")))
+
+;; ─── zzcapitalize — Title case ─────────────────────────────────────────
+;; Capitalizes the first letter of each word.
+;; (zzcapitalize "hello world") → "Hello World"
+(defn zzcapitalize (text)
+  (let (words (str-split text " "))
+    (str-join
+      (map (fn (w)
+        (if (= (str-len w) 0) w
+          (str (str-upper (substr w 0 1))
+               (str-lower (substr w 1)))))
+      words)
+      " ")))
+
+;; ─── zzcontapalavra — Word frequency counter ──────────────────────────
+;; Returns a dict of word → count.
+;; (zzcontapalavra "the cat and the dog") → {:the 2 :cat 1 :and 1 :dog 1}
+(defn zzcontapalavra (text)
+  (let (words (filter (fn (w) (!= w ""))
+                      (str-split (str-lower text) " ")))
+    (reduce (fn (acc w)
+      (let (current (dict-get acc w 0))
+        (dict-set acc w (+ current 1))))
+      {} words)))
+
+;; ─── zzcontapalavras — Word count ──────────────────────────────────────
+;; Returns total number of words in text.
+;; (zzcontapalavras "hello world foo") → 3
+(defn zzcontapalavras (text)
+  (length (filter (fn (w) (!= w ""))
+                  (str-split (str-trim text) " "))))
+
+;; ─── zzcut — Extract fields by delimiter ───────────────────────────────
+;; Like Unix cut -d -f. Fields are 1-indexed.
+;; (zzcut "a:b:c:d" ":" 2) → "b"
+;; (zzcut "a:b:c:d" ":" 2 4) → "b:d"
+(defn zzcut (text delim . fields)
+  (let (parts (str-split text delim))
+    (if (= (length fields) 1)
+      (nth parts (- (head fields) 1))
+      (str-join
+        (map (fn (f) (nth parts (- f 1))) fields)
+        delim))))
+
+;; ─── zzdividirtexto — Split text by word limit ────────────────────────
+;; Splits text into chunks of at most N words each.
+;; (zzdividirtexto "a b c d e f" 3) → ("a b c" "d e f")
+(defn zzdividirtexto (text max-words)
+  (let (words (str-split text " "))
+    (loop (result (list)
+           remaining words)
+      (if (empty? remaining)
+        (reverse result)
+        (let (chunk (take max-words remaining)
+              rest  (drop max-words remaining))
+          (recur (cons (str-join chunk " ") result)
+                 rest))))))
+
+;; ─── zzdos2unix — Convert DOS line endings to Unix ─────────────────────
+;; (zzdos2unix "hello\r\nworld\r\n") → "hello\nworld\n"
+(defn zzdos2unix (text)
+  (str-replace text "\r\n" "\n"))
+
+;; ─── zzunix2dos — Convert Unix line endings to DOS ─────────────────────
+;; (zzunix2dos "hello\nworld\n") → "hello\r\nworld\r\n"
+(defn zzunix2dos (text)
+  (let (clean (str-replace text "\r\n" "\n"))
+    (str-replace clean "\n" "\r\n")))
+
+;; ─── zzjuntalinhas — Join lines with separator ────────────────────────
+;; (zzjuntalinhas "a\nb\nc" ", ") → "a, b, c"
+(defn zzjuntalinhas (text sep)
+  (let (lines (str-split text "\n"))
+    (str-join (filter (fn (l) (!= (str-trim l) "")) lines) sep)))
+
+;; ─── zzlblank — Remove excess blank lines ─────────────────────────────
+;; Collapses multiple consecutive blank lines into a single one.
+(defn zzlblank (text)
+  (let (lines  (str-split text "\n"))
+    (let (result
+      (reduce (fn (acc line)
+        (let (is-blank (= (str-trim line) "")
+              last-blank (dict-get acc :last-blank false)
+              out        (dict-get acc :lines (list)))
+          (cond
+            (and is-blank last-blank)
+            (dict-set acc :last-blank true)
+
+            is-blank
+            (dict-set (dict-set acc :last-blank true)
+                      :lines (append out (list line)))
+
+            true
+            (dict-set (dict-set acc :last-blank false)
+                      :lines (append out (list line))))))
+        {:last-blank false :lines (list)}
+        lines))
+      (str-join (dict-get result :lines) "\n"))))
+
+;; ─── zzlimpalixo — Remove blank lines and comments ────────────────────
+;; Removes empty lines and lines starting with # or //.
+(defn zzlimpalixo (text)
+  (let (lines (str-split text "\n"))
+    (str-join
+      (filter (fn (line)
+        (let (trimmed (str-trim line))
+          (and (!= trimmed "")
+               (not (str-starts-with trimmed "#"))
+               (not (str-starts-with trimmed "//"))
+               (not (str-starts-with trimmed ";;")))))
+      lines)
+      "\n")))
+
+;; ─── zzlinha — Select specific lines ──────────────────────────────────
+;; (zzlinha text 3)       → line 3
+;; (zzlinha text 2 5)     → lines 2 through 5
+(defn zzlinha (text start . end-arg)
+  (let (lines (str-split text "\n")
+        s     (- start 1)
+        e     (if (empty? end-arg) s (- (head end-arg) 1)))
+    (str-join
+      (filter (fn (x) (!= x nil))
+        (map (fn (i) (nth lines i))
+             (range s (+ e 1))))
+      "\n")))
+
+;; ─── zzlorem — Lorem ipsum generator ──────────────────────────────────
+;; Generates N paragraphs of lorem ipsum text.
+;; (zzlorem 2) → two paragraphs
+(defn zzlorem (n)
+  (let (paragraphs
+    (list
+      "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat."
+      "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."
+      "Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo."
+      "Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet."
+      "At vero eos et accusamus et iusto odio dignissimos ducimus qui blanditiis praesentium voluptatum deleniti atque corrupti quos dolores et quas molestias excepturi sint occaecati cupiditate non provident."
+      "Similique sunt in culpa qui officia deserunt mollitia animi, id est laborum et dolorum fuga. Et harum quidem rerum facilis est et expedita distinctio. Nam libero tempore, cum soluta nobis est eligendi optio cumque."))
+    (str-join (take (min n (length paragraphs)) paragraphs) "\n\n")))
+
+;; ─── zzmaiusculas — Convert to uppercase ───────────────────────────────
+;; (zzmaiusculas "hello") → "HELLO"
+(defn zzmaiusculas (text) (str-upper text))
+
+;; ─── zzminusculas — Convert to lowercase ───────────────────────────────
+;; (zzminusculas "HELLO") → "hello"
+(defn zzminusculas (text) (str-lower text))
+
+;; ─── zzpad — Pad text ──────────────────────────────────────────────────
+;; (zzpad "42" 5 "0" :left) → "00042"
+;; (zzpad "hi" 10 "." :right) → "hi........"
+(defn zzpad (text width char side)
+  (let (len (str-len text)
+        pad (max 0 (- width len))
+        fill (zzrepete char pad))
+    (if (= side :left)
+      (str fill text)
+      (str text fill))))
+
+;; ─── zzrepete — Repeat text N times ────────────────────────────────────
+;; (zzrepete "ab" 3) → "ababab"
+(defn zzrepete (text n)
+  (if (<= n 0) ""
+    (loop (result "" i 0)
+      (if (>= i n) result
+        (recur (str result text) (+ i 1))))))
+
+;; ─── zzsemacento — Remove accents ──────────────────────────────────────
+;; (zzsemacento "café résumé") → "cafe resume"
+(defn zzsemacento (text)
+  (let (s text
+        s (str-replace s "á" "a") s (str-replace s "à" "a")
+        s (str-replace s "ã" "a") s (str-replace s "â" "a")
+        s (str-replace s "ä" "a")
+        s (str-replace s "é" "e") s (str-replace s "è" "e")
+        s (str-replace s "ê" "e") s (str-replace s "ë" "e")
+        s (str-replace s "í" "i") s (str-replace s "ì" "i")
+        s (str-replace s "î" "i") s (str-replace s "ï" "i")
+        s (str-replace s "ó" "o") s (str-replace s "ò" "o")
+        s (str-replace s "õ" "o") s (str-replace s "ô" "o")
+        s (str-replace s "ö" "o")
+        s (str-replace s "ú" "u") s (str-replace s "ù" "u")
+        s (str-replace s "û" "u") s (str-replace s "ü" "u")
+        s (str-replace s "ç" "c") s (str-replace s "ñ" "n")
+        s (str-replace s "Á" "A") s (str-replace s "À" "A")
+        s (str-replace s "Ã" "A") s (str-replace s "Â" "A")
+        s (str-replace s "Ä" "A")
+        s (str-replace s "É" "E") s (str-replace s "È" "E")
+        s (str-replace s "Ê" "E") s (str-replace s "Ë" "E")
+        s (str-replace s "Í" "I") s (str-replace s "Ì" "I")
+        s (str-replace s "Î" "I") s (str-replace s "Ï" "I")
+        s (str-replace s "Ó" "O") s (str-replace s "Ò" "O")
+        s (str-replace s "Õ" "O") s (str-replace s "Ô" "O")
+        s (str-replace s "Ö" "O")
+        s (str-replace s "Ú" "U") s (str-replace s "Ù" "U")
+        s (str-replace s "Û" "U") s (str-replace s "Ü" "U")
+        s (str-replace s "Ç" "C") s (str-replace s "Ñ" "N"))
+    s))
+
+;; ─── zzsqueeze — Reduce multiple spaces to one ────────────────────────
+;; (zzsqueeze "hello    world   foo") → "hello world foo"
+(defn zzsqueeze (text)
+  (let (words (filter (fn (w) (!= w ""))
+                      (str-split text " ")))
+    (str-join words " ")))
+
+;; ─── zzsqueeze-v — Squeeze vertical (blank lines) ─────────────────────
+(defn zzsqueeze-v (text)
+  (zzlblank text))
+
+;; ─── zztac — Reverse line order ────────────────────────────────────────
+;; (zztac "a\nb\nc") → "c\nb\na"
+(defn zztac (text)
+  (str-join (reverse (str-split text "\n")) "\n"))
+
+;; ─── zztrim — Trim whitespace ──────────────────────────────────────────
+;; (zztrim "  hello  ") → "hello"
+(defn zztrim (text) (str-trim text))
+
+;; ─── zztrim-linhas — Trim each line ───────────────────────────────────
+(defn zztrim-linhas (text)
+  (str-join (map str-trim (str-split text "\n")) "\n"))
+
+;; ─── zztrocapalavra — Find and replace word ────────────────────────────
+;; (zztrocapalavra "hello world" "world" "earth") → "hello earth"
+(defn zztrocapalavra (text old new)
+  (str-replace text old new))
+
+;; ─── zzuniq — Remove duplicate lines ───────────────────────────────────
+;; (zzuniq "a\nb\na\nc\nb") → "a\nb\nc"
+(defn zzuniq (text)
+  (let (lines (str-split text "\n"))
+    (str-join
+      (reduce (fn (acc line)
+        (if (filter (fn (l) (= l line)) (dict-get acc :seen (list)))
+          acc
+          (dict-set (dict-set acc :seen (append (dict-get acc :seen (list)) (list line)))
+                    :result (append (dict-get acc :result (list)) (list line)))))
+        {:seen (list) :result (list)}
+        lines)
+      "\n")))
+
+;; Simplified zzuniq using reduce
+(defn zzuniq (text)
+  (let (lines (str-split text "\n")
+        result (reduce (fn (acc line)
+                  (if (some? (fn (l) (= l line)) acc)
+                    acc
+                    (append acc (list line))))
+                (list) lines))
+    (str-join result "\n")))
+
+;; ─── zzvira — Reverse text ─────────────────────────────────────────────
+;; (zzvira "hello") → "olleh"
+(defn zzvira (text)
+  (let (chars (str-split text ""))
+    (str-join (reverse chars) "")))
+
+;; ─── zzvira-linhas — Reverse each line ─────────────────────────────────
+(defn zzvira-linhas (text)
+  (str-join (map zzvira (str-split text "\n")) "\n"))
+
+;; ─── zzhsort — Sort words horizontally ─────────────────────────────────
+;; (zzhsort "banana apple cherry") → "apple banana cherry"
+(defn zzhsort (text)
+  (let (words (filter (fn (w) (!= w ""))
+                      (str-split text " ")))
+    (str-join (sort-by (fn (a b) (< a b)) words) " ")))
+
+;; ─── zzshuffle — Randomize lines ──────────────────────────────────────
+;; (zzshuffle "a\nb\nc\nd") → random order
+(defn zzshuffle (text)
+  (let (lines (str-split text "\n"))
+    (str-join
+      (sort-by (fn (a b) (< (zzaleatorio 1 1000) 500)) lines)
+      "\n")))
+
+;; ─── zzcolunar — Format into columns ──────────────────────────────────
+;; (zzcolunar (list "apple" "banana" "cherry" "date" "elderberry" "fig") 3)
+(defn zzcolunar (items ncols)
+  (let (nrows (ceil (/ (length items) ncols))
+        max-width (+ 2 (reduce (fn (acc item) (max acc (str-len (->string item)))) 0 items)))
+    (str-join
+      (map (fn (row)
+        (str-join
+          (map (fn (col)
+            (let (idx (+ (* col nrows) row)
+                  item (if (< idx (length items)) (->string (nth items idx)) ""))
+              (zzalinhar item max-width :left)))
+          (range 0 ncols))
+          ""))
+      (range 0 nrows))
+      "\n")))
+
+;; ─── zzdiffpalavra — Word-level diff ──────────────────────────────────
+;; Shows words that differ between two strings.
+;; (zzdiffpalavra "the quick fox" "the slow fox") → "< quick\n> slow"
+(defn zzdiffpalavra (text-a text-b)
+  (let (words-a (str-split text-a " ")
+        words-b (str-split text-b " ")
+        only-a  (filter (fn (w) (not (some? (fn (x) (= x w)) words-b))) words-a)
+        only-b  (filter (fn (w) (not (some? (fn (x) (= x w)) words-a))) words-b))
+    (str (str-join (map (fn (w) (str "< " w)) only-a) "\n")
+         (if (and (not (empty? only-a)) (not (empty? only-b))) "\n" "")
+         (str-join (map (fn (w) (str "> " w)) only-b) "\n"))))
+
+;; ─── zzwc — Word/line/char count ───────────────────────────────────────
+;; Enhanced version with breakdown.
+;; (zzwc "hello world\nfoo bar baz")
+(defn zzwc (text)
+  (let (lines (str-split text "\n")
+        words (filter (fn (w) (!= w ""))
+                (str-split text " "))
+        chars (str-len text))
+    (str "  Lines:      " (length lines) "\n"
+         "  Words:      " (length words) "\n"
+         "  Characters: " chars)))
+
+;; ─── zzxml — Simple XML/HTML tag stripper ──────────────────────────────
+;; Removes all XML/HTML tags from text.
+;; (zzxml "<p>Hello <b>world</b></p>") → "Hello world"
+(defn zzxml (text)
+  (let (result text)
+    (loop (s result)
+      (if (not (str-contains s "<"))
+        s
+        (let (m (str-matches s "<[^>]*>"))
+          (if m
+            (recur (str-replace s (nth m 1) ""))
+            s))))))

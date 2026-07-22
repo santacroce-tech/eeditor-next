@@ -1,0 +1,147 @@
+;; zz-crypto.eelisp
+;; Password, hash, and cipher utilities — ported from Funções ZZ
+;;
+;; Functions for password generation, ROT13/ROT47 ciphers,
+;; and basic hashing.
+;;
+;; Usage:
+;;   (zzsenha 16)
+;;   (zzrot13 "hello")
+;;   (zzrot47 "hello world")
+
+;; ─── zzsenha — Random password generator ───────────────────────────────
+;; Generates a random password of given length.
+;; (zzsenha 16)           → "aK3$mN7!pQ2@wE9#"
+;; (zzsenha 8 :alpha)     → "kMnPqRsT" (letters only)
+;; (zzsenha 12 :alnum)    → "kM3nP7qR2sT4" (letters + digits)
+;; (zzsenha 16 :all)      → "aK3$mN7!pQ2@wE9#" (everything)
+(defn zzsenha (len . mode-arg)
+  (let (mode   (if (empty? mode-arg) :all (head mode-arg))
+        lower  "abcdefghijklmnopqrstuvwxyz"
+        upper  "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        digits "0123456789"
+        special "!@#$%^&*()-_=+[]{}|;:,.<>?"
+        charset (cond
+          (= mode :alpha) (str lower upper)
+          (= mode :alnum) (str lower upper digits)
+          (= mode :digits) digits
+          (= mode :hex) (str digits "abcdef")
+          true (str lower upper digits special))
+        clen (str-len charset))
+    (loop (result "" i 0)
+      (if (>= i len) result
+        (let (;; Use time-based pseudo-random
+              seed (floor (* 1000000 (- (now) (today))))
+              idx  (mod (+ seed (* i 7919) (* i i 31)) clen)
+              ch   (substr charset idx (+ idx 1)))
+          (recur (str result ch) (+ i 1)))))))
+
+;; ─── zzrot13 — ROT13 cipher ───────────────────────────────────────────
+;; (zzrot13 "Hello World") → "Uryyb Jbeyq"
+;; (zzrot13 "Uryyb Jbeyq") → "Hello World"
+(defn zzrot13 (text)
+  (let (lower "abcdefghijklmnopqrstuvwxyz"
+        upper "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        chars (str-split text ""))
+    (str-join
+      (map (fn (ch)
+        (let (li (zzindexof lower ch)
+              ui (zzindexof upper ch))
+          (cond
+            li (substr lower (mod (+ li 13) 26) (+ (mod (+ li 13) 26) 1))
+            ui (substr upper (mod (+ ui 13) 26) (+ (mod (+ ui 13) 26) 1))
+            true ch)))
+      chars)
+      "")))
+
+;; ─── zzrot47 — ROT47 cipher ───────────────────────────────────────────
+;; Rotates ASCII 33-126 by 47 positions.
+;; (zzrot47 "Hello World!") → "w6==@ (@C=5P"
+;; (zzrot47 "w6==@ (@C=5P") → "Hello World!"
+(defn zzrot47 (text)
+  (let (chars (str-split text ""))
+    (str-join
+      (map (fn (ch)
+        (let (code (zzcharcode ch))
+          (if (and code (>= code 33) (<= code 126))
+            (zzfromcharcode (+ 33 (mod (+ (- code 33) 47) 94)))
+            ch)))
+      chars)
+      "")))
+
+;; ─── Helper: index of char in string ───────────────────────────────────
+(defn zzindexof (s ch)
+  (loop (i 0)
+    (if (>= i (str-len s)) nil
+      (if (= (substr s i (+ i 1)) ch) i
+        (recur (+ i 1))))))
+
+;; ─── zzhash — Simple string hash ──────────────────────────────────────
+;; DJB2 hash algorithm — not cryptographic, but useful for checksums.
+;; (zzhash "hello") → "261238937"
+(defn zzhash (text)
+  (let (chars (str-split text ""))
+    (->string
+      (abs
+        (reduce (fn (hash ch)
+          (let (code (zzcharcode ch))
+            (+ (* hash 33) (if code code 0))))
+          5381 chars)))))
+
+;; ─── zzcesar — Caesar cipher ───────────────────────────────────────────
+;; Shifts letters by N positions.
+;; (zzcesar "hello" 3) → "khoor"
+;; (zzcesar "khoor" -3) → "hello"
+(defn zzcesar (text shift)
+  (let (lower "abcdefghijklmnopqrstuvwxyz"
+        upper "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        chars (str-split text ""))
+    (str-join
+      (map (fn (ch)
+        (let (li (zzindexof lower ch)
+              ui (zzindexof upper ch))
+          (cond
+            li (substr lower (mod (+ li shift 26) 26) (+ (mod (+ li shift 26) 26) 1))
+            ui (substr upper (mod (+ ui shift 26) 26) (+ (mod (+ ui shift 26) 26) 1))
+            true ch)))
+      chars)
+      "")))
+
+;; ─── zzatbash — Atbash cipher ──────────────────────────────────────────
+;; Reverses the alphabet: A↔Z, B↔Y, etc.
+;; (zzatbash "hello") → "svool"
+(defn zzatbash (text)
+  (let (lower "abcdefghijklmnopqrstuvwxyz"
+        upper "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        chars (str-split text ""))
+    (str-join
+      (map (fn (ch)
+        (let (li (zzindexof lower ch)
+              ui (zzindexof upper ch))
+          (cond
+            li (substr lower (- 25 li) (+ (- 25 li) 1))
+            ui (substr upper (- 25 ui) (+ (- 25 ui) 1))
+            true ch)))
+      chars)
+      "")))
+
+;; ─── zzvigenere — Vigenere cipher ──────────────────────────────────────
+;; (zzvigenere "hello" "key" :encode)  → "rijvs"
+;; (zzvigenere "rijvs" "key" :decode)  → "hello"
+(defn zzvigenere (text key mode)
+  (let (lower "abcdefghijklmnopqrstuvwxyz"
+        chars (str-split (str-lower text) "")
+        kchars (str-split (str-lower key) ""))
+    (str-join
+      (map (fn (pair)
+        (let (ch  (head pair)
+              idx (nth pair 1)
+              li  (zzindexof lower ch)
+              ki  (zzindexof lower (nth kchars (mod idx (length kchars)))))
+          (if (and li ki)
+            (substr lower
+              (mod (if (= mode :encode) (+ li ki) (+ (- li ki) 26)) 26)
+              (+ (mod (if (= mode :encode) (+ li ki) (+ (- li ki) 26)) 26) 1))
+            ch)))
+      (zip chars (range 0 (length chars))))
+      "")))

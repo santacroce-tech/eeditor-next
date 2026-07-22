@@ -5,6 +5,7 @@ import { monthGrid, countByDate } from "./calendar";
 import { eelispBlockAt } from "./blocks";
 import { searchFiles } from "./search";
 import { wikiLinkAt, wikiLinkTargets } from "./wikilink";
+import { backlinksTo } from "./backlinks";
 
 describe("fuzzy", () => {
   const files = [
@@ -130,5 +131,24 @@ describe("wiki-links", () => {
   it("extracts and trims all targets", () => {
     expect(wikiLinkTargets("[[ A ]] x [[B]]")).toEqual(["A", "B"]);
     expect(wikiLinkTargets("no links")).toEqual([]);
+  });
+});
+
+describe("backlinks", () => {
+  const entries = [
+    { name: "roadmap.md", path: "notes/roadmap.md" },
+    { name: "todo.md", path: "todo.md" },
+    { name: "index.md", path: "index.md" },
+  ];
+  const files = [
+    { path: "index.md", content: "see [[roadmap]] and [[todo]]" },
+    { path: "todo.md", content: "back to [[roadmap]]" },
+    { path: "notes/roadmap.md", content: "the plan; no links out" },
+  ];
+
+  it("finds notes linking to a target (resolving .md + ext-stripping)", () => {
+    expect(backlinksTo("notes/roadmap.md", files, entries).sort()).toEqual(["index.md", "todo.md"]);
+    expect(backlinksTo("todo.md", files, entries)).toEqual(["index.md"]);
+    expect(backlinksTo("index.md", files, entries)).toEqual([]); // nothing links to it
   });
 });

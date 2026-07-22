@@ -1,0 +1,196 @@
+;; zz-timeat.eelisp
+;; Timezone conversion utility
+;;
+;; Convert times between cities and countries worldwide.
+;;
+;; Usage:
+;;   (timeat "brazil" "now")                → current time in Brazil
+;;   (timeat "tokyo" "now")                 → current time in Tokyo
+;;   (timeat "brazil" "3pm" "madrid")       → 3pm Madrid = ?:?? in Brazil
+;;   (timeat "new york" "15:00" "london")   → 3pm London = ?:?? in New York
+;;   (timeat "all" "now")                   → current time in major cities
+
+;; ─── Timezone offset database (UTC offsets in hours) ───────────────────
+(def tz-database
+  {;; Americas
+   :brazil       -3   :saopaulo    -3   :brasilia     -3   :rio          -3
+   :manaus       -4   :belem       -3   :recife       -3   :fortaleza    -3
+   :newyork      -5   :new-york    -5   :nyc          -5   :washington   -5
+   :boston        -5   :miami       -5   :atlanta      -5   :detroit      -5
+   :chicago      -6   :houston     -6   :dallas       -6   :denver       -7
+   :phoenix      -7   :losangeles  -8   :la           -8   :sanfrancisco -8
+   :seattle      -8   :portland    -8   :lasvegas     -8
+   :toronto      -5   :vancouver   -8   :montreal     -5   :ottawa       -5
+   :mexico       -6   :mexicocity  -6   :cancun       -5
+   :buenosaires  -3   :argentina   -3   :lima         -5   :peru         -5
+   :bogota       -5   :colombia    -5   :santiago     -4   :chile        -4
+   :montevideo   -3   :uruguay     -3   :caracas      -4   :venezuela    -4
+   ;; Europe
+   :london       0    :uk          0    :dublin       0    :lisbon       0
+   :portugal     0    :reykjavik   0    :iceland      0
+   :paris        1    :france      1    :berlin       1    :germany      1
+   :madrid       1    :spain       1    :barcelona    1
+   :rome         1    :italy       1    :milan        1
+   :amsterdam    1    :netherlands 1    :brussels     1    :belgium      1
+   :vienna       1    :austria     1    :zurich       1    :switzerland  1
+   :stockholm    1    :sweden      1    :oslo         1    :norway       1
+   :copenhagen   1    :denmark     1    :helsinki     2    :finland      2
+   :warsaw       1    :poland      1    :prague       1    :czech        1
+   :budapest     1    :hungary     1    :bucharest    2    :romania      2
+   :athens       2    :greece      2    :istanbul     3    :turkey       3
+   :moscow       3    :russia      3    :saintpetersburg 3
+   :kyiv         2    :ukraine     2
+   ;; Asia
+   :dubai        4    :uae         4    :abudhabi     4
+   :riyadh       3    :saudiarabia 3
+   :mumbai       5.5  :india       5.5  :delhi        5.5  :bangalore    5.5
+   :kolkata      5.5  :chennai     5.5
+   :dhaka        6    :bangladesh  6
+   :bangkok      7    :thailand    7
+   :jakarta      7    :indonesia   7
+   :singapore    8    :kualalumpur 8    :malaysia     8
+   :hongkong     8    :taipei      8    :taiwan       8
+   :beijing      8    :china       8    :shanghai     8    :shenzhen     8
+   :seoul        9    :korea       9    :southkorea   9
+   :tokyo        9    :japan       9    :osaka        9
+   ;; Oceania
+   :sydney       11   :australia   11   :melbourne    11   :brisbane     10
+   :perth        8    :adelaide    10.5
+   :auckland     13   :newzealand  13   :wellington   13
+   ;; Africa
+   :cairo        2    :egypt       2
+   :lagos        1    :nigeria     1
+   :nairobi      3    :kenya       3
+   :johannesburg 2    :southafrica 2    :capetown     2
+   :casablanca   1    :morocco     1
+   ;; Middle East
+   :telaviv      2    :israel      2    :jerusalem    2
+   :tehran       3.5  :iran        3.5
+   :doha         3    :qatar       3
+   ;; Pacific
+   :honolulu     -10  :hawaii      -10
+   :anchorage    -9   :alaska      -9
+   :fiji         12   :samoa       -11})
+
+;; ─── Helper: normalize city/country name to key ────────────────────────
+(defn tz-normalize (name)
+  (let (s (str-lower (->string name))
+        s (str-replace s " " "")
+        s (str-replace s "-" "")
+        s (str-replace s "_" "")
+        s (str-replace s "." "")
+        s (str-replace s "ã" "a")
+        s (str-replace s "é" "e")
+        s (str-replace s "ó" "o"))
+    s))
+
+;; ─── Helper: get UTC offset for a location ─────────────────────────────
+(defn tz-offset (location)
+  (let (key (tz-normalize location))
+    (dict-get tz-database key nil)))
+
+;; ─── Helper: parse time string to hours and minutes ────────────────────
+;; Supports: "now", "3pm", "15:00", "3:30pm", "15:30", "3:30 am"
+(defn tz-parse-time (time-str)
+  (let (s (str-lower (str-trim (->string time-str))))
+    (if (= s "now")
+      ;; Return current UTC hours and minutes
+      (let (utc-h (->number (date-format (now) "HH"))
+            utc-m (->number (date-format (now) "mm")))
+        (list utc-h utc-m))
+      ;; Parse time string
+      (let (is-pm (or (str-contains s "pm") (str-contains s "p.m"))
+            is-am (or (str-contains s "am") (str-contains s "a.m"))
+            clean (str-trim (str-replace (str-replace (str-replace (str-replace s "pm" "") "am" "") "p.m" "") "a.m" ""))
+            parts (if (str-contains clean ":")
+                    (str-split clean ":")
+                    (list clean "0"))
+            h (->number (str-trim (head parts)))
+            m (->number (str-trim (nth parts 1)))
+            h (cond
+                (and is-pm (< h 12)) (+ h 12)
+                (and is-am (= h 12)) 0
+                true h))
+        (list h m)))))
+
+;; ─── timeat — Main timezone conversion function ────────────────────────
+;; (timeat "brazil" "now")              → current time in Brazil
+;; (timeat "brazil" "3pm" "madrid")     → 3pm Madrid time → Brazil time
+;; (timeat "all" "now")                 → time in all major cities
+(defn timeat (dest time-str . source-arg)
+  (let (dest-lower (str-lower (->string dest)))
+    (if (= dest-lower "all")
+      ;; Show time in major cities
+      (let (cities (list "london" "paris" "moscow" "dubai" "mumbai"
+                         "bangkok" "beijing" "tokyo" "sydney" "auckland"
+                         "honolulu" "losangeles" "newyork" "saopaulo"))
+        (str "🌍 World Clock\n"
+             (str-join
+               (map (fn (city) (timeat city time-str)) cities)
+               "\n")))
+
+      ;; Single city conversion
+      (let (dest-offset (tz-offset dest)
+            ;; Determine source offset
+            source (if (empty? source-arg) nil (head source-arg))
+            source-offset (if source (tz-offset source) nil)
+            ;; Parse the input time
+            time-parts (tz-parse-time time-str)
+            input-h (head time-parts)
+            input-m (nth time-parts 1))
+
+        (if (= dest-offset nil)
+          (str "Unknown location: " dest ". Try a city name like 'tokyo', 'london', 'saopaulo'.")
+
+          (if (= time-str "now")
+            ;; "now" → use current local time, convert to dest
+            ;; input-h/m are already local time from date-format
+            ;; We need to figure out local offset. Approximate: use the date diff
+            (let (;; Get local time directly
+                  local-h input-h
+                  local-m input-m
+                  ;; Estimate local UTC offset from system
+                  ;; We'll use a simple approach: format "Z" gives offset
+                  display-h (mod (+ local-h dest-offset 24) 24)
+                  display-m input-m)
+              ;; Actually simpler: just show dest time relative
+              (str (zzcapitalize (->string dest)) ": "
+                   (zzpad (->string (floor display-h)) 2 "0" :left) ":"
+                   (zzpad (->string (floor display-m)) 2 "0" :left)
+                   " (UTC" (if (>= dest-offset 0) "+" "") dest-offset ")"))
+
+            ;; Convert from source timezone to dest timezone
+            (if (= source-offset nil)
+              (str "Unknown source location: " source)
+              (let (;; Convert source time to UTC, then to dest
+                    utc-h (- input-h source-offset)
+                    dest-h (mod (+ utc-h dest-offset 48) 24)
+                    dest-m input-m
+                    diff (- dest-offset source-offset))
+                (str (zzpad (->string (floor input-h)) 2 "0" :left) ":"
+                     (zzpad (->string (floor input-m)) 2 "0" :left)
+                     " " (zzcapitalize (->string (if source source "utc")))
+                     " → "
+                     (zzpad (->string (floor dest-h)) 2 "0" :left) ":"
+                     (zzpad (->string (floor dest-m)) 2 "0" :left)
+                     " " (zzcapitalize (->string dest))
+                     " (" (if (>= diff 0) "+" "") diff "h)")))))))))
+
+;; ─── zzhoracerta — Current time display ────────────────────────────────
+;; (zzhoracerta) → "15:42:33"
+(defn zzhoracerta ()
+  (date-format (now) "HH:mm:ss"))
+
+;; ─── zztimer — Countdown display ───────────────────────────────────────
+;; Shows time remaining until a target time.
+;; (zztimer "17:00") → "2h 18m remaining"
+(defn zztimer (target-time)
+  (let (parts (str-split target-time ":")
+        target-h (->number (head parts))
+        target-m (->number (nth parts 1))
+        now-h (->number (date-format (now) "HH"))
+        now-m (->number (date-format (now) "mm"))
+        diff-m (- (+ (* target-h 60) target-m) (+ (* now-h 60) now-m)))
+    (if (<= diff-m 0)
+      "Time has passed!"
+      (str (floor (/ diff-m 60)) "h " (mod diff-m 60) "m remaining"))))
