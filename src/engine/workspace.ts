@@ -14,6 +14,12 @@ export interface WorkspaceClient {
   tree(): Promise<FileNode>;
   read(path: string): Promise<string>;
   write(path: string, content: string): Promise<void>;
+  /** Create an empty file (or a directory) at path. Rejects if it already exists. */
+  create(path: string, isDir: boolean): Promise<void>;
+  /** Move/rename from → to (both relative to the workspace root). */
+  rename(from: string, to: string): Promise<void>;
+  /** Delete a file or directory (recursive for directories). */
+  remove(path: string): Promise<void>;
   /** Native folder dialog → the chosen root, or null (unavailable in a plain browser). */
   pickWorkspace(): Promise<string | null>;
 }
@@ -40,6 +46,15 @@ class HttpWorkspace implements WorkspaceClient {
   async write(path: string, content: string): Promise<void> {
     await post<{ ok: boolean }>(this.base + "/fs/write", { path, content });
   }
+  async create(path: string, isDir: boolean): Promise<void> {
+    await post<{ ok: boolean }>(this.base + "/fs/create", { path, isDir });
+  }
+  async rename(from: string, to: string): Promise<void> {
+    await post<{ ok: boolean }>(this.base + "/fs/rename", { from, to });
+  }
+  async remove(path: string): Promise<void> {
+    await post<{ ok: boolean }>(this.base + "/fs/delete", { path });
+  }
   async pickWorkspace(): Promise<string | null> {
     return null; // no native folder dialog in the browser
   }
@@ -57,6 +72,18 @@ class TauriWorkspace implements WorkspaceClient {
   async write(path: string, content: string): Promise<void> {
     const { invoke } = await import("@tauri-apps/api/core");
     await invoke("fs_write", { path, content });
+  }
+  async create(path: string, isDir: boolean): Promise<void> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("fs_create", { path, isDir });
+  }
+  async rename(from: string, to: string): Promise<void> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("fs_rename", { from, to });
+  }
+  async remove(path: string): Promise<void> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("fs_delete", { path });
   }
   async pickWorkspace(): Promise<string | null> {
     const { invoke } = await import("@tauri-apps/api/core");

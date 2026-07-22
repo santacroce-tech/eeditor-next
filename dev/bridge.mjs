@@ -6,7 +6,7 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
-import { readFile, writeFile, readdir, mkdir } from "node:fs/promises";
+import { readFile, writeFile, readdir, mkdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import readline from "node:readline";
 
@@ -54,6 +54,28 @@ const routes = {
     const abs = safe(rel);
     await mkdir(path.dirname(abs), { recursive: true });
     await writeFile(abs, String(content ?? ""), "utf8");
+    return JSON.stringify({ ok: true });
+  },
+  "/fs/create": async ({ path: rel, isDir }) => {
+    const abs = safe(rel);
+    if (isDir) await mkdir(abs, { recursive: true });
+    else {
+      await mkdir(path.dirname(abs), { recursive: true });
+      await writeFile(abs, "", { encoding: "utf8", flag: "wx" }); // fail if exists
+    }
+    return JSON.stringify({ ok: true });
+  },
+  "/fs/rename": async ({ from, to }) => {
+    const a = safe(from);
+    const b = safe(to);
+    await mkdir(path.dirname(b), { recursive: true });
+    await rename(a, b);
+    return JSON.stringify({ ok: true });
+  },
+  "/fs/delete": async ({ path: rel }) => {
+    const abs = safe(rel);
+    const st = await stat(abs);
+    await rm(abs, { recursive: st.isDirectory(), force: false });
     return JSON.stringify({ ok: true });
   },
 };

@@ -81,6 +81,43 @@ fn fs_write(ws: tauri::State<Workspace>, path: String, content: String) -> Resul
     fs::write(p, content).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn fs_create(ws: tauri::State<Workspace>, path: String, is_dir: bool) -> Result<(), String> {
+    let p = resolve(&ws.0.lock().unwrap(), &path)?;
+    if p.exists() {
+        return Err("already exists".into());
+    }
+    if is_dir {
+        fs::create_dir_all(&p).map_err(|e| e.to_string())
+    } else {
+        if let Some(parent) = p.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        fs::write(&p, "").map_err(|e| e.to_string())
+    }
+}
+
+#[tauri::command]
+fn fs_rename(ws: tauri::State<Workspace>, from: String, to: String) -> Result<(), String> {
+    let root = ws.0.lock().unwrap();
+    let f = resolve(&root, &from)?;
+    let t = resolve(&root, &to)?;
+    if let Some(parent) = t.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    fs::rename(f, t).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn fs_delete(ws: tauri::State<Workspace>, path: String) -> Result<(), String> {
+    let p = resolve(&ws.0.lock().unwrap(), &path)?;
+    if p.is_dir() {
+        fs::remove_dir_all(p).map_err(|e| e.to_string())
+    } else {
+        fs::remove_file(p).map_err(|e| e.to_string())
+    }
+}
+
 /// Open a native folder dialog, set it as the workspace root, and remember it for next launch.
 /// Desktop only — mobile platforms are sandboxed and have no folder picker.
 #[cfg(desktop)]
@@ -176,7 +213,16 @@ pub fn run() {
             app.manage(Workspace(Mutex::new(ws)));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![eelisp_eval, fs_tree, fs_read, fs_write, pick_workspace])
+        .invoke_handler(tauri::generate_handler![
+            eelisp_eval,
+            fs_tree,
+            fs_read,
+            fs_write,
+            fs_create,
+            fs_rename,
+            fs_delete,
+            pick_workspace
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

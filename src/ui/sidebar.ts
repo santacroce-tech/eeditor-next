@@ -9,7 +9,12 @@ export interface Sidebar {
   files(): FileEntry[];
 }
 
-export function createSidebar(parent: HTMLElement, ws: WorkspaceClient, onOpen: (path: string) => void): Sidebar {
+export function createSidebar(
+  parent: HTMLElement,
+  ws: WorkspaceClient,
+  onOpen: (path: string) => void,
+  onContextMenu?: (node: FileNode, ev: MouseEvent) => void,
+): Sidebar {
   const root = document.createElement("div");
   root.className = "filetree";
   parent.appendChild(root);
@@ -35,6 +40,10 @@ export function createSidebar(parent: HTMLElement, ws: WorkspaceClient, onOpen: 
         kids.style.display = hidden ? "" : "none";
         caret.textContent = hidden ? "▾" : "▸";
       });
+      head.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        onContextMenu?.(node, e);
+      });
       wrap.append(head, kids);
       return wrap;
     }
@@ -43,6 +52,10 @@ export function createSidebar(parent: HTMLElement, ws: WorkspaceClient, onOpen: 
     row.style.paddingLeft = `${depth * 12 + 20}px`;
     row.textContent = node.name;
     row.addEventListener("click", () => onOpen(node.path));
+    row.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      onContextMenu?.(node, e);
+    });
     fileEls.set(node.path, row);
     flatFiles.push({ name: node.name, path: node.path });
     if (node.path === activePath) row.classList.add("active");
