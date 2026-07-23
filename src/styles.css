@@ -297,9 +297,9 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-s
 .snip-fn { background: var(--bg-2); color: var(--muted); border: 1px solid var(--border);
   border-radius: 6px; padding: 1px 6px; font: 10px var(--mono); }
 
-/* ── mobile / narrow layout ── */
+/* ── mobile / narrow layout ── (phones + iPad portrait; iPad landscape & desktop keep 3 panes) */
 .tabbar { display: none; }
-@media (max-width: 720px) {
+@media (max-width: 900px) {
   html, body, #app { height: 100%; }
   .shell {
     position: absolute; top: 0; left: 0; right: 0;
