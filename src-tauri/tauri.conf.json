@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "eeditor-next",
   "version": "0.1.0",
-  "identifier": "xyz.santacroce.eeditor-next",
+  "identifier": "xyz.santacroce.eeditornext",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -37,6 +37,9 @@
     ],
     "android": {
       "debugApplicationIdSuffix": ".debug"
+    },
+    "iOS": {
+      "minimumSystemVersion": "14.0"
     }
   }
 }
