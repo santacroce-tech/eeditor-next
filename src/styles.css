@@ -55,7 +55,8 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-s
 .side-body { flex: 1; overflow: auto; min-height: 0; }
 
 .filetree { padding-bottom: 8px; font-size: 13px; }
-.tree-row { padding: 2px 8px; cursor: default; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tree-row { padding: 2px 8px; cursor: default; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 .tree-dir { color: var(--muted); font-weight: 600; }
 .tree-file { color: var(--fg); border-radius: 4px; }
 .tree-file:hover { background: var(--bg); }

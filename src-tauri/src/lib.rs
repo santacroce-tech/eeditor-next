@@ -162,19 +162,20 @@ fn save_workspace(app: &tauri::AppHandle, path: &Path) {
 }
 
 /// Resolve the workspace on startup.
-/// Mobile: the sandboxed app-data `workspace/` (seeded with a starter note).
+/// Mobile: the app's **Documents** dir — exposed to the Files app via UIFileSharingEnabled /
+/// LSSupportsOpeningDocumentsInPlace (Info.ios.plist), so the user can add/edit .md files there.
 /// Desktop: last-used → $EEDITOR_WORKSPACE → ./workspace → home dir.
 fn initial_workspace(app: &tauri::AppHandle) -> PathBuf {
     #[cfg(mobile)]
     {
-        if let Ok(dir) = app.path().app_data_dir() {
-            let ws = dir.join("workspace");
+        // Documents is the Files-app-visible folder; fall back to app-data if unavailable.
+        if let Ok(ws) = app.path().document_dir().or_else(|_| app.path().app_data_dir()) {
             let _ = fs::create_dir_all(&ws);
             let welcome = ws.join("welcome.md");
             if !welcome.exists() {
                 let _ = fs::write(
                     &welcome,
-                    "# eeditor-next (iOS)\n\nA Markdown editor with the EELisp engine — running natively on iOS.\n\nTap the **REPL** tab and try:\n\n```eelisp\n(+ 1 2 3)\n(map (fn (x) (* x x)) (range 1 6))\n```\n",
+                    "# EEditor (iOS)\n\nA Markdown editor with the EELisp engine — running natively on iOS.\n\nYour notes live in this folder, which is also visible in the **Files** app under\n**On My iPhone → EEditor** — add or edit .md files there and they show up here.\n\nTap the **REPL** tab and try:\n\n```eelisp\n(+ 1 2 3)\n(map (fn (x) (* x x)) (range 1 6))\n```\n",
                 );
             }
             return ws;
