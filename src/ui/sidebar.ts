@@ -13,7 +13,7 @@ export function createSidebar(
   parent: HTMLElement,
   ws: WorkspaceClient,
   onOpen: (path: string) => void,
-  onContextMenu?: (node: FileNode, ev: MouseEvent) => void,
+  onContextMenu?: (node: FileNode, x: number, y: number) => void,
 ): Sidebar {
   const root = document.createElement("div");
   root.className = "filetree";
@@ -22,6 +22,45 @@ export function createSidebar(
   let activePath = "";
   const fileEls = new Map<string, HTMLElement>();
   let flatFiles: FileEntry[] = [];
+
+  // Touch has no right-click, so a long-press opens the same context menu.
+  // suppressClick stops the finger-lift from also opening/toggling the row.
+  let suppressClick = false;
+  function longPress(el: HTMLElement, node: FileNode): void {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let sx = 0;
+    let sy = 0;
+    el.addEventListener(
+      "touchstart",
+      (e) => {
+        const t = e.touches[0];
+        sx = t.clientX;
+        sy = t.clientY;
+        timer = setTimeout(() => {
+          timer = undefined;
+          suppressClick = true;
+          onContextMenu?.(node, t.clientX, t.clientY);
+        }, 500);
+      },
+      { passive: true },
+    );
+    const cancel = (): void => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+    };
+    el.addEventListener(
+      "touchmove",
+      (e) => {
+        const t = e.touches[0];
+        if (Math.abs(t.clientX - sx) > 10 || Math.abs(t.clientY - sy) > 10) cancel();
+      },
+      { passive: true },
+    );
+    el.addEventListener("touchend", cancel);
+    el.addEventListener("touchcancel", cancel);
+  }
 
   function renderNode(node: FileNode, depth: number): HTMLElement {
     if (node.isDir) {
@@ -36,14 +75,19 @@ export function createSidebar(
       const kids = document.createElement("div");
       for (const c of node.children ?? []) kids.appendChild(renderNode(c, depth + 1));
       head.addEventListener("click", () => {
+        if (suppressClick) {
+          suppressClick = false;
+          return;
+        }
         const hidden = kids.style.display === "none";
         kids.style.display = hidden ? "" : "none";
         caret.textContent = hidden ? "▾" : "▸";
       });
       head.addEventListener("contextmenu", (e) => {
         e.preventDefault();
-        onContextMenu?.(node, e);
+        onContextMenu?.(node, e.clientX, e.clientY);
       });
+      longPress(head, node);
       wrap.append(head, kids);
       return wrap;
     }
@@ -51,11 +95,18 @@ export function createSidebar(
     row.className = "tree-row tree-file";
     row.style.paddingLeft = `${depth * 12 + 20}px`;
     row.textContent = node.name;
-    row.addEventListener("click", () => onOpen(node.path));
+    row.addEventListener("click", () => {
+      if (suppressClick) {
+        suppressClick = false;
+        return;
+      }
+      onOpen(node.path);
+    });
     row.addEventListener("contextmenu", (e) => {
       e.preventDefault();
-      onContextMenu?.(node, e);
+      onContextMenu?.(node, e.clientX, e.clientY);
     });
+    longPress(row, node);
     fileEls.set(node.path, row);
     flatFiles.push({ name: node.name, path: node.path });
     if (node.path === activePath) row.classList.add("active");

@@ -5,5 +5,11 @@
 	<!-- iOS home-screen name (kept separate from the desktop productName "eeditor-next"). -->
 	<key>CFBundleDisplayName</key>
 	<string>EEditor</string>
+	<!-- Expose the app's Documents folder in the Files app ("On My iPhone → EEditor") so the
+	     user can add / edit / organize their .md files there and the app reads them in place. -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 </dict>
 </plist>

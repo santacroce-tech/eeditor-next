@@ -90,18 +90,28 @@ function main(): void {
   const agendaSec = section(sidebarEl, "agenda", "agenda-section");
   const agendaBody = agendaSec.body;
 
-  // "new file" + "open folder" buttons in the files header
+  // new file / new folder / open-folder buttons in the files header
   const newBtn = document.createElement("button");
   newBtn.className = "side-btn";
   newBtn.textContent = "＋";
   newBtn.title = "New file";
+  const newFolderBtn = document.createElement("button");
+  newFolderBtn.className = "side-btn";
+  newFolderBtn.textContent = "＋dir";
+  newFolderBtn.title = "New folder";
   const openBtn = document.createElement("button");
   openBtn.className = "side-btn";
   openBtn.textContent = "open…";
   openBtn.title = "Open a folder";
+  // The native folder picker is desktop-only (iOS/iPadOS sandbox the app to its own folder),
+  // so hide it on touch devices where it can't do anything.
+  const isTouchMobile =
+    /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+    (navigator.maxTouchPoints > 1 && /Mac/i.test(navigator.userAgent));
+  if (isTouchMobile) openBtn.style.display = "none";
   const filesBtns = document.createElement("span");
   filesBtns.className = "side-head-btns";
-  filesBtns.append(newBtn, openBtn);
+  filesBtns.append(newBtn, newFolderBtn, openBtn);
   filesSec.head.appendChild(filesBtns);
 
   // rules/categories + calendar buttons in the agenda header
@@ -431,7 +441,7 @@ function main(): void {
     void refreshBacklinks();
   }
 
-  const fileMenu = (node: FileNode, ev: MouseEvent): void => {
+  const fileMenu = (node: FileNode, x: number, y: number): void => {
     const dir = node.isDir ? node.path : parentDir(node.path);
     const items: MenuItem[] = [
       { label: "New file…", action: () => void newFile(dir) },
@@ -442,11 +452,12 @@ function main(): void {
       items.push({ label: "Rename…", action: () => void renameNode(node) });
       items.push({ label: "Delete", action: () => void deleteNode(node), danger: true });
     }
-    showContextMenu(ev.clientX, ev.clientY, items);
+    showContextMenu(x, y, items);
   };
 
   const sidebar = createSidebar(filesSec.body, ws, (p) => void openFile(p), fileMenu);
   newBtn.addEventListener("click", () => void newFile(""));
+  newFolderBtn.addEventListener("click", () => void newFolder(""));
   const quickOpen = createQuickOpen(() => sidebar.files(), (p) => void openFile(p));
   const search = createSearch(
     () => sidebar.files(),
