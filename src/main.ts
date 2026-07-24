@@ -105,14 +105,8 @@ function main(): void {
   openFileBtn.title = "Open a file (Files, Downloads, iCloud…)";
   const openBtn = document.createElement("button");
   openBtn.className = "side-btn";
-  openBtn.textContent = "open…";
-  openBtn.title = "Open a folder";
-  // The native folder picker is desktop-only (iOS/iPadOS sandbox the app to its own folder),
-  // so hide it on touch devices where it can't do anything. The file picker (📂) works everywhere.
-  const isTouchMobile =
-    /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
-    (navigator.maxTouchPoints > 1 && /Mac/i.test(navigator.userAgent));
-  if (isTouchMobile) openBtn.style.display = "none";
+  openBtn.textContent = "folder…";
+  openBtn.title = "Open a folder (iOS: Files / Downloads / iCloud)";
   const filesBtns = document.createElement("span");
   filesBtns.className = "side-head-btns";
   filesBtns.append(newBtn, newFolderBtn, openFileBtn, openBtn);

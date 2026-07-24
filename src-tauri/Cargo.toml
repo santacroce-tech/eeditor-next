@@ -24,5 +24,7 @@ log = "0.4"
 tauri = { version = "2.11.3", features = [] }
 tauri-plugin-log = "2"
 tauri-plugin-dialog = "2"
+# Local plugin: native iOS folder picker (external folder as workspace) with security-scoped bookmarks.
+tauri-plugin-ios-files = { path = "plugins" }
 # The Rust EELisp engine — the reusable core. EngineHandle is Send+Sync for Tauri state.
 eelisp = { path = "../../eelisp-rs" }
