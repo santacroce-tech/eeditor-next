@@ -101,8 +101,8 @@ function main(): void {
   newFolderBtn.title = "New folder";
   const openFileBtn = document.createElement("button");
   openFileBtn.className = "side-btn";
-  openFileBtn.textContent = "📂";
-  openFileBtn.title = "Open a file (Files, Downloads, iCloud…)";
+  openFileBtn.textContent = "file…";
+  openFileBtn.title = "Open a single file (Files, Downloads, iCloud…)";
   const openBtn = document.createElement("button");
   openBtn.className = "side-btn";
   openBtn.textContent = "folder…";
@@ -549,10 +549,16 @@ function main(): void {
   });
 
   setHead();
-  void sidebar.refresh().then(() => {
-    void openFirstFile();
-    void tags.refresh();
-  });
+  // Restore a previously-picked external folder (iOS) first, then load the tree once.
+  void ws
+    .restoreWorkspace()
+    .catch(() => null)
+    .finally(() => {
+      void sidebar.refresh().then(() => {
+        void openFirstFile();
+        void tags.refresh();
+      });
+    });
   void agenda.refresh();
 }
 

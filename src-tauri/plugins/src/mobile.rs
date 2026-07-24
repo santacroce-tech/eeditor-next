@@ -24,16 +24,23 @@ pub fn init<R: Runtime, C: DeserializeOwned>(
 pub struct IosFiles<R: Runtime>(PluginHandle<R>);
 
 impl<R: Runtime> IosFiles<R> {
-  /// Present the native folder picker; blocks until the user picks or cancels. Returns the folder's
-  /// path (security-scoped access is held by the native plugin for the session), or `None`.
-  pub fn pick_folder(&self) -> crate::Result<Option<String>> {
-    let resp: FolderResponse = self.0.run_mobile_plugin("pickFolder", ())?;
-    Ok(resp.path.filter(|p| !p.is_empty()))
+  /// Present the native folder picker. Non-blocking: the blocking bridge call runs on a spawned
+  /// thread (so the main thread stays free to present the picker) and `f` gets the folder path.
+  pub fn pick_folder<F: FnOnce(Option<String>) + Send + 'static>(&self, f: F) {
+    let handle = self.0.clone();
+    std::thread::spawn(move || {
+      let res = handle.run_mobile_plugin::<FolderResponse>("pickFolder", ());
+      f(res.ok().and_then(|r| r.path).filter(|p| !p.is_empty()));
+    });
   }
 
-  /// Re-open the folder picked on a previous launch (via a persisted security-scoped bookmark).
-  pub fn restore_folder(&self) -> crate::Result<Option<String>> {
-    let resp: FolderResponse = self.0.run_mobile_plugin("restoreFolder", ())?;
-    Ok(resp.path.filter(|p| !p.is_empty()))
+  /// Re-open the folder picked on a previous launch (persisted security-scoped bookmark). Same
+  /// non-blocking pattern.
+  pub fn restore_folder<F: FnOnce(Option<String>) + Send + 'static>(&self, f: F) {
+    let handle = self.0.clone();
+    std::thread::spawn(move || {
+      let res = handle.run_mobile_plugin::<FolderResponse>("restoreFolder", ());
+      f(res.ok().and_then(|r| r.path).filter(|p| !p.is_empty()));
+    });
   }
 }
