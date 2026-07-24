@@ -12,10 +12,10 @@ pub fn init<R: Runtime, C: DeserializeOwned>(
 pub struct IosFiles<R: Runtime>(#[allow(dead_code)] AppHandle<R>);
 
 impl<R: Runtime> IosFiles<R> {
-  pub fn pick_folder(&self) -> crate::Result<Option<String>> {
-    Ok(None)
+  pub fn pick_folder<F: FnOnce(Option<String>) + Send + 'static>(&self, f: F) {
+    f(None);
   }
-  pub fn restore_folder(&self) -> crate::Result<Option<String>> {
-    Ok(None)
+  pub fn restore_folder<F: FnOnce(Option<String>) + Send + 'static>(&self, f: F) {
+    f(None);
   }
 }

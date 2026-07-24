@@ -157,17 +157,47 @@ fn pick_workspace(app: tauri::AppHandle, ws: tauri::State<Workspace>) -> Option<
 
 /// iOS: present the native folder picker (Files / Downloads / iCloud). The chosen folder becomes the
 /// workspace; the ios-files plugin holds security-scoped access + persists a bookmark for next launch.
+/// Async + non-blocking so it never stalls the main thread while the picker is up.
 #[cfg(mobile)]
 #[tauri::command]
-fn pick_workspace(app: tauri::AppHandle, ws: tauri::State<Workspace>) -> Option<String> {
+async fn pick_workspace(app: tauri::AppHandle, ws: tauri::State<'_, Workspace>) -> Result<Option<String>, String> {
     use tauri_plugin_ios_files::IosFilesExt;
-    match app.ios_files().pick_folder() {
-        Ok(Some(path)) => {
-            *ws.0.lock().unwrap() = PathBuf::from(&path);
-            Some(path)
-        }
-        _ => None,
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.ios_files().pick_folder(move |path| {
+        let _ = tx.send(path);
+    });
+    let path = tauri::async_runtime::spawn_blocking(move || rx.recv().unwrap_or(None))
+        .await
+        .unwrap_or(None);
+    if let Some(p) = &path {
+        *ws.0.lock().unwrap() = PathBuf::from(p);
     }
+    Ok(path)
+}
+
+/// iOS: on startup, re-open the folder the user picked last time (via the persisted bookmark).
+/// Returns the restored path (and updates the workspace), or None.
+#[cfg(mobile)]
+#[tauri::command]
+async fn restore_workspace(app: tauri::AppHandle, ws: tauri::State<'_, Workspace>) -> Result<Option<String>, String> {
+    use tauri_plugin_ios_files::IosFilesExt;
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.ios_files().restore_folder(move |path| {
+        let _ = tx.send(path);
+    });
+    let path = tauri::async_runtime::spawn_blocking(move || rx.recv().unwrap_or(None))
+        .await
+        .unwrap_or(None);
+    if let Some(p) = &path {
+        *ws.0.lock().unwrap() = PathBuf::from(p);
+    }
+    Ok(path)
+}
+
+#[cfg(desktop)]
+#[tauri::command]
+fn restore_workspace() -> Option<String> {
+    None
 }
 
 // ── persisted workspace root (app config dir/workspace.txt) ──
@@ -202,12 +232,9 @@ fn save_workspace(app: &tauri::AppHandle, path: &Path) {
 fn initial_workspace(app: &tauri::AppHandle) -> PathBuf {
     #[cfg(mobile)]
     {
-        use tauri_plugin_ios_files::IosFilesExt;
-        // A folder the user previously picked (external — iCloud/Downloads/…) takes priority.
-        if let Ok(Some(path)) = app.ios_files().restore_folder() {
-            return PathBuf::from(path);
-        }
-        // Otherwise the app's Documents dir (Files-app-visible); fall back to app-data.
+        // Default to the app's Documents dir (Files-app-visible). A previously-picked external folder
+        // is restored AFTER launch via the `restore_workspace` command (calling the plugin during
+        // setup can crash — the bridge isn't ready yet).
         if let Ok(ws) = app.path().document_dir().or_else(|_| app.path().app_data_dir()) {
             let _ = fs::create_dir_all(&ws);
             let welcome = ws.join("welcome.md");
@@ -263,7 +290,8 @@ pub fn run() {
             fs_rename,
             fs_delete,
             import_file,
-            pick_workspace
+            pick_workspace,
+            restore_workspace
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

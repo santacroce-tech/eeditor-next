@@ -22,6 +22,8 @@ export interface WorkspaceClient {
   remove(path: string): Promise<void>;
   /** Native folder dialog → the chosen root, or null (unavailable in a plain browser). */
   pickWorkspace(): Promise<string | null>;
+  /** iOS: re-open the folder picked last session (updates the workspace), or null. */
+  restoreWorkspace(): Promise<string | null>;
   /**
    * Native file picker (works on iOS too — browse Files/Downloads/iCloud) → import the chosen file
    * into the workspace and return its new path, or null if cancelled/unsupported.
@@ -63,6 +65,9 @@ class HttpWorkspace implements WorkspaceClient {
   async pickWorkspace(): Promise<string | null> {
     return null; // no native folder dialog in the browser
   }
+  async restoreWorkspace(): Promise<string | null> {
+    return null;
+  }
   async pickAndImport(): Promise<string | null> {
     return null; // native file picker unavailable in the browser
   }
@@ -96,6 +101,10 @@ class TauriWorkspace implements WorkspaceClient {
   async pickWorkspace(): Promise<string | null> {
     const { invoke } = await import("@tauri-apps/api/core");
     return (await invoke<string | null>("pick_workspace")) ?? null;
+  }
+  async restoreWorkspace(): Promise<string | null> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return (await invoke<string | null>("restore_workspace")) ?? null;
   }
   async pickAndImport(): Promise<string | null> {
     const { open } = await import("@tauri-apps/plugin-dialog");
