@@ -99,19 +99,23 @@ function main(): void {
   newFolderBtn.className = "side-btn";
   newFolderBtn.textContent = "＋dir";
   newFolderBtn.title = "New folder";
+  const openFileBtn = document.createElement("button");
+  openFileBtn.className = "side-btn";
+  openFileBtn.textContent = "📂";
+  openFileBtn.title = "Open a file (Files, Downloads, iCloud…)";
   const openBtn = document.createElement("button");
   openBtn.className = "side-btn";
   openBtn.textContent = "open…";
   openBtn.title = "Open a folder";
   // The native folder picker is desktop-only (iOS/iPadOS sandbox the app to its own folder),
-  // so hide it on touch devices where it can't do anything.
+  // so hide it on touch devices where it can't do anything. The file picker (📂) works everywhere.
   const isTouchMobile =
     /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
     (navigator.maxTouchPoints > 1 && /Mac/i.test(navigator.userAgent));
   if (isTouchMobile) openBtn.style.display = "none";
   const filesBtns = document.createElement("span");
   filesBtns.className = "side-head-btns";
-  filesBtns.append(newBtn, newFolderBtn, openBtn);
+  filesBtns.append(newBtn, newFolderBtn, openFileBtn, openBtn);
   filesSec.head.appendChild(filesBtns);
 
   // rules/categories + calendar buttons in the agenda header
@@ -482,6 +486,21 @@ function main(): void {
         void openFirstFile();
       });
     });
+  });
+
+  // Open a file from anywhere (iOS: Files / Downloads / iCloud) — imported into the workspace.
+  openFileBtn.addEventListener("click", () => {
+    void ws
+      .pickAndImport()
+      .then((rel) => {
+        if (!rel) return;
+        void sidebar.refresh().then(() => {
+          void tags.refresh();
+          void openFile(rel);
+          toast(`Imported ${basename(rel)}`);
+        });
+      })
+      .catch((e) => toast(`Could not open file: ${String(e)}`));
   });
 
   const save = async (): Promise<void> => {

@@ -118,6 +118,31 @@ fn fs_delete(ws: tauri::State<Workspace>, path: String) -> Result<(), String> {
     }
 }
 
+/// Copy a file chosen via the native document picker (path may be outside the workspace — e.g. the
+/// iOS Files app / Downloads) into the workspace so it becomes an editable note. Returns the new
+/// workspace-relative path (a unique name if one already exists).
+#[tauri::command]
+fn import_file(ws: tauri::State<Workspace>, src: String) -> Result<String, String> {
+    let src_path = PathBuf::from(&src);
+    let data = fs::read(&src_path).map_err(|e| format!("read {}: {}", src, e))?;
+    let name = src_path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "imported.md".into());
+    let root = ws.0.lock().unwrap().clone();
+    let mut dest = root.join(&name);
+    if dest.exists() {
+        let stem = src_path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "imported".into());
+        let ext = src_path.extension().map(|s| format!(".{}", s.to_string_lossy())).unwrap_or_default();
+        for i in 1.. {
+            let cand = root.join(format!("{}-{}{}", stem, i, ext));
+            if !cand.exists() {
+                dest = cand;
+                break;
+            }
+        }
+    }
+    fs::write(&dest, &data).map_err(|e| e.to_string())?;
+    Ok(dest.file_name().unwrap().to_string_lossy().to_string())
+}
+
 /// Open a native folder dialog, set it as the workspace root, and remember it for next launch.
 /// Desktop only — mobile platforms are sandboxed and have no folder picker.
 #[cfg(desktop)]
@@ -222,6 +247,7 @@ pub fn run() {
             fs_create,
             fs_rename,
             fs_delete,
+            import_file,
             pick_workspace
         ])
         .run(tauri::generate_context!())
