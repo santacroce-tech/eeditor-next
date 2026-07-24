@@ -4,3 +4,6 @@ dist/
 src-tauri/target/
 src-tauri/gen/
 *.log
+
+# local project notes (kept out of the repo)
+memory.md
