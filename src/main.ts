@@ -1,5 +1,8 @@
 // App shell: [ files + agenda sidebar | editor (+markdown preview) | REPL ], one shared engine.
-// ⌘/Ctrl+S saves · ⌘/Ctrl+P quick-open · ⌘/Ctrl+Shift+Enter runs the ```eelisp block at the cursor.
+// The REPL pane hides/shows (λ in the editor header, or the `toggle-repl` command).
+// Keyboard shortcuts come from `.eeditor/keybindings.eelisp` — see ui/keybindings.ts. The one
+// exception is ⌘/Ctrl+Shift+Enter (run the ```eelisp block at the cursor), which lives in the
+// editor keymap because it acts on the block under the caret.
 
 import { marked } from "marked";
 import { createEngineClient } from "./engine/client";
@@ -14,6 +17,7 @@ import { createSearch } from "./ui/search";
 import { createCalendar } from "./ui/calendar";
 import { createAgendaSetup } from "./ui/agenda-setup";
 import { createSnippets } from "./ui/snippets";
+import { createKeybindings, type CommandTable } from "./ui/keybindings";
 import { exportPdf } from "./ui/pdf";
 import { promptModal, confirmModal, showContextMenu, toast, type MenuItem } from "./ui/dialogs";
 import { resolveWikiLink } from "./core/fuzzy";
@@ -144,7 +148,13 @@ function main(): void {
   pdfBtn.className = "head-btn";
   pdfBtn.textContent = "PDF";
   pdfBtn.title = "Export to PDF";
-  headRight.append(themeBtn, previewBtn, pdfBtn);
+  const keysBtn = document.createElement("button");
+  keysBtn.className = "head-btn";
+  keysBtn.textContent = "⌘";
+  keysBtn.title = "Edit the keyboard shortcuts (.eeditor/keybindings.eelisp)";
+  const replBtn = document.createElement("button");
+  replBtn.className = "head-btn repl-toggle";
+  headRight.append(themeBtn, previewBtn, pdfBtn, keysBtn, replBtn);
   editorPane.head.append(nameEl, headRight);
 
   const tabBar = document.createElement("div");
@@ -168,7 +178,37 @@ function main(): void {
   snippetsBtn.className = "head-btn";
   snippetsBtn.textContent = "snippets";
   snippetsBtn.title = "Standard EELisp bundle (zzeelisp)";
-  replPane.head.append(replLabel, snippetsBtn);
+  const replHideBtn = document.createElement("button");
+  replHideBtn.className = "head-btn repl-toggle";
+  replHideBtn.textContent = "✕";
+  replHideBtn.title = "Hide this panel";
+  const replBtns = document.createElement("span");
+  replBtns.className = "head-right";
+  replBtns.append(snippetsBtn, replHideBtn);
+  replPane.head.append(replLabel, replBtns);
+
+  // ── REPL pane visibility (desktop; on narrow screens the tab bar governs instead) ──
+  const narrow = (): boolean => window.matchMedia("(max-width: 900px)").matches;
+  let replVisible = localStorage.getItem("repl.visible") !== "0";
+  function setReplVisible(v: boolean): void {
+    replVisible = v;
+    shell.dataset.repl = v ? "on" : "off";
+    localStorage.setItem("repl.visible", v ? "1" : "0");
+    replBtn.textContent = v ? "λ ›" : "‹ λ";
+    replBtn.title = v ? "Hide the EELisp panel" : "Show the EELisp panel";
+    replBtn.setAttribute("aria-pressed", String(v));
+  }
+  function toggleRepl(): void {
+    if (narrow()) {
+      // one pane at a time down here — flip between the editor and the REPL
+      setMobileView(shell.dataset.mobileView === "repl" ? "editor" : "repl");
+      return;
+    }
+    setReplVisible(!replVisible);
+  }
+  setReplVisible(replVisible);
+  replBtn.addEventListener("click", toggleRepl);
+  replHideBtn.addEventListener("click", () => (narrow() ? setMobileView("editor") : setReplVisible(false)));
 
   // ── state ── (currentPath/dirty mirror the active tab)
   interface Tab {
@@ -506,6 +546,11 @@ function main(): void {
     setHead();
     renderTabs();
     void refreshBacklinks();
+    // editing the shortcut table takes effect as soon as it's saved (autosave included)
+    if (keys.isConfigPath(currentPath)) {
+      await keys.reload();
+      toast(`Keybindings reloaded — ${keys.bindings().length} shortcuts`);
+    }
   };
 
   function renderPreview(): void {
@@ -526,27 +571,85 @@ function main(): void {
     previewBtn.textContent = previewing ? "edit" : "preview";
   }
   previewBtn.addEventListener("click", togglePreview);
-  pdfBtn.addEventListener("click", () => {
+  function exportCurrentPdf(): void {
     const html = marked.parse(editor.getDoc()) as string;
     const title = currentPath ? basename(currentPath).replace(/\.[^./]+$/, "") : "untitled";
     exportPdf(title, html, (m) => toast(m));
-  });
+  }
+  pdfBtn.addEventListener("click", exportCurrentPdf);
 
-  document.addEventListener("keydown", (e) => {
-    const mod = e.metaKey || e.ctrlKey;
-    if (!mod) return;
-    const k = e.key.toLowerCase();
-    if (k === "s") {
-      e.preventDefault();
-      void save();
-    } else if (k === "p") {
-      e.preventDefault();
-      quickOpen.open();
-    } else if (k === "f" && e.shiftKey) {
-      e.preventDefault();
-      search.open();
+  // ── daily note (the `daily-note` command; ⌘/Ctrl+D by default) ──
+  const pad2 = (n: number): string => String(n).padStart(2, "0");
+  const todayISO = (): string => {
+    const d = new Date();
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  };
+
+  // Open today's note (YYYY-MM-DD.md at the workspace root), creating it with a date heading
+  // if it doesn't exist yet. Never overwrites an existing daily note.
+  async function openDailyNote(): Promise<void> {
+    const date = todayISO();
+    const path = `${date}.md`;
+    if (!sidebar.files().some((f) => f.path === path)) {
+      try {
+        await ws.write(path, `# ${date}\n\n`);
+      } catch (e) {
+        toast(`Could not create daily note: ${String(e)}`);
+        return;
+      }
+      await sidebar.refresh();
+      await tags.refresh();
     }
+    await openFile(path);
+    editor.view.focus();
+  }
+
+  // ── commands: everything a keybinding can name via (ed-cmd "…") ──
+  const commands: CommandTable = {
+    save: () => void save(),
+    "quick-open": () => quickOpen.open(),
+    search: () => search.open(),
+    "daily-note": () => void openDailyNote(),
+    "new-file": () => void newFile(""),
+    "new-folder": () => void newFolder(""),
+    "open-keys": () => void keys.openConfig(),
+    "reload-keys": () => void keys.reload(),
+    "toggle-repl": toggleRepl,
+    "focus-repl": () => {
+      if (narrow()) setMobileView("repl");
+      else if (!replVisible) setReplVisible(true);
+      repl.focus();
+    },
+    "focus-editor": () => {
+      if (narrow()) setMobileView("editor");
+      editor.view.focus();
+    },
+    "toggle-preview": togglePreview,
+    "toggle-theme": () => applyTheme(theme === "dark" ? "light" : "dark"),
+    "export-pdf": exportCurrentPdf,
+    snippets: () => snippets.open(),
+    calendar: () => calendar.open(),
+    "agenda-setup": () => agendaSetup.open(),
+    "close-tab": () => closeTab(activeIdx),
+    "next-tab": () => {
+      if (tabs.length > 1) switchTab((activeIdx + 1) % tabs.length);
+    },
+    "prev-tab": () => {
+      if (tabs.length > 1) switchTab((activeIdx - 1 + tabs.length) % tabs.length);
+    },
+  };
+
+  const keys = createKeybindings({
+    ws,
+    engine,
+    editor,
+    commands,
+    file: () => currentPath,
+    openFile: (p) => openFile(p),
+    note: (t) => repl.note(t),
   });
+  keysBtn.addEventListener("click", () => void keys.openConfig());
+  void keys.reload();
 
   setHead();
   // Restore a previously-picked external folder (iOS) first, then load the tree once.

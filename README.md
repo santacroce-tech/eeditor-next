@@ -47,7 +47,10 @@ The Rust engine already exposes the whole contract. The Tauri backend is a singl
 - **Editor RPC** builtins exist (`buffer-text`, `current-file`, `cursor-pos`, `insert-at`,
   `replace-range`, `selection`, `set-cursor`) backed by host callbacks. Over the thread boundary these
   need a return-channel to the UI — the remaining wiring for the threaded handle (single-thread hosts
-  can install callbacks directly on `Interpreter`).
+  can install callbacks directly on `Interpreter`). **Keybindings sidestep this**: a binding *returns*
+  editor commands as data (`(("goto-line" 2) ("insert" "…"))`) and the frontend applies them, so no
+  callback has to cross the thread boundary. Context (`*file*`, `*cursor*`, `*selection*`, `*date*`, …)
+  is injected as `def`s ahead of the body.
 - **Form CRUD** uses `insert`/`update`/`delete`/`item-set` via `eval` — no separate API needed.
 
 See `src-tauri/src/main.rs` for the `eelisp_eval` command. There's also `eelisp --serve` (JSON-line
@@ -89,7 +92,8 @@ src/
     calendar.ts  Monday-first month grid + activity-by-date
     blocks.ts    find the ```eelisp block at the cursor (in-editor execution)
     search.ts    full-text search: line matches + 3-line context (SearchService)
-    core.test.ts / engine/render.test.ts  — 17 vitest cases
+    keybindings.ts  parse .eeditor/keybindings.eelisp → bindings; key-spec ↔ KeyboardEvent matching
+    core.test.ts / engine/render.test.ts  — 27 vitest cases
   ui/
     editor.ts    CodeMirror 6 editor; switchable theme (one-dark / solarized-light); ⌘⇧⏎ runs the ```eelisp block
     sidebar.ts   workspace file tree (click to open) + flat file list for quick-open
@@ -98,10 +102,14 @@ src/
     quickopen.ts ⌘/Ctrl+P fuzzy file palette (over fuzzy.ts)
     search.ts    ⌘/Ctrl+Shift+F full-text search modal (over search.ts) → open at line
     tagspanel.ts workspace tag cloud (over tags.ts)
-    repl.ts      REPL: scrollback + `run(src)` (reused by in-editor block execution)
+    repl.ts      REPL: scrollback + `run(src)` (reused by in-editor block execution); hide/show (λ, ⌘J)
     results.ts   RenderModel → DOM (table + form widgets)
+    keybindings.ts  runs a binding: built-in command, or lisp on the engine → editor commands
+  keybindings/
+    prelude.eelisp   the ed-* command constructors loaded into the engine
+    default.eelisp   the shipped shortcut table (also the docs) — copied in on first edit
   main.ts        [ files+tags+agenda | editor(+preview) | REPL ]; dark/light theme toggle; autosave;
-                 ⌘S save · ⌘P open · ⌘⇧F search · ⌘⇧⏎ run-block · 📅 calendar
+                 the command table every keybinding dispatches through
   styles.css     CSS-variable palette; :root[data-theme="light"] = Solarized
 src-tauri/       Tauri v2 desktop app — eelisp_eval + fs_tree/read/write + pick_workspace (folder dialog)
 workspace/       sample notes (the dev workspace root the bridge serves)
@@ -110,6 +118,26 @@ dev/
   smoke.mjs      end-to-end engine contract test (10/10)
 src-tauri/       Tauri v2 backend: eelisp_eval + fs_tree/read/write commands
 ```
+
+### Keyboard shortcuts are a lisp file
+
+`.eeditor/keybindings.eelisp` in the workspace **is** the shortcut table (the ⌘ button in the editor
+header opens it, writing the documented defaults on first use). Saving it reloads the bindings.
+
+```lisp
+(bind "Mod-s" (ed-cmd "save"))          ; a built-in command — dispatched without the engine
+
+(bind "Mod-i"                            ; anything else is EELisp, run on the engine
+  (ed-goto-line 2)
+  (ed-insert (str "## " *date* " " *time* "\n\n")))
+```
+
+A body returns editor commands (`ed-insert`, `ed-goto-line`, `ed-select`, `ed-replace`, `ed-open`,
+`ed-message`, `ed-cmd`, …) which the frontend applies in order. Context — `*file*`, `*cursor*`,
+`*line*`, `*col*`, `*line-text*`, `*sel-from*`/`*sel-to*`, `*selection*`, `*buffer*`, `*date*`,
+`*time*`, `*now*` — is defined before the body runs. Bindings are claimed in the capture phase, so
+they beat CodeMirror's own keymap; unbind a key and CodeMirror gets it back. If the file is missing
+or unreadable the bundled defaults still apply.
 
 **Verified here (no browser needed):**
 - `npm test` — 15 unit tests (fuzzy/tags/calendar/blocks + the render model). ✓
