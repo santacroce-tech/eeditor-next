@@ -75,6 +75,13 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-s
 .pane { display: flex; flex-direction: column; min-width: 0; height: 100%; }
 .editor-pane { flex: 1 1 55%; border-right: 1px solid var(--border); }
 .repl-pane { flex: 1 1 45%; background: var(--bg-2); }
+
+/* REPL hidden — desktop only; on narrow screens the tab bar decides which pane shows */
+@media (min-width: 901px) {
+  .shell[data-repl="off"] .repl-pane { display: none; }
+  .shell[data-repl="off"] .editor-pane { border-right: none; }
+}
+.repl-toggle { min-width: 34px; }
 .pane-head { padding: 4px 8px 4px 12px; font: 600 11px/1.4 var(--mono); letter-spacing: .04em;
   color: var(--muted); border-bottom: 1px solid var(--border); background: var(--bg-2);
   display: flex; align-items: center; justify-content: space-between; min-height: 28px; }
@@ -330,6 +337,9 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-s
     font: 600 12px var(--mono); cursor: pointer;
   }
   .tab.active { color: var(--accent); }
+
+  /* the tab bar already switches panes here — the show/hide buttons would be redundant */
+  .repl-toggle { display: none; }
 
   /* modals full-bleed on phones */
   .qo-panel, .search-panel, .cal-panel { width: 92vw; }

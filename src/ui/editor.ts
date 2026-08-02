@@ -53,7 +53,10 @@ function themeExt(name: ThemeName) {
 export function createEditor(parent: HTMLElement, doc: string, opts: EditorOptions = {}): Editor {
   const themeCompartment = new Compartment();
 
-  const runBlock = keymap.of([
+  // Run the ```eelisp block under the caret. This one stays in the editor keymap because it acts on
+  // the caret's block; every other shortcut comes from the keybindings config (ui/keybindings.ts),
+  // which claims its keys ahead of CodeMirror in the capture phase.
+  const appKeys = keymap.of([
     {
       key: "Mod-Shift-Enter",
       run: (view) => {
@@ -96,7 +99,7 @@ export function createEditor(parent: HTMLElement, doc: string, opts: EditorOptio
   };
 
   const extensions = [
-    runBlock, // before basicSetup so it wins the keybinding
+    appKeys, // before basicSetup so it wins the keybindings
     basicSetup,
     markdown(),
     EditorView.lineWrapping,

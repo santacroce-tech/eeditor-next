@@ -6,6 +6,7 @@ import { eelispBlockAt } from "./blocks";
 import { searchFiles } from "./search";
 import { wikiLinkAt, wikiLinkTargets } from "./wikilink";
 import { backlinksTo } from "./backlinks";
+import { parseKeybindings, parseKeySpec, eventKeyId, lispString } from "./keybindings";
 
 describe("fuzzy", () => {
   const files = [
@@ -150,5 +151,69 @@ describe("backlinks", () => {
     expect(backlinksTo("notes/roadmap.md", files, entries).sort()).toEqual(["index.md", "todo.md"]);
     expect(backlinksTo("todo.md", files, entries)).toEqual(["index.md"]);
     expect(backlinksTo("index.md", files, entries)).toEqual([]); // nothing links to it
+  });
+});
+
+describe("keybindings config", () => {
+  it("parses a binding into a key id and a (list …) body", () => {
+    const { bindings, errors } = parseKeybindings(
+      `(bind "Mod-i" (ed-goto-line 2) (ed-insert (str "## " *date* "\\n")))`,
+      true,
+    );
+    expect(errors).toEqual([]);
+    expect(bindings).toHaveLength(1);
+    expect(bindings[0].spec).toBe("Mod-i");
+    expect(bindings[0].source).toBe(`(list (ed-goto-line 2) (ed-insert (str "## " *date* "\\n")))`);
+    expect(bindings[0].command).toBeUndefined();
+  });
+
+  it('flags a plain (ed-cmd "…") body so it can run without the engine', () => {
+    expect(parseKeybindings(`(bind "Mod-s" (ed-cmd "save"))`, true).bindings[0].command).toBe("save");
+    // anything more than a bare command has to go through the engine
+    expect(parseKeybindings(`(bind "Mod-s" (ed-cmd "save") (ed-message "hi"))`, true).bindings[0].command).toBeUndefined();
+  });
+
+  it("ignores comments and parens/semicolons inside strings", () => {
+    const src = [
+      `;; (bind "Mod-x" (ed-cmd "nope"))`,
+      `(bind "Mod-k" (ed-insert ";; not a comment (and not a form"))  ; trailing`,
+    ].join("\n");
+    const { bindings, errors } = parseKeybindings(src, true);
+    expect(errors).toEqual([]);
+    expect(bindings.map((b) => b.spec)).toEqual(["Mod-k"]);
+    expect(bindings[0].source).toBe(`(list (ed-insert ";; not a comment (and not a form"))`);
+  });
+
+  it("reports malformed forms, bare keys and unbalanced parens", () => {
+    const bad = parseKeybindings(`(defn f (x) x)`, true);
+    expect(bad.bindings).toEqual([]);
+    expect(bad.errors[0]).toContain("expected (bind");
+    expect(parseKeybindings(`(bind "i" (ed-cmd "save"))`, true).errors[0]).toContain("needs a modifier");
+    expect(parseKeybindings(`(bind "Mod-i" (ed-cmd "save")`, true).errors[0]).toContain("unbalanced");
+    expect(parseKeybindings(`(bind "Mod-Hyper-i" (ed-cmd "save"))`, true).errors[0]).toContain("unknown modifier");
+    expect(parseKeybindings(`(bind "Mod-i")`, true).errors[0]).toContain("no body");
+  });
+
+  it("lets a later binding win the same key", () => {
+    const { bindings } = parseKeybindings(`(bind "Mod-i" (ed-cmd "a"))\n(bind "Mod-I" (ed-cmd "b"))`, true);
+    expect(bindings).toHaveLength(1);
+    expect(bindings[0].command).toBe("b");
+  });
+
+  it("resolves Mod per platform and matches key events", () => {
+    const mac = parseKeySpec("Mod-Shift-f", true);
+    const win = parseKeySpec("Mod-Shift-f", false);
+    expect(mac).not.toEqual(win);
+    const ev = (init: Partial<KeyboardEvent>): KeyboardEvent => ({ code: "KeyF", key: "F", metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...init }) as KeyboardEvent;
+    expect(eventKeyId(ev({ metaKey: true, shiftKey: true }))).toBe("id" in mac ? mac.id : "");
+    expect(eventKeyId(ev({ ctrlKey: true, shiftKey: true }))).toBe("id" in win ? win.id : "");
+    // Option-composed characters still resolve to the plain letter (macOS ⌥i → "ˆ")
+    expect(eventKeyId({ code: "KeyI", key: "ˆ", metaKey: true, ctrlKey: false, altKey: true, shiftKey: false } as KeyboardEvent)).toBe(
+      "id" in parseKeySpec("Cmd-Alt-i", true) ? (parseKeySpec("Cmd-Alt-i", true) as { id: string }).id : "",
+    );
+  });
+
+  it("quotes strings for injection into lisp", () => {
+    expect(lispString(`a "b"\n\\c`)).toBe(`"a \\"b\\"\\n\\\\c"`);
   });
 });
