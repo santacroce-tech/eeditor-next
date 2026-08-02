@@ -1,0 +1,18 @@
+;; EEditor ⇄ EELisp bridge — loaded into the engine once, before the first keybinding runs.
+;;
+;; The engine has no way to reach back into the UI, so an editor command is plain *data*: a list
+;; whose head names the command. A binding returns one command (or a list of them) and EEditor
+;; applies them, in order, to the live document.
+
+(defn ed-cmd (name) (list "command" name))                  ;; run a built-in app command
+(defn ed-insert (text) (list "insert" text))                ;; insert at the cursor, caret after
+(defn ed-insert-at (pos text) (list "insert-at" pos text))
+(defn ed-goto (pos) (list "goto" pos))                      ;; caret to an absolute offset
+(defn ed-goto-line (n) (list "goto-line" n))                ;; caret to the start of line n (1-based)
+(defn ed-select (from to) (list "select" from to))
+(defn ed-replace (text) (list "replace" text))              ;; replace the selection
+(defn ed-replace-range (from to text) (list "replace-range" from to text))
+(defn ed-set-buffer (text) (list "set-buffer" text))        ;; replace the whole document
+(defn ed-open (path) (list "open" path))                    ;; open a file in a tab
+(defn ed-message (text) (list "message" text))              ;; toast
+(defn ed-nothing () (list))                                 ;; do nothing (useful in a cond)

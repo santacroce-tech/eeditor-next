@@ -1,0 +1,76 @@
+;; EEditor keybindings — this file *is* the shortcut table. Edit it and save (⌘S): it reloads
+;; immediately. Delete it and EEditor falls back to these defaults.
+;;
+;;   (bind "Key" body…)
+;;
+;; Key: modifiers joined with "-" or "+", then the key. Mod = ⌘ on macOS, Ctrl elsewhere;
+;; Cmd, Ctrl, Alt (Option) and Shift can also be named directly.  e.g. "Mod-i", "Mod-Shift-f",
+;; "Ctrl-Alt-t". Every binding needs a modifier (function keys and Escape may go bare).
+;;
+;; The body is EELisp, evaluated on the engine when the key fires. It returns editor commands:
+;;
+;;   (ed-cmd "save")                 run a built-in command (list at the bottom)
+;;   (ed-insert text)                insert at the cursor, caret after the text
+;;   (ed-insert-at pos text)
+;;   (ed-goto pos)                   caret to an absolute offset
+;;   (ed-goto-line n)                caret to the start of line n (1-based)
+;;   (ed-select from to)
+;;   (ed-replace text)               replace the selection
+;;   (ed-replace-range from to text)
+;;   (ed-set-buffer text)            replace the whole document
+;;   (ed-open "notes/x.md")          open a file in a tab
+;;   (ed-message text)               toast
+;;
+;; A binding may list several commands; they run in order against the live document.
+;; Anything the standard bundle (the REPL's "snippets" button) defines is callable here too.
+;;
+;; Context, defined fresh before every run:
+;;   *file*        path of the current note        *cursor*   caret offset
+;;   *line*        caret line (1-based)            *col*      caret column (1-based)
+;;   *line-text*   text of the caret's line        *lines*    line count
+;;   *sel-from*  *sel-to*                          *selection*  the selected text
+;;   *buffer*      the whole document
+;;   *date* "YYYY-MM-DD"   *time* "HH:MM"   *now* "YYYY-MM-DD HH:MM:SS"   (local time)
+;;
+;; (*selection* and *buffer* are only computed when the binding mentions them.)
+
+;; ── app commands ───────────────────────────────────────────────────────────
+(bind "Mod-s"       (ed-cmd "save"))
+(bind "Mod-p"       (ed-cmd "quick-open"))
+(bind "Mod-Shift-f" (ed-cmd "search"))
+(bind "Mod-d"       (ed-cmd "daily-note"))
+(bind "Mod-Shift-n" (ed-cmd "new-file"))
+(bind "Mod-j"       (ed-cmd "toggle-repl"))
+(bind "Mod-e"       (ed-cmd "toggle-preview"))
+(bind "Mod-Shift-k" (ed-cmd "open-keys"))
+
+;; ── lisp ───────────────────────────────────────────────────────────────────
+
+;; ⌘I — a timestamped "## " heading at the top of the note (line 2), caret on the blank
+;; line under it, ready to type.
+(bind "Mod-i"
+  (ed-goto-line 2)
+  (ed-insert (str "## " *date* " " *time* "\n\n")))
+
+;; ⌘⇧I — the same heading, but at the caret instead of the top of the note.
+(bind "Mod-Shift-i"
+  (ed-insert (str (cond (= *col* 1) "" true "\n") "## " *time* "\n\n")))
+
+;; A few more ideas — uncomment to enable:
+;;
+;; ⌘B — wrap the selection in bold
+;; (bind "Mod-b" (ed-replace (str "**" *selection* "**")))
+;;
+;; ⌘⇧T — a "- [ ] " task line
+;; (bind "Mod-Shift-t" (ed-insert "- [ ] "))
+;;
+;; ⌘⌥D — the day of the week, spelled out
+;; (bind "Mod-Alt-d" (ed-insert (date-format *date* "EEEE")))
+;;
+;; ⌘⇧B — link back to today's note
+;; (bind "Mod-Shift-b" (ed-insert (str "[[" *date* "]]")))
+
+;; ── built-in commands ──────────────────────────────────────────────────────
+;; save · quick-open · search · daily-note · new-file · new-folder · open-keys · reload-keys
+;; toggle-repl · focus-repl · toggle-preview · toggle-theme · export-pdf · snippets · calendar
+;; agenda-setup · close-tab · next-tab · prev-tab · focus-editor
