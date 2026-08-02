@@ -415,6 +415,15 @@ fn queue_opens(app: &tauri::AppHandle, paths: Vec<PathBuf>) {
         state.0.lock().unwrap().extend(paths);
     }
     let _ = app.emit("open-paths", ());
+
+    // "Open With" on an already-running app leaves us behind Finder, so the note would open out of
+    // sight. Come forward — the user just asked for this file.
+    #[cfg(target_os = "macos")]
+    for (_, w) in app.webview_windows() {
+        let _ = w.unminimize();
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
