@@ -4,7 +4,8 @@
 //                                     the browser dev build (contents only, no path)
 //   • Finder "Open With" / iOS      — the OS hands the path to the Rust side, which queues it and
 //     "Open in EEditor"               emits `open-paths`; we drain the queue
-//   • (the existing file… button)   — unchanged, always imports
+//   • the file… button              — the native picker, then the same question: picking a file and
+//                                     dropping it should not behave differently
 //
 // The question, asked once per file (or once for a whole batch): copy it into the workspace, or edit
 // it where it lives? Copying makes it an ordinary note — it shows in the tree, it is searched and
@@ -39,7 +40,12 @@ function prettyPath(p: string): string {
   return home ? "~" + p.slice(home.length) : p;
 }
 
-export function createOpenWith(deps: OpenWithDeps): void {
+export interface OpenWith {
+  /** Native file picker (or an <input type=file> in the browser), then the copy/in-place question. */
+  pickAndOpen(): Promise<void>;
+}
+
+export function createOpenWith(deps: OpenWithDeps): OpenWith {
   const { ws } = deps;
 
   // ── drop overlay ──
@@ -164,6 +170,28 @@ export function createOpenWith(deps: OpenWithDeps): void {
     }
   }
 
+  /** The file… button. Same question as a drop — the route in shouldn't change the outcome. */
+  async function pickAndOpen(): Promise<void> {
+    if (ws.canOpenExternal()) {
+      const path = await ws.pickFile();
+      if (path) await openPaths([path]);
+      return;
+    }
+    // Browser: no native picker and no paths, so fall back to a file input and the copy-in path.
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    input.accept = ".md,.markdown,.txt,.eelisp,.lisp,.json,.yaml,.yml,.toml";
+    input.style.display = "none";
+    input.addEventListener("change", () => {
+      const files = Array.from(input.files ?? []);
+      input.remove();
+      if (files.length) void dropFiles(files);
+    });
+    document.body.appendChild(input);
+    input.click();
+  }
+
   if (ws.canOpenExternal()) {
     // ── Tauri: real paths, both for drops and for "Open With" ──
     void (async () => {
@@ -222,4 +250,6 @@ export function createOpenWith(deps: OpenWithDeps): void {
       true,
     );
   }
+
+  return { pickAndOpen };
 }

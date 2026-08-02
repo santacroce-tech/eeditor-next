@@ -40,10 +40,11 @@ export interface WorkspaceClient {
   /** iOS: re-open the folder picked last session (updates the workspace), or null. */
   restoreWorkspace(): Promise<string | null>;
   /**
-   * Native file picker (works on iOS too — browse Files/Downloads/iCloud) → import the chosen file
-   * into the workspace and return its new path, or null if cancelled/unsupported.
+   * Native file picker (works on iOS too — browse Files/Downloads/iCloud) → the chosen absolute
+   * path, or null if cancelled/unsupported. The caller decides what to do with it; picking a file
+   * asks the same copy-in/in-place question as dropping one.
    */
-  pickAndImport(): Promise<string | null>;
+  pickFile(): Promise<string | null>;
 
   /** Whether this transport can open a file in place by absolute path (Tauri only). */
   canOpenExternal(): boolean;
@@ -96,8 +97,8 @@ class HttpWorkspace implements WorkspaceClient {
   async restoreWorkspace(): Promise<string | null> {
     return null;
   }
-  async pickAndImport(): Promise<string | null> {
-    return null; // native file picker unavailable in the browser
+  async pickFile(): Promise<string | null> {
+    return null; // no native file picker in the browser — the UI falls back to <input type=file>
   }
   // A browser drop hands over file *contents*, never a path, so nothing can be opened in place.
   canOpenExternal(): boolean {
@@ -153,16 +154,14 @@ class TauriWorkspace implements WorkspaceClient {
     const { invoke } = await import("@tauri-apps/api/core");
     return (await invoke<string | null>("restore_workspace")) ?? null;
   }
-  async pickAndImport(): Promise<string | null> {
+  async pickFile(): Promise<string | null> {
     const { open } = await import("@tauri-apps/plugin-dialog");
     const picked = await open({
       multiple: false,
       directory: false,
       filters: [{ name: "Notes", extensions: ["md", "markdown", "txt", "eelisp", "lisp", "json"] }],
     });
-    if (typeof picked !== "string") return null; // cancelled
-    const { invoke } = await import("@tauri-apps/api/core");
-    return invoke<string>("import_file", { src: picked });
+    return typeof picked === "string" ? picked : null; // null = cancelled
   }
   canOpenExternal(): boolean {
     return true;
