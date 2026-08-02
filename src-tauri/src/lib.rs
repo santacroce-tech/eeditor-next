@@ -145,14 +145,31 @@ fn import_file(ws: tauri::State<Workspace>, src: String) -> Result<String, Strin
 
 /// Open a native folder dialog, set it as the workspace root, and remember it for next launch.
 /// Desktop only — mobile platforms are sandboxed and have no folder picker.
+///
+/// Async + non-blocking: a *synchronous* command runs on the main thread, and
+/// `blocking_pick_folder` would then block that same thread waiting on the dialog it just spawned —
+/// a deadlock (the picker opens but the promise never resolves, so the app hangs "thinking"). So we
+/// present the picker via the non-blocking callback API and wait for the result off the main thread.
 #[cfg(desktop)]
 #[tauri::command]
-fn pick_workspace(app: tauri::AppHandle, ws: tauri::State<Workspace>) -> Option<String> {
+async fn pick_workspace(
+    app: tauri::AppHandle,
+    ws: tauri::State<'_, Workspace>,
+) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let path = app.dialog().file().blocking_pick_folder()?.into_path().ok()?;
-    *ws.0.lock().unwrap() = path.clone();
-    save_workspace(&app, &path);
-    Some(path.to_string_lossy().to_string())
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.dialog().file().pick_folder(move |picked| {
+        let _ = tx.send(picked);
+    });
+    let picked = tauri::async_runtime::spawn_blocking(move || rx.recv().unwrap_or(None))
+        .await
+        .unwrap_or(None);
+    let path = picked.and_then(|fp| fp.into_path().ok());
+    if let Some(p) = &path {
+        *ws.0.lock().unwrap() = p.clone();
+        save_workspace(&app, p);
+    }
+    Ok(path.map(|p| p.to_string_lossy().to_string()))
 }
 
 /// iOS: present the native folder picker (Files / Downloads / iCloud). The chosen folder becomes the
@@ -228,7 +245,7 @@ fn save_workspace(app: &tauri::AppHandle, path: &Path) {
 /// Resolve the workspace on startup.
 /// Mobile: the app's **Documents** dir — exposed to the Files app via UIFileSharingEnabled /
 /// LSSupportsOpeningDocumentsInPlace (Info.ios.plist), so the user can add/edit .md files there.
-/// Desktop: last-used → $EEDITOR_WORKSPACE → ./workspace → home dir.
+/// Desktop: last-used → $EEDITOR_WORKSPACE → ./workspace (dev) → ~/Documents/EEditor (seeded).
 fn initial_workspace(app: &tauri::AppHandle) -> PathBuf {
     #[cfg(mobile)]
     {
@@ -260,6 +277,23 @@ fn initial_workspace(app: &tauri::AppHandle) -> PathBuf {
     let w = cwd.join("workspace");
     if w.is_dir() {
         return w;
+    }
+    // Packaged app: launched from Finder the cwd is `/`, so there's no dev `./workspace` and nothing
+    // saved yet. Do NOT fall back to the raw home dir — `fs_tree` walks the whole tree eagerly, and
+    // indexing all of $HOME (node_modules, Library, …) would hang the app on first launch. Default to
+    // a dedicated notes folder the user can later switch via the folder picker.
+    if let Ok(docs) = app.path().document_dir() {
+        let ws = docs.join("EEditor");
+        if fs::create_dir_all(&ws).is_ok() {
+            let empty = fs::read_dir(&ws).map(|mut d| d.next().is_none()).unwrap_or(false);
+            if empty {
+                let _ = fs::write(
+                    ws.join("welcome.md"),
+                    "# EEditor\n\nA Markdown editor with the EELisp engine.\n\nYour notes live in this folder (**Documents → EEditor**). Use the **folder…** button in the Files\nheader to point EEditor at any other folder.\n\nShortcuts: ⌘S save · ⌘P quick-open · ⌘⇧F search · ⌘D today's note · ⌘I timestamp heading ·\n⌘⇧↩ run the ```eelisp block at the cursor.\n\n```eelisp\n(+ 1 2 3)\n(map (fn (x) (* x x)) (range 1 6))\n```\n",
+                );
+            }
+            return ws;
+        }
     }
     app.path().home_dir().unwrap_or(cwd)
 }
