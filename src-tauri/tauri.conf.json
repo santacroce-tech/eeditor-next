@@ -30,11 +30,48 @@
     "targets": "all",
     "fileAssociations": [
       {
-        "ext": ["md", "markdown", "txt", "eelisp", "lisp"],
-        "name": "EEditor Note",
-        "description": "Markdown note or EELisp source",
+        "ext": ["md", "markdown"],
+        "name": "Markdown Document",
+        "description": "Markdown note",
         "role": "Editor",
-        "mimeType": "text/markdown"
+        "rank": "Alternate",
+        "mimeType": "text/markdown",
+        "contentTypes": ["net.daringfireball.markdown"]
+      },
+      {
+        "ext": ["txt"],
+        "name": "Plain Text Document",
+        "description": "Plain text file",
+        "role": "Editor",
+        "rank": "Alternate",
+        "mimeType": "text/plain",
+        "contentTypes": ["public.plain-text"]
+      },
+      {
+        "ext": ["eelisp"],
+        "name": "EELisp Source",
+        "description": "EELisp source file",
+        "role": "Editor",
+        "rank": "Owner",
+        "mimeType": "text/x-eelisp",
+        "contentTypes": ["com.eeditor.app.eelisp"],
+        "exportedType": {
+          "identifier": "com.eeditor.app.eelisp",
+          "conformsTo": ["public.plain-text", "public.source-code"]
+        }
+      },
+      {
+        "ext": ["lisp"],
+        "name": "Lisp Source",
+        "description": "Lisp source file",
+        "role": "Editor",
+        "rank": "Alternate",
+        "mimeType": "text/x-lisp",
+        "contentTypes": ["com.eeditor.app.lisp"],
+        "exportedType": {
+          "identifier": "com.eeditor.app.lisp",
+          "conformsTo": ["public.plain-text", "public.source-code"]
+        }
       }
     ],
     "icon": [
