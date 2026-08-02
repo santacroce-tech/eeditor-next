@@ -11,5 +11,50 @@
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
+	<!-- "Open in EEditor": receive notes handed over by other apps (Files, Mail, the share sheet).
+	     Desktop declares the same thing through bundle.fileAssociations in tauri.conf.json; iOS needs
+	     it spelled out here because the tauri bundler only emits CFBundleDocumentTypes for macOS.
+	     Rank Alternate, not Owner — EEditor offers itself for .md/.txt without displacing whatever
+	     the user already made the default. -->
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>EEditor Note</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>net.daringfireball.markdown</string>
+				<string>public.plain-text</string>
+				<string>com.eeditor.app.eelisp</string>
+			</array>
+		</dict>
+	</array>
+	<!-- .eelisp / .lisp have no system UTI, so declare one that conforms to plain text. -->
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.eeditor.app.eelisp</string>
+			<key>UTTypeDescription</key>
+			<string>EELisp Source</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.source-code</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>eelisp</string>
+					<string>lisp</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
 </dict>
 </plist>

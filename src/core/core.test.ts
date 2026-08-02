@@ -7,6 +7,7 @@ import { searchFiles } from "./search";
 import { wikiLinkAt, wikiLinkTargets } from "./wikilink";
 import { backlinksTo } from "./backlinks";
 import { parseKeybindings, parseKeySpec, eventKeyId, lispString } from "./keybindings";
+import { uniqueName } from "./uniquename";
 
 describe("fuzzy", () => {
   const files = [
@@ -215,5 +216,31 @@ describe("keybindings config", () => {
 
   it("quotes strings for injection into lisp", () => {
     expect(lispString(`a "b"\n\\c`)).toBe(`"a \\"b\\"\\n\\\\c"`);
+  });
+});
+
+describe("uniqueName", () => {
+  it("keeps a free name as-is", () => {
+    expect(uniqueName("notes.md", ["todo.md"])).toBe("notes.md");
+    expect(uniqueName("notes.md", [])).toBe("notes.md");
+  });
+
+  it("suffixes before the extension on a collision", () => {
+    expect(uniqueName("notes.md", ["notes.md"])).toBe("notes-1.md");
+    expect(uniqueName("notes.md", ["notes.md", "notes-1.md"])).toBe("notes-2.md");
+  });
+
+  it("skips only the names actually taken", () => {
+    expect(uniqueName("notes.md", ["notes.md", "notes-2.md"])).toBe("notes-1.md");
+  });
+
+  it("handles names with no extension and dotfiles", () => {
+    expect(uniqueName("README", ["README"])).toBe("README-1");
+    // a leading dot is part of the name, not an extension
+    expect(uniqueName(".gitignore", [".gitignore"])).toBe(".gitignore-1");
+  });
+
+  it("splits on the last dot only", () => {
+    expect(uniqueName("archive.tar.gz", ["archive.tar.gz"])).toBe("archive.tar-1.gz");
   });
 });
