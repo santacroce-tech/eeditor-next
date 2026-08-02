@@ -4,17 +4,37 @@
 //   • fs_tree / fs_read / fs_write → workspace file access, confined to the workspace root
 // Structured engine results are tagged: $tableView / $formView / $record / $resultSet / $dict / $item.
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use eelisp::server::EngineHandle;
 use serde_json::{json, Value};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 struct Workspace(Mutex<PathBuf>);
 
+/// Files outside the workspace that the user has explicitly opened in place (drag-and-drop, "Open
+/// With", the file picker). `external_read`/`external_write` refuse anything not in here, so the
+/// workspace confinement in `resolve` stays the rule and each escape from it is one the user made.
+/// In-memory only — a grant lasts for the session, never longer.
+#[derive(Default)]
+struct ExternalFiles(Mutex<HashSet<PathBuf>>);
+
+/// Paths handed to us by the OS (macOS "Open With" / iOS "Open in…") before the frontend was ready
+/// to listen. Drained by `take_pending_opens` on startup; afterwards opens arrive as `open-paths`.
+#[derive(Default)]
+struct PendingOpens(Mutex<Vec<PathBuf>>);
+
 const TEXT_EXT: &[&str] = &["md", "markdown", "txt", "eelisp", "lisp", "json", "yaml", "yml", "toml"];
+
+fn is_text_file(p: &Path) -> bool {
+    p.extension()
+        .and_then(|x| x.to_str())
+        .map(|x| TEXT_EXT.contains(&x.to_lowercase().as_str()))
+        .unwrap_or(false)
+}
 
 #[tauri::command]
 fn eelisp_eval(engine: tauri::State<EngineHandle>, src: String) -> String {
@@ -44,16 +64,8 @@ fn children_of(dir: &Path, rel: &str) -> Vec<Value> {
         let crel = if rel.is_empty() { name.clone() } else { format!("{}/{}", rel, name) };
         if e.path().is_dir() {
             out.push(json!({ "name": name, "path": crel, "isDir": true, "children": children_of(&e.path(), &crel) }));
-        } else {
-            let is_text = e
-                .path()
-                .extension()
-                .and_then(|x| x.to_str())
-                .map(|x| TEXT_EXT.contains(&x.to_lowercase().as_str()))
-                .unwrap_or(false);
-            if is_text {
-                out.push(json!({ "name": name, "path": crel, "isDir": false }));
-            }
+        } else if is_text_file(&e.path()) {
+            out.push(json!({ "name": name, "path": crel, "isDir": false }));
         }
     }
     out
@@ -141,6 +153,98 @@ fn import_file(ws: tauri::State<Workspace>, src: String) -> Result<String, Strin
     }
     fs::write(&dest, &data).map_err(|e| e.to_string())?;
     Ok(dest.file_name().unwrap().to_string_lossy().to_string())
+}
+
+// ── files outside the workspace ────────────────────────────────────────────────────────────────
+//
+// Dropped on the window, or handed over by "Open With". The user decides per file whether to copy it
+// into the workspace (`import_file`) or edit it where it lies (`external_open` → `external_write`).
+
+/// Where an external path sits relative to the workspace: `inside` means it is really a workspace
+/// file reached by its absolute path, so the caller should just open it normally and skip the
+/// copy/in-place question entirely.
+#[derive(serde::Serialize)]
+struct ExternalInfo {
+    path: String,
+    name: String,
+    /// Workspace-relative path when the file is inside the workspace, else null.
+    rel: Option<String>,
+    content: String,
+    writable: bool,
+}
+
+/// Workspace-relative path for `file`, or None when it sits outside `root`. Both are canonicalized
+/// first so a symlink or a `..` detour can't disguise an outside file as an inside one.
+fn workspace_rel(root: &Path, file: &Path) -> Option<String> {
+    let root = root.canonicalize().ok()?;
+    let file = file.canonicalize().ok()?;
+    let rel = file.strip_prefix(&root).ok()?;
+    Some(rel.to_string_lossy().replace('\\', "/"))
+}
+
+/// Canonicalize and classify a path we were handed, returning its content and — if it turns out to
+/// live inside the workspace after all — its workspace-relative path. Grants in-place access.
+#[tauri::command]
+fn external_open(
+    ws: tauri::State<Workspace>,
+    ext: tauri::State<ExternalFiles>,
+    path: String,
+) -> Result<ExternalInfo, String> {
+    let p = PathBuf::from(&path).canonicalize().map_err(|e| format!("{}: {}", path, e))?;
+    if !p.is_file() {
+        return Err(format!("{} is not a file", p.display()));
+    }
+    if !is_text_file(&p) {
+        return Err(format!("{} is not a text file EEditor can edit", p.display()));
+    }
+    let content = fs::read_to_string(&p).map_err(|e| format!("read {}: {}", p.display(), e))?;
+    let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "untitled".into());
+
+    // Already ours? Then it is not "external" at all — hand back the relative path.
+    let rel = workspace_rel(&ws.0.lock().unwrap(), &p);
+
+    let writable = !fs::metadata(&p).map(|m| m.permissions().readonly()).unwrap_or(true);
+    if rel.is_none() {
+        ext.0.lock().unwrap().insert(p.clone());
+    }
+    Ok(ExternalInfo { path: p.to_string_lossy().to_string(), name, rel, content, writable })
+}
+
+/// Re-read a granted external file (used when switching back to its tab).
+#[tauri::command]
+fn external_read(ext: tauri::State<ExternalFiles>, path: String) -> Result<String, String> {
+    let p = granted(&ext, &path)?;
+    fs::read_to_string(p).map_err(|e| e.to_string())
+}
+
+/// Save back to an external file. Only paths the user opened in place this session are writable.
+#[tauri::command]
+fn external_write(ext: tauri::State<ExternalFiles>, path: String, content: String) -> Result<(), String> {
+    let p = granted(&ext, &path)?;
+    fs::write(p, content).map_err(|e| e.to_string())
+}
+
+fn granted(ext: &tauri::State<ExternalFiles>, path: &str) -> Result<PathBuf, String> {
+    check_granted(&ext.0.lock().unwrap(), path)
+}
+
+/// The gate on every external read/write: the canonical path must be one this session granted.
+/// Canonicalizing first means `/tmp/../tmp/x.md` or a symlink to a granted file resolves to the
+/// same key, and anything else — however it is spelled — is refused.
+fn check_granted(set: &HashSet<PathBuf>, path: &str) -> Result<PathBuf, String> {
+    let p = PathBuf::from(path);
+    let canon = p.canonicalize().unwrap_or(p);
+    if set.contains(&canon) {
+        Ok(canon)
+    } else {
+        Err("file was not opened in this session".into())
+    }
+}
+
+/// Drain the OS-delivered paths queued before the frontend was listening (cold start via "Open With").
+#[tauri::command]
+fn take_pending_opens(pending: tauri::State<PendingOpens>) -> Vec<String> {
+    pending.0.lock().unwrap().drain(..).map(|p| p.to_string_lossy().to_string()).collect()
 }
 
 /// Open a native folder dialog, set it as the workspace root, and remember it for next launch.
@@ -298,12 +402,38 @@ fn initial_workspace(app: &tauri::AppHandle) -> PathBuf {
     app.path().home_dir().unwrap_or(cwd)
 }
 
+/// Queue paths the OS asked us to open and nudge the frontend. Queue-then-notify (rather than
+/// emitting the paths themselves) means a cold start and a running app take the same route: the
+/// frontend drains `take_pending_opens` on startup *and* on every `open-paths` event, so a file that
+/// arrives before the webview exists is not lost and one that arrives after is not handled twice.
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+fn queue_opens(app: &tauri::AppHandle, paths: Vec<PathBuf>) {
+    if paths.is_empty() {
+        return;
+    }
+    if let Some(state) = app.try_state::<PendingOpens>() {
+        state.0.lock().unwrap().extend(paths);
+    }
+    let _ = app.emit("open-paths", ());
+
+    // "Open With" on an already-running app leaves us behind Finder, so the note would open out of
+    // sight. Come forward — the user just asked for this file.
+    #[cfg(target_os = "macos")]
+    for (_, w) in app.webview_windows() {
+        let _ = w.unminimize();
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_ios_files::init())
         .manage(EngineHandle::spawn(":memory:".to_string()))
+        .manage(ExternalFiles::default())
+        .manage(PendingOpens::default())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -324,9 +454,109 @@ pub fn run() {
             fs_rename,
             fs_delete,
             import_file,
+            external_open,
+            external_read,
+            external_write,
+            take_pending_opens,
             pick_workspace,
             restore_workspace
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    // A file association delivers its file through RunEvent::Opened — at launch on a cold start, or
+    // while we're already running when the user picks EEditor from Finder's "Open With".
+    app.run(|_app, _event| {
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        if let tauri::RunEvent::Opened { urls } = _event {
+            queue_opens(_app, urls.iter().filter_map(|u| u.to_file_path().ok()).collect());
+        }
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A scratch directory that cleans itself up. Avoids pulling in a tempdir dependency.
+    struct Tmp(PathBuf);
+    impl Tmp {
+        fn new(tag: &str) -> Self {
+            let mut p = std::env::temp_dir();
+            p.push(format!("eeditor-test-{}-{}", tag, std::process::id()));
+            let _ = fs::remove_dir_all(&p);
+            fs::create_dir_all(&p).unwrap();
+            // canonicalize: on macOS temp_dir is /var/… which is a symlink to /private/var
+            Tmp(p.canonicalize().unwrap())
+        }
+        fn file(&self, name: &str, body: &str) -> PathBuf {
+            let p = self.0.join(name);
+            if let Some(d) = p.parent() {
+                fs::create_dir_all(d).unwrap();
+            }
+            fs::write(&p, body).unwrap();
+            p
+        }
+    }
+    impl Drop for Tmp {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn workspace_rel_spots_files_inside_the_workspace() {
+        let t = Tmp::new("rel");
+        let root = t.0.join("ws");
+        fs::create_dir_all(root.join("notes")).unwrap();
+        let inside = t.file("ws/notes/a.md", "x");
+        assert_eq!(workspace_rel(&root, &inside).as_deref(), Some("notes/a.md"));
+    }
+
+    #[test]
+    fn workspace_rel_rejects_outside_and_dotdot_detours() {
+        let t = Tmp::new("outside");
+        let root = t.0.join("ws");
+        fs::create_dir_all(&root).unwrap();
+        let outside = t.file("elsewhere/b.md", "x");
+        assert_eq!(workspace_rel(&root, &outside), None);
+
+        // spelled as if it were inside, but ".." walks back out
+        let sneaky = root.join("../elsewhere/b.md");
+        assert_eq!(workspace_rel(&root, &sneaky), None);
+    }
+
+    #[test]
+    fn ungranted_paths_are_refused() {
+        let t = Tmp::new("grant");
+        let f = t.file("secret.md", "x");
+        let empty = HashSet::new();
+        assert!(check_granted(&empty, f.to_str().unwrap()).is_err());
+    }
+
+    #[test]
+    fn granted_paths_are_accepted_however_they_are_spelled() {
+        let t = Tmp::new("grant2");
+        let f = t.file("ok.md", "x");
+        let mut set = HashSet::new();
+        set.insert(f.clone());
+
+        assert_eq!(check_granted(&set, f.to_str().unwrap()).unwrap(), f);
+        // a `..` detour to the same file resolves to the same canonical key
+        let detour = t.0.join("sub/../ok.md");
+        fs::create_dir_all(t.0.join("sub")).unwrap();
+        assert_eq!(check_granted(&set, detour.to_str().unwrap()).unwrap(), f);
+        // a sibling file is still refused
+        let other = t.file("other.md", "x");
+        assert!(check_granted(&set, other.to_str().unwrap()).is_err());
+    }
+
+    #[test]
+    fn only_text_extensions_are_editable() {
+        assert!(is_text_file(Path::new("/x/a.md")));
+        assert!(is_text_file(Path::new("/x/a.MD")));
+        assert!(is_text_file(Path::new("/x/a.eelisp")));
+        assert!(!is_text_file(Path::new("/x/a.png")));
+        assert!(!is_text_file(Path::new("/x/noext")));
+    }
 }
