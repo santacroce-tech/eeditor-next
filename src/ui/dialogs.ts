@@ -103,6 +103,92 @@ export function confirmModal(message: string, okLabel = "Delete"): Promise<boole
   });
 }
 
+export interface Choice {
+  /** Value handed back when this button is pressed. */
+  id: string;
+  label: string;
+  primary?: boolean;
+}
+
+export interface ChoiceResult<T extends string = string> {
+  id: T | null; // null = dismissed
+  /** True when the user ticked "do this for the rest" (only offered if `rest` was passed). */
+  all: boolean;
+}
+
+/**
+ * Ask the user to pick one of several actions. Resolves `{id: null}` if dismissed (Escape, the ✕, or
+ * a click outside). Pass `rest` > 0 to offer an "apply to the remaining N" checkbox, so dropping a
+ * dozen files asks once instead of a dozen times.
+ */
+export function choiceModal(
+  title: string,
+  detail: string,
+  choices: Choice[],
+  rest = 0,
+): Promise<ChoiceResult> {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "qo-overlay";
+    const panel = document.createElement("div");
+    panel.className = "dlg-panel";
+
+    const heading = document.createElement("div");
+    heading.className = "dlg-title";
+    heading.textContent = title;
+    const sub = document.createElement("div");
+    sub.className = "dlg-detail";
+    sub.textContent = detail;
+
+    const actions = document.createElement("div");
+    actions.className = "dlg-actions";
+
+    let applyAll: HTMLInputElement | undefined;
+    if (rest > 0) {
+      const row = document.createElement("label");
+      row.className = "dlg-check";
+      applyAll = document.createElement("input");
+      applyAll.type = "checkbox";
+      row.append(applyAll, document.createTextNode(` Do the same for the other ${rest} file${rest > 1 ? "s" : ""}`));
+      panel.append(heading, sub, row, actions);
+    } else {
+      panel.append(heading, sub, actions);
+    }
+
+    const close = (id: string | null): void => {
+      document.removeEventListener("keydown", onKey, true);
+      overlay.remove();
+      resolve({ id, all: applyAll?.checked ?? false });
+    };
+    for (const c of choices) {
+      const b = document.createElement("button");
+      b.className = "dlg-btn" + (c.primary ? " dlg-primary" : "");
+      b.textContent = c.label;
+      b.addEventListener("click", () => close(c.id));
+      actions.appendChild(b);
+    }
+    const cancel = document.createElement("button");
+    cancel.className = "dlg-btn";
+    cancel.textContent = "Cancel";
+    cancel.addEventListener("click", () => close(null));
+    actions.appendChild(cancel);
+
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) close(null);
+    });
+    function onKey(e: KeyboardEvent): void {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        close(null);
+      }
+    }
+    document.addEventListener("keydown", onKey, true);
+    (actions.querySelector(".dlg-primary") as HTMLElement | null)?.focus();
+  });
+}
+
 /** Brief non-blocking notification (bottom-center). Auto-dismisses. */
 export function toast(message: string): void {
   const t = document.createElement("div");

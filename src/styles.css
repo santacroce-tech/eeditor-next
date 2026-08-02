@@ -102,6 +102,8 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-s
   cursor: pointer; white-space: nowrap; max-width: 200px; }
 .etab.active { background: var(--bg); color: var(--fg); }
 .etab-label { overflow: hidden; text-overflow: ellipsis; }
+/* ↗ marks a tab whose file lives outside the workspace (opened in place, not copied in). */
+.etab-ext { color: var(--accent); margin-right: 2px; font-size: 10px; }
 .etab-close { background: none; border: none; color: var(--muted); cursor: pointer;
   font-size: 14px; line-height: 1; padding: 0 3px; border-radius: 3px; }
 .etab-close:hover { background: var(--border); color: var(--fg); }
@@ -234,6 +236,19 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-s
 .dlg-primary { background: var(--accent); color: var(--bg-3); border-color: var(--accent); }
 .dlg-danger { color: var(--err); border-color: var(--err); }
 .dlg-danger:hover { background: var(--err); color: var(--bg-3); }
+.dlg-detail { font: 12px var(--mono); color: var(--muted); margin: -6px 0 4px;
+  word-break: break-word; line-height: 1.5; white-space: pre-line; }
+.dlg-check { display: flex; align-items: center; gap: 6px; margin-top: 12px;
+  font-size: 12px; color: var(--muted); cursor: pointer; }
+
+/* ── drag & drop: files dragged over the window ── */
+.drop-overlay { position: fixed; inset: 0; z-index: 80; display: none;
+  align-items: center; justify-content: center; background: rgba(0,0,0,.45);
+  backdrop-filter: blur(2px); pointer-events: none; }
+.drop-overlay.on { display: flex; }
+.drop-badge { border: 2px dashed var(--accent); border-radius: 14px; padding: 22px 34px;
+  background: var(--bg-2); color: var(--fg); font: 600 14px var(--mono); text-align: center; }
+.drop-badge small { display: block; margin-top: 6px; font-weight: 400; color: var(--muted); }
 
 /* ── context menu ── */
 .ctx-menu { position: fixed; z-index: 60; background: var(--bg-2); border: 1px solid var(--border);

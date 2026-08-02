@@ -10,6 +10,21 @@ export interface FileNode {
   children?: FileNode[];
 }
 
+/** A file handed to us from outside the workspace — dropped on the window, or via "Open With". */
+export interface ExternalFile {
+  /** Absolute path on disk; also the tab identity for an in-place file. */
+  path: string;
+  name: string;
+  /**
+   * Set when the path turned out to be *inside* the workspace after all (its workspace-relative
+   * path). Then it is an ordinary file and there is nothing to ask the user about.
+   */
+  rel: string | null;
+  content: string;
+  /** False for a read-only file — editing is allowed but saving in place will fail. */
+  writable: boolean;
+}
+
 export interface WorkspaceClient {
   tree(): Promise<FileNode>;
   read(path: string): Promise<string>;
@@ -29,6 +44,19 @@ export interface WorkspaceClient {
    * into the workspace and return its new path, or null if cancelled/unsupported.
    */
   pickAndImport(): Promise<string | null>;
+
+  /** Whether this transport can open a file in place by absolute path (Tauri only). */
+  canOpenExternal(): boolean;
+  /** Read an outside-the-workspace file and grant in-place access for this session. */
+  openExternal(path: string): Promise<ExternalFile>;
+  /** Re-read a file previously granted by openExternal. */
+  readExternal(path: string): Promise<string>;
+  /** Save back to a file previously granted by openExternal. */
+  writeExternal(path: string, content: string): Promise<void>;
+  /** Copy an outside file into the workspace; returns its new workspace-relative path. */
+  importExternal(path: string): Promise<string>;
+  /** Drain paths the OS queued for us before the UI was listening (cold-start "Open With"). */
+  takePendingOpens(): Promise<string[]>;
 }
 
 async function post<T>(url: string, body: unknown): Promise<T> {
@@ -70,6 +98,25 @@ class HttpWorkspace implements WorkspaceClient {
   }
   async pickAndImport(): Promise<string | null> {
     return null; // native file picker unavailable in the browser
+  }
+  // A browser drop hands over file *contents*, never a path, so nothing can be opened in place.
+  canOpenExternal(): boolean {
+    return false;
+  }
+  async openExternal(): Promise<ExternalFile> {
+    throw new Error("opening files in place needs the desktop app");
+  }
+  async readExternal(): Promise<string> {
+    throw new Error("opening files in place needs the desktop app");
+  }
+  async writeExternal(): Promise<void> {
+    throw new Error("opening files in place needs the desktop app");
+  }
+  async importExternal(): Promise<string> {
+    throw new Error("importing by path needs the desktop app");
+  }
+  async takePendingOpens(): Promise<string[]> {
+    return [];
   }
 }
 
@@ -116,6 +163,29 @@ class TauriWorkspace implements WorkspaceClient {
     if (typeof picked !== "string") return null; // cancelled
     const { invoke } = await import("@tauri-apps/api/core");
     return invoke<string>("import_file", { src: picked });
+  }
+  canOpenExternal(): boolean {
+    return true;
+  }
+  async openExternal(path: string): Promise<ExternalFile> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return invoke<ExternalFile>("external_open", { path });
+  }
+  async readExternal(path: string): Promise<string> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return invoke<string>("external_read", { path });
+  }
+  async writeExternal(path: string, content: string): Promise<void> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("external_write", { path, content });
+  }
+  async importExternal(path: string): Promise<string> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return invoke<string>("import_file", { src: path });
+  }
+  async takePendingOpens(): Promise<string[]> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return invoke<string[]>("take_pending_opens");
   }
 }
 
