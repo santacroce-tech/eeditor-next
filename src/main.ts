@@ -24,6 +24,7 @@ import { promptModal, confirmModal, showContextMenu, toast, type MenuItem } from
 import { resolveWikiLink } from "./core/fuzzy";
 import { backlinksTo } from "./core/backlinks";
 import { linkifyWikiLinks } from "./ui/wikilinks";
+import { uniqueName } from "./core/uniquename";
 import "./styles.css";
 
 const parentDir = (p: string): string => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
@@ -107,7 +108,7 @@ function main(): void {
   const openFileBtn = document.createElement("button");
   openFileBtn.className = "side-btn";
   openFileBtn.textContent = "file…";
-  openFileBtn.title = "Open a single file (Files, Downloads, iCloud…)";
+  openFileBtn.title = "Open a file from anywhere — you choose: copy it in, or edit it in place";
   const openBtn = document.createElement("button");
   openBtn.className = "side-btn";
   openBtn.textContent = "folder…";
@@ -153,9 +154,15 @@ function main(): void {
   keysBtn.className = "head-btn";
   keysBtn.textContent = "⌘";
   keysBtn.title = "Edit the keyboard shortcuts (.eeditor/keybindings.eelisp)";
+  // Only shown for a ↗ tab — the way back from "I opened it in place" to "keep it as a note".
+  const copyInBtn = document.createElement("button");
+  copyInBtn.className = "head-btn";
+  copyInBtn.textContent = "copy in";
+  copyInBtn.title = "Copy this outside file into your workspace";
+  copyInBtn.style.display = "none";
   const replBtn = document.createElement("button");
   replBtn.className = "head-btn repl-toggle";
-  headRight.append(themeBtn, previewBtn, pdfBtn, keysBtn, replBtn);
+  headRight.append(copyInBtn, themeBtn, previewBtn, pdfBtn, keysBtn, replBtn);
   editorPane.head.append(nameEl, headRight);
 
   const tabBar = document.createElement("div");
@@ -237,6 +244,7 @@ function main(): void {
     const name = ext ? `${basename(ext.path)} ↗` : currentPath || "untitled";
     nameEl.textContent = name + (dirty ? " •" : "");
     nameEl.title = ext ? `${ext.path} — outside the workspace, saved in place` : currentPath;
+    copyInBtn.style.display = ext ? "" : "none";
   };
   function setEditorDoc(content: string): void {
     suppressChange = true;
@@ -540,21 +548,6 @@ function main(): void {
     });
   });
 
-  // Open a file from anywhere (iOS: Files / Downloads / iCloud) — imported into the workspace.
-  openFileBtn.addEventListener("click", () => {
-    void ws
-      .pickAndImport()
-      .then((rel) => {
-        if (!rel) return;
-        void sidebar.refresh().then(() => {
-          void tags.refresh();
-          void openFile(rel);
-          toast(`Imported ${basename(rel)}`);
-        });
-      })
-      .catch((e) => toast(`Could not open file: ${String(e)}`));
-  });
-
   const save = async (): Promise<void> => {
     if (!currentPath) return;
     const tab = tabs[activeIdx];
@@ -668,6 +661,8 @@ function main(): void {
     snippets: () => snippets.open(),
     calendar: () => calendar.open(),
     "agenda-setup": () => agendaSetup.open(),
+    "open-file": () => void openWith.pickAndOpen(),
+    "copy-into-workspace": () => void copyActiveIntoWorkspace(),
     "close-tab": () => closeTab(activeIdx),
     "next-tab": () => {
       if (tabs.length > 1) switchTab((activeIdx + 1) % tabs.length);
@@ -688,7 +683,40 @@ function main(): void {
     switchTab(tabs.length - 1);
     editor.view.focus();
   }
-  createOpenWith({
+  /**
+   * Turn the active ↗ tab into a real note. Copies what is *in the editor* rather than what is on
+   * disk, so unsaved edits come along — and so it still works when the original is read-only. The
+   * tab keeps its place and identity, it just stops being external.
+   */
+  async function copyActiveIntoWorkspace(): Promise<void> {
+    const tab = activeExternal();
+    if (!tab) return;
+    const rootNames = sidebar.files().filter((f) => !f.path.includes("/")).map((f) => f.name);
+    const name = uniqueName(basename(tab.path), rootNames);
+    try {
+      await ws.write(name, editor.getDoc());
+    } catch (e) {
+      toast(`Could not copy in: ${String(e)}`);
+      return;
+    }
+    tab.path = name;
+    tab.external = undefined;
+    tab.readOnly = undefined;
+    tab.dirty = false;
+    currentPath = name;
+    dirty = false;
+    contentCache.set(name, editor.getDoc());
+    await sidebar.refresh();
+    await tags.refresh();
+    setHead();
+    renderTabs();
+    sidebar.setActive(name);
+    void refreshBacklinks();
+    toast(`Copied into the workspace as ${name}`);
+  }
+  copyInBtn.addEventListener("click", () => void copyActiveIntoWorkspace());
+
+  const openWith = createOpenWith({
     ws,
     openFile: (p) => openFile(p),
     openInPlace,
@@ -704,6 +732,8 @@ function main(): void {
     },
     rootNames: () => sidebar.files().filter((f) => !f.path.includes("/")).map((f) => f.name),
   });
+  // Picking a file asks the same question as dropping one, instead of silently importing.
+  openFileBtn.addEventListener("click", () => void openWith.pickAndOpen());
 
   const keys = createKeybindings({
     ws,
