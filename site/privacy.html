@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy — EEditor</title>
+<meta name="description" content="EEditor collects nothing. What the app touches on your device, and the one place network access can happen.">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="/">e<span class="lam">λ</span>e EEditor</a>
+    <div class="nav-links">
+      <a href="index.html">Home</a>
+      <a href="manual.html">Manual</a>
+      <a href="download.html">Download</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" style="padding:56px 0 24px">
+  <div class="wrap">
+    <h1>Privacy Policy</h1>
+    <p class="muted">Last updated: 9 August 2026 · applies to EEditor 2.0 on macOS, Windows, Linux, iOS and iPadOS.</p>
+  </div>
+</header>
+
+<div class="doc">
+<section style="padding-top:16px">
+  <div class="wrap"><div class="prose">
+
+    <p>
+      EEditor is a local editor. It has no server, no account system and no analytics. The short
+      version: <strong>we collect nothing, because there is nowhere for anything to go.</strong>
+    </p>
+
+    <h2>What we do not collect</h2>
+    <ul>
+      <li>No analytics, usage statistics or telemetry of any kind.</li>
+      <li>No third-party tracking, advertising or attribution SDKs.</li>
+      <li>No automatic crash reporting.</li>
+      <li>No accounts, sign-in, email addresses or identifiers.</li>
+      <li>No access to contacts, location, camera, microphone or photos.</li>
+      <li>No copy of your notes, ever, anywhere.</li>
+    </ul>
+
+    <h2>What the app touches on your device</h2>
+    <ul>
+      <li>
+        <strong>Your workspace folder.</strong> EEditor reads and writes files in the folder you
+        choose, and in folders you explicitly open afterwards. It remembers which folder you last
+        used so it can reopen it.
+      </li>
+      <li>
+        <strong>Files you open from outside it.</strong> If you drag a file in or use
+        <em>Open&nbsp;With</em>, EEditor can read and — if you choose to edit it in place — write
+        that one file. Permission covers the files you hand it, for that session, and nothing else.
+      </li>
+      <li>
+        <strong>A local database.</strong> Agenda items, categories, rules and any tables you create
+        in EELisp are stored in an SQLite file in the application's own data directory on your
+        device. Your notes are not in it.
+      </li>
+      <li>
+        <strong>Small preferences.</strong> The theme you picked and whether the REPL is showing are
+        stored locally.
+      </li>
+      <li>
+        <strong>PDF exports</strong> are written to the location you pick in the system dialog.
+      </li>
+    </ul>
+
+    <h2>Network access — the one exception, and it's yours</h2>
+    <p>
+      EEditor itself makes no network requests. It does not check for updates, phone home, or fetch
+      anything at startup.
+    </p>
+    <p>
+      The EELisp language, however, includes two functions that can reach the internet:
+      <code>http-get</code> and <code>http-post</code>. They run only when code you write or load
+      calls them — for example, the optional standard-library module that looks up a Bitcoin price,
+      or a script of your own that fetches a page. If you never call them, nothing leaves your
+      machine. If you do call them, the request goes to the address you named, and EEditor is not
+      involved beyond making it.
+    </p>
+
+    <h2>Platform sandboxing</h2>
+    <p>
+      On iOS and iPadOS, EEditor runs in the standard app sandbox and its workspace is the app's own
+      Documents folder, which you can browse in the Files app.
+    </p>
+    <p>
+      Desktop builds distributed from this site run as ordinary desktop applications with the file
+      access described above. They are not sandboxed by the operating system, so they are able to
+      read and write the folders you point them at — which is exactly what an editor of local files
+      needs to do, and no more than that.
+    </p>
+
+    <h2>Children</h2>
+    <p>
+      EEditor is not directed at children and collects no personal information from anyone,
+      regardless of age.
+    </p>
+
+    <h2>Changes</h2>
+    <p>
+      If this policy changes, the date at the top changes with it. Since the app collects nothing,
+      any change would be about what the app <em>touches</em>, not about data we hold, because we
+      hold none.
+    </p>
+
+    <h2>Contact</h2>
+    <p>
+      Questions about this policy: <a href="mailto:roberto@santacroce.xyz">roberto@santacroce.xyz</a>.
+    </p>
+
+  </div></div>
+</section>
+</div>
+
+<footer>
+  <div class="wrap foot-cols">
+    <div><p><strong>EEditor</strong><br><span class="muted">A notes editor with a database and a Lisp inside.</span></p></div>
+    <div><p><a href="index.html">Home</a><br><a href="download.html">Download</a><br><a href="manual.html">Manual</a></p></div>
+    <div><p><a href="https://eelisp.app">EELisp — the engine</a><br><a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></p></div>
+  </div>
+</footer>
+
+</body>
+</html>

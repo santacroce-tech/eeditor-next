@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EEditor tutorial — your first hour</title>
+<meta name="description" content="A guided walkthrough of EEditor: notes and links, the agenda, the REPL and the database, and writing your own keyboard shortcuts in EELisp.">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="/">e<span class="lam">λ</span>e EEditor</a>
+    <div class="nav-links">
+      <a href="index.html#features">Features</a>
+      <a href="manual.html">Manual</a>
+      <a href="tutorial.html" aria-current="page">Tutorial</a>
+      <a href="https://eelisp.app">EELisp</a>
+      <a href="download.html">Download</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" style="padding:56px 0 32px">
+  <div class="wrap">
+    <h1>Your first hour</h1>
+    <p class="lede">
+      Six exercises, in order. By the end you'll have linked notes, a working agenda, a table in the
+      database, and a keyboard shortcut you wrote yourself.
+    </p>
+  </div>
+</header>
+
+<div class="doc">
+
+<section style="padding-top:24px">
+  <div class="wrap"><div class="prose">
+    <h2>1. Point EEditor at a folder</h2>
+    <p>
+      Press <strong>open…</strong> at the top of the file tree and choose a folder — an empty one is
+      perfect for now. This is your workspace. Everything you make lives here as an ordinary file,
+      and you can move or back up the folder at any time without telling EEditor.
+    </p>
+    <p>
+      Now press <kbd>⌘⇧N</kbd> and call the new note <code>index.md</code>. Type a couple of lines.
+      Stop typing, and it saves itself.
+    </p>
+  </div></div>
+</section>
+
+<section class="alt">
+  <div class="wrap"><div class="prose">
+    <h2>2. Link two notes</h2>
+    <p>In <code>index.md</code>, type:</p>
+<pre><code>Reading list: [[</code></pre>
+    <p>
+      As soon as you type <code>[[</code> a list of notes appears. There's only one so far, so
+      finish the link by hand — <code>[[reading]]</code> — and close the brackets.
+    </p>
+    <p>
+      Press <kbd>⌘⇧N</kbd> again and create <code>reading.md</code>. Write a line or two, then press
+      <kbd>⌘P</kbd> and jump back to <code>index.md</code> by typing <code>idx</code> — quick open
+      matches fragments, not prefixes.
+    </p>
+    <p>
+      Press <kbd>⌘E</kbd> to preview, and click your <code>[[reading]]</code> link. You land in the
+      other note, and under the editor a bar now reads <em>↩ 1 backlink: index.md</em>. Nothing
+      built that index; it's derived from the files every time.
+    </p>
+    <p>
+      Add <code>#tutorial</code> somewhere in each note. The <strong>tags</strong> panel picks it up;
+      clicking it searches for everything carrying that tag.
+    </p>
+  </div></div>
+</section>
+
+<section>
+  <div class="wrap"><div class="prose">
+    <h2>3. Throw something at the agenda</h2>
+    <p>In the agenda box in the sidebar, type this and press <kbd>↵</kbd>:</p>
+<pre><code>call Bob tomorrow !!</code></pre>
+    <p>
+      You get an item due tomorrow at high priority — the date and the <code>!!</code> were parsed
+      out of the sentence. Click the item to open its editor and give it a note, or a recurrence of
+      <em>every 2 weeks</em>.
+    </p>
+    <p>
+      Add two or three more, then press <strong>calendar</strong>. Drag one to a different day.
+      That's the reschedule; there is no save button.
+    </p>
+  </div></div>
+</section>
+
+<section class="alt">
+  <div class="wrap"><div class="prose">
+    <h2>4. Make the agenda file things for you</h2>
+    <p>
+      Open <strong>setup</strong> in the agenda panel. Define a category — call it
+      <code>work/calls</code> — and a rule that catches anything mentioning a phone call:
+    </p>
+<pre><code>(defrule calls
+  :when   (str-matches text <span class="st">"call|phone|ring"</span>)
+  :assign <span class="st">"work/calls"</span>)</code></pre>
+    <p>
+      Press <strong>apply</strong>. Your <em>call Bob</em> item is now filed under
+      <code>work/calls</code> without you having categorised anything by hand. Add ten more items
+      and they file themselves too.
+    </p>
+    <p>
+      This is the Lotus&nbsp;Agenda idea EEditor is built around: you write in whatever words you
+      think in, and the structure is applied afterwards by rules you can change at any time.
+      Categories are hierarchical, so <code>work/calls</code> automatically belongs to
+      <code>work</code>.
+    </p>
+  </div></div>
+</section>
+
+<section>
+  <div class="wrap"><div class="prose">
+    <h2>5. Open the language</h2>
+    <p>Press <kbd>⌘J</kbd> for the REPL. Start with arithmetic, then move on:</p>
+<pre><code>λ (+ 1 2)
+3
+
+λ (map (fn (x) (* x x)) (range 1 6))
+(1 4 9 16 25)
+
+λ (str-join <span class="st">", "</span> (list <span class="st">"one"</span> <span class="st">"two"</span> <span class="st">"three"</span>))
+<span class="st">"one, two, three"</span></code></pre>
+    <p>Now make a table. This is a real SQLite table underneath:</p>
+<pre><code>λ (deftable books (title:string author:string year:number))
+
+λ (insert books {:title <span class="st">"The Mythical Man-Month"</span> :author <span class="st">"Brooks"</span> :year 1975})
+λ (insert books {:title <span class="st">"Thinking Forth"</span> :author <span class="st">"Brodie"</span> :year 1984})
+
+λ (browse books)</code></pre>
+    <p>
+      <code>browse</code> gives you a table widget, not a wall of text — click through it. Try
+      <code>(edit books 1)</code> for a form with working fields.
+    </p>
+    <p>Ask a question of it:</p>
+<pre><code>λ (query books :where <span class="st">"year &lt; ?"</span> :params (list 1980) :order <span class="st">"year"</span>)</code></pre>
+    <p>
+      Press <strong>snippets</strong> to load the standard bundle, and a hundred and fifty more
+      functions become available — <code>(zzromanos 2026)</code>, <code>(timeat "tokyo" "now")</code>,
+      <code>(zzconverte 100 :c :f)</code>. The whole language is documented at
+      <a href="https://eelisp.app">eelisp.app</a>.
+    </p>
+    <p>
+      One more thing: put a fenced <code>eelisp</code> block in a note, put the caret inside it, and
+      press <kbd>⌘⇧↵</kbd>. The note just became a notebook.
+    </p>
+  </div></div>
+</section>
+
+<section class="alt">
+  <div class="wrap"><div class="prose">
+    <h2>6. Write yourself a shortcut</h2>
+    <p>
+      Press <kbd>⌘⇧K</kbd>. EEditor writes the default keybindings into
+      <code>.eeditor/keybindings.eelisp</code> and opens it. Read the top of the file — that's the
+      whole language.
+    </p>
+    <p>Add a binding of your own at the bottom:</p>
+<pre><code>(bind <span class="st">"Mod-Shift-t"</span> (ed-insert <span class="st">"- [ ] "</span>))</code></pre>
+    <p>
+      Save with <kbd>⌘S</kbd>. Go to any note and press <kbd>⌘⇧T</kbd> — a task line. No restart, no
+      preferences pane.
+    </p>
+    <p>Now one that computes:</p>
+<pre><code>(bind <span class="st">"Mod-Shift-b"</span> (ed-insert (str <span class="st">"[["</span> *date* <span class="st">"]]"</span>)))</code></pre>
+    <p>
+      That inserts a wiki link to today's daily note, whatever today happens to be. The date, the
+      caret position, the selection and the whole buffer are all available to your code — see the
+      <a href="manual.html#keybindings">binding reference</a> for the full list.
+    </p>
+    <p>Finally, decide where you land when EEditor opens. Add one line:</p>
+<pre><code>(on-start (ed-cmd <span class="st">"daily-note"</span>))</code></pre>
+    <p>
+      Now every launch drops you straight into today's note, created if it doesn't exist. Prefer a
+      fixed dashboard? <code>(on-start (ed-open "index.md"))</code>. Prefer nothing at all?
+      <code>(on-start)</code>.
+    </p>
+  </div></div>
+</section>
+
+<section>
+  <div class="wrap"><div class="prose">
+    <h2>Where to go next</h2>
+    <ul>
+      <li><a href="manual.html">The manual</a> — every feature, every command, every default shortcut.</li>
+      <li><a href="https://eelisp.app/guide.html">The EELisp guide</a> — the language itself, properly.</li>
+      <li><a href="https://eelisp.app/reference.html">The function reference</a> — all 160-odd builtins.</li>
+    </ul>
+    <p>
+      And the thing worth doing on your own: open your keybindings file and delete a binding you
+      don't like. That key goes straight back to the editor's normal behaviour. The configuration is
+      the whole story — there's nothing underneath it you can't see.
+    </p>
+  </div></div>
+</section>
+
+</div>
+
+<footer>
+  <div class="wrap foot-cols">
+    <div><p><strong>EEditor</strong><br><span class="muted">A notes editor with a database and a Lisp inside.</span></p></div>
+    <div><p><a href="index.html">Home</a><br><a href="download.html">Download</a><br><a href="manual.html">Manual</a></p></div>
+    <div><p><a href="https://eelisp.app">EELisp — the engine</a><br><a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></p></div>
+  </div>
+</footer>
+
+</body>
+</html>

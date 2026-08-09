@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EEditor — a notes editor with a database and a Lisp inside</title>
+<meta name="description" content="EEditor is a Markdown editor with a built-in Lisp engine, an SQLite database and a Lotus Agenda-style organizer. Plain files on your disk, no cloud, no account. macOS, Windows, Linux, iPhone and iPad.">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="stylesheet" href="assets/style.css">
+<meta property="og:title" content="EEditor — a notes editor with a database and a Lisp inside">
+<meta property="og:description" content="Markdown, an SQLite database, and a Lisp you can bind to any key. Local files. No cloud.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://eeditor.app/">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="/">e<span class="lam">λ</span>e EEditor</a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#keys">Keybindings</a>
+      <a href="manual.html">Manual</a>
+      <a href="tutorial.html">Tutorial</a>
+      <a href="https://eelisp.app">EELisp</a>
+      <a href="download.html">Download</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <p class="eyebrow">Version 2.0 — now on every desktop</p>
+    <h1>Notes that can compute.</h1>
+    <p class="lede">
+      EEditor is a Markdown editor with a Lisp interpreter, an SQLite database and a
+      Lotus&nbsp;Agenda-style organizer built in. Your notes stay plain files in a folder
+      you choose. Nothing is uploaded, and there is no account to make.
+    </p>
+    <div class="cta">
+      <a class="btn" href="download.html">Download for macOS, Windows &amp; Linux</a>
+      <a class="btn btn-ghost" href="tutorial.html">Take the tutorial</a>
+    </div>
+    <p style="margin-top:18px"><small class="muted">Free. Version 2.0.0 · also on iPhone and iPad.</small></p>
+  </div>
+</header>
+
+<section class="alt">
+  <div class="wrap">
+    <div class="prose">
+      <h2>A rewrite, not a re-skin</h2>
+      <p>
+        EEditor started as a Mac-only app in Swift. Version 2 is a ground-up rebuild: the language
+        and database core moved into <a href="https://eelisp.app">EELisp</a>, a standalone Rust
+        engine, and the app around it is TypeScript on CodeMirror&nbsp;6 in a Tauri shell. One
+        engine, one editor, five platforms — and the parts you can script are now the same
+        everywhere.
+      </p>
+    </div>
+    <ul class="pills" style="margin-top:26px">
+      <li>macOS 11+ (Intel &amp; Apple Silicon)</li>
+      <li>Windows 10/11</li>
+      <li>Linux x86-64</li>
+      <li>iPhone &amp; iPad</li>
+      <li>No cloud</li>
+      <li>No telemetry</li>
+    </ul>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <div class="prose"><h2>What's inside</h2></div>
+    <div class="grid" style="margin-top:32px">
+
+      <div class="card">
+        <span class="ico">✎</span>
+        <h3>A real editor</h3>
+        <p>
+          CodeMirror&nbsp;6 with Markdown highlighting, live preview, light and dark themes,
+          multiple tabs and autosave. Export any note to PDF.
+        </p>
+      </div>
+
+      <div class="card">
+        <span class="ico">⌘</span>
+        <h3>Find anything</h3>
+        <p>
+          Fuzzy quick-open on <kbd>⌘P</kbd>, full-text search across the workspace on
+          <kbd>⌘⇧F</kbd>, and a <code>#hashtag</code> index that doubles as a filter.
+        </p>
+      </div>
+
+      <div class="card">
+        <span class="ico">↔</span>
+        <h3>Linked notes</h3>
+        <p>
+          <code>[[Wiki links]]</code> with autocomplete as you type, click-through in preview or
+          <kbd>⌘</kbd>-click in the editor, and a backlinks bar showing what points here.
+        </p>
+      </div>
+
+      <div class="card">
+        <span class="ico">◷</span>
+        <h3>An organizer, not a to-do list</h3>
+        <p>
+          Items with dates, priorities and notes; hierarchical categories; recurrence; a calendar
+          you can drag things around in; and rules that file new items for you.
+        </p>
+      </div>
+
+      <div class="card">
+        <span class="ico">λ</span>
+        <h3>A language in the box</h3>
+        <p>
+          The EELisp REPL sits under the editor. Query the database, script your notes, or run a
+          <code>```eelisp</code> block straight from a document with <kbd>⌘⇧↵</kbd>.
+        </p>
+      </div>
+
+      <div class="card">
+        <span class="ico">▤</span>
+        <h3>Tables and forms, not text dumps</h3>
+        <p>
+          <code>browse</code> renders a real table widget and <code>defform</code> a real form —
+          dBASE&nbsp;III's good idea, rebuilt on SQLite.
+        </p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="keys" class="alt">
+  <div class="wrap">
+    <div class="prose">
+      <p class="eyebrow">The part nobody else has</p>
+      <h2>Your keybindings are a program</h2>
+      <p>
+        There is no shortcuts preference pane. There is a file —
+        <code>.eeditor/keybindings.eelisp</code> in your workspace — and that file <em>is</em> the
+        shortcut table. Open it with <kbd>⌘⇧K</kbd>, save it with <kbd>⌘S</kbd>, and it reloads
+        immediately. Delete it and the defaults come back.
+      </p>
+      <p>
+        A binding's body is EELisp, evaluated when the key fires. It hands back editor commands as
+        data, so a shortcut can compute what it inserts:
+      </p>
+    </div>
+
+<pre><code><span class="cm">;; ⌘I — a new note stamped with the minute, and a heading to match</span>
+(bind <span class="st">"Mod-i"</span>
+  (ed-new (str *date* <span class="st">" "</span> (str-replace *time* <span class="st">":"</span> <span class="st">""</span>) <span class="st">".md"</span>)
+          (str <span class="st">"# "</span> *date* <span class="st">" "</span> *time* <span class="st">"\n\n"</span>)))
+
+<span class="cm">;; ⌘B — wrap whatever is selected in bold</span>
+(bind <span class="st">"Mod-b"</span> (ed-replace (str <span class="st">"**"</span> *selection* <span class="st">"**"</span>)))
+
+<span class="cm">;; What opens when EEditor launches — a note, today's note, or nothing at all</span>
+(on-start (ed-cmd <span class="st">"daily-note"</span>))</code></pre>
+
+    <div class="prose">
+      <p>
+        The caret, the selection, the whole buffer, the date and the time are all bound as
+        variables before your code runs. Anything the standard library defines is callable too.
+        <a href="manual.html#keybindings">The full binding reference is in the manual.</a>
+      </p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="prose">
+      <h2>Files you can still read in ten years</h2>
+      <p>
+        A workspace is a folder. Notes are Markdown files in it. Move them, back them up with
+        <code>git</code>, open them in any other editor — EEditor holds no lock on your work and
+        keeps no proprietary index you'd lose.
+      </p>
+      <p>
+        Files from outside the workspace open too: drag one onto the window, or use
+        <em>Open&nbsp;With</em> from your file manager. EEditor asks once whether to copy it in or
+        edit it where it lies, and in-place notes save straight back to the original.
+      </p>
+      <p>
+        On iPhone and iPad, the workspace is exposed in the Files app under
+        <strong>On&nbsp;My&nbsp;iPhone → EEditor</strong>, so the same notes sync however you
+        already sync files.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap" style="text-align:center">
+    <h2>Get EEditor 2.0</h2>
+    <p class="lede" style="margin:0 auto 28px">Free, no account, nothing to sign up for.</p>
+    <a class="btn" href="download.html">Download</a>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot-cols">
+    <div>
+      <p><strong>EEditor</strong><br><span class="muted">A notes editor with a database and a Lisp inside.</span></p>
+    </div>
+    <div>
+      <p>
+        <a href="download.html">Download</a><br>
+        <a href="manual.html">Manual</a><br>
+        <a href="tutorial.html">Tutorial</a>
+      </p>
+    </div>
+    <div>
+      <p>
+        <a href="https://eelisp.app">EELisp — the engine</a><br>
+        <a href="https://github.com/santacroce-tech/eelisp-rs">Engine source</a><br>
+        <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a>
+      </p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

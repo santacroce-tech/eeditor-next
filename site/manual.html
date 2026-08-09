@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EEditor manual</title>
+<meta name="description" content="The complete EEditor manual: workspace, editor, search, wiki links, the agenda, the EELisp REPL, and the keybinding language.">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="/">e<span class="lam">λ</span>e EEditor</a>
+    <div class="nav-links">
+      <a href="index.html#features">Features</a>
+      <a href="manual.html" aria-current="page">Manual</a>
+      <a href="tutorial.html">Tutorial</a>
+      <a href="https://eelisp.app">EELisp</a>
+      <a href="download.html">Download</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" style="padding:56px 0 32px">
+  <div class="wrap">
+    <h1>Manual</h1>
+    <p class="lede">Everything EEditor does, in the order you're likely to need it.</p>
+  </div>
+</header>
+
+<section style="padding-top:0;border:0">
+  <div class="wrap">
+    <div class="toc">
+      <h2>Contents</h2>
+      <ul>
+        <li><a href="#workspace">1. The workspace</a></li>
+        <li><a href="#files">2. Files and folders</a></li>
+        <li><a href="#editor">3. The editor</a></li>
+        <li><a href="#tabs">4. Tabs</a></li>
+        <li><a href="#finding">5. Finding things</a></li>
+        <li><a href="#links">6. Links between notes</a></li>
+        <li><a href="#outside">7. Files from outside</a></li>
+        <li><a href="#agenda">8. The agenda</a></li>
+        <li><a href="#repl">9. The REPL</a></li>
+        <li><a href="#keybindings">10. Keybindings</a></li>
+        <li><a href="#mobile">11. iPhone and iPad</a></li>
+        <li><a href="#shortcuts">12. Shortcut reference</a></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<div class="doc">
+
+<section id="workspace">
+  <div class="wrap"><div class="prose">
+    <h2>1. The workspace</h2>
+    <p>
+      A workspace is an ordinary folder. EEditor shows what's in it, edits the Markdown files it
+      finds, and writes nothing else there except one hidden folder, <code>.eeditor/</code>, for
+      your keybindings.
+    </p>
+    <p>
+      On first launch EEditor picks a default folder and opens it. To use a different one, press
+      <strong>open…</strong> at the top of the file tree and choose any directory — a git
+      repository, a synced folder, an external disk. The choice survives restarts.
+    </p>
+    <p>
+      Because the workspace is just a folder, everything you already do with folders keeps working:
+      back it up, version it, sync it, or open the same notes in another editor. EEditor takes no
+      lock and keeps no separate index that could drift from the files.
+    </p>
+    <div class="note">
+      <p>
+        <strong>What EEditor stores outside your notes:</strong> the agenda database (items,
+        categories, rules) and any tables you create in EELisp live in an SQLite file in the
+        application's own data directory — not in your workspace. Your notes are never inside it.
+      </p>
+    </div>
+  </div></div>
+</section>
+
+<section id="files" class="alt">
+  <div class="wrap"><div class="prose">
+    <h2>2. Files and folders</h2>
+    <p>
+      The file tree is the left column. Click a file to open it. The two buttons at the top create
+      a <strong>new file</strong> and a <strong>new folder</strong> at the root; to create inside a
+      folder, right-click it (long-press on a touch screen) and use the menu, which also offers
+      <strong>Rename…</strong> and <strong>Delete</strong>.
+    </p>
+    <p>
+      Renaming and deleting keep open tabs honest: a renamed file follows its tab, and deleting a
+      file or folder closes the tabs underneath it and moves you to a neighbour rather than leaving
+      a dead editor.
+    </p>
+    <p>
+      Files beginning with a dot are hidden from the tree, which is why your keybindings live in
+      <code>.eeditor/keybindings.eelisp</code> — present, editable, out of the way.
+    </p>
+    <h3>The daily note</h3>
+    <p>
+      <kbd>⌘D</kbd> opens today's note, <code>YYYY-MM-DD.md</code> at the root of the workspace,
+      creating it with a date heading if it doesn't exist. It never overwrites an existing one, so
+      pressing it repeatedly through the day just takes you back to the same note.
+    </p>
+  </div></div>
+</section>
+
+<section id="editor">
+  <div class="wrap"><div class="prose">
+    <h2>3. The editor</h2>
+    <p>
+      The editor is CodeMirror&nbsp;6 with Markdown syntax highlighting. Edits save automatically
+      about a second after you stop typing; <kbd>⌘S</kbd> saves immediately.
+    </p>
+    <h3>Preview</h3>
+    <p>
+      <kbd>⌘E</kbd> (or the <strong>preview</strong> button) swaps the editor for rendered Markdown.
+      Wiki links become clickable there. Press it again to go back.
+    </p>
+    <h3>Themes</h3>
+    <p>
+      The <strong>☀/☾</strong> button toggles between a light theme (Solarized) and a dark one (One
+      Dark). Your choice is remembered.
+    </p>
+    <h3>PDF export</h3>
+    <p>
+      <strong>PDF</strong> renders the current note and opens the system print dialog, where
+      <em>Save as PDF</em> produces a file. Headings, lists, tables and code blocks all come across.
+    </p>
+    <h3>Running code from a note</h3>
+    <p>
+      Put EELisp in a fenced block and press <kbd>⌘⇧↵</kbd> with the caret inside it. The result
+      appears in the REPL below — a live notebook without leaving the document.
+    </p>
+<pre><code>```eelisp
+(items :category <span class="st">"work"</span> :when-before (today))
+```</code></pre>
+  </div></div>
+</section>
+
+<section id="tabs" class="alt">
+  <div class="wrap"><div class="prose">
+    <h2>4. Tabs</h2>
+    <p>
+      Opening a second note puts it in a new tab rather than replacing what you had. Click a tab to
+      switch, click its <strong>×</strong> to close. <kbd>⌘⌥→</kbd> and <kbd>⌘⌥←</kbd> move between
+      tabs if you bind them — see <a href="#keybindings">keybindings</a> for the
+      <code>next-tab</code>, <code>prev-tab</code> and <code>close-tab</code> commands.
+    </p>
+    <p>
+      A tab marked <strong>↗</strong> is a file from outside the workspace; see
+      <a href="#outside">§7</a>.
+    </p>
+  </div></div>
+</section>
+
+<section id="finding">
+  <div class="wrap"><div class="prose">
+    <h2>5. Finding things</h2>
+    <h3>Quick open — <kbd>⌘P</kbd></h3>
+    <p>
+      Fuzzy matching over every file in the workspace. Type fragments in any order —
+      <code>agmt</code> finds <code>agenda-meeting.md</code>. Arrow keys move, <kbd>↵</kbd> opens,
+      <kbd>Esc</kbd> dismisses.
+    </p>
+    <h3>Full-text search — <kbd>⌘⇧F</kbd></h3>
+    <p>
+      Searches the contents of every note and lists each hit with its line. Choosing one opens the
+      note at that line.
+    </p>
+    <h3>Tags</h3>
+    <p>
+      Any <code>#hashtag</code> in a note is indexed and appears in the <strong>tags</strong> panel
+      in the sidebar, with a count. Clicking a tag opens full-text search filtered to it, which is
+      the fastest way to see everything you marked <code>#idea</code> or <code>#invoice</code>.
+    </p>
+  </div></div>
+</section>
+
+<section id="links" class="alt">
+  <div class="wrap"><div class="prose">
+    <h2>6. Links between notes</h2>
+    <p>
+      Write <code>[[Note name]]</code> to link to another note. Typing <code>[[</code> opens an
+      autocomplete list of existing notes, so links stay spelled the way the files are.
+    </p>
+    <p>
+      In preview, a wiki link is a plain click. In the editor, <kbd>⌘</kbd>-click it. Either way you
+      land in the linked note.
+    </p>
+    <h3>Backlinks</h3>
+    <p>
+      Under the editor, a bar lists every note that links to the one you're reading —
+      <em>↩ 3 backlinks: index.md, projects.md, 2026-08-09.md</em>. Click one to follow it. The bar
+      hides itself when nothing points here.
+    </p>
+    <p class="muted">
+      Notes opened from outside the workspace are not part of the link graph, so they show no
+      backlinks and aren't offered in autocomplete.
+    </p>
+  </div></div>
+</section>
+
+<section id="outside">
+  <div class="wrap"><div class="prose">
+    <h2>7. Files from outside the workspace</h2>
+    <p>There are three ways a foreign file arrives:</p>
+    <ul>
+      <li><strong>Drag</strong> it onto the EEditor window.</li>
+      <li><strong>Open With</strong> from Finder or your file manager, or double-click if EEditor is the default for that type.</li>
+      <li>The <strong>file…</strong> button in the sidebar.</li>
+    </ul>
+    <p>However it arrives, EEditor asks once what you want:</p>
+    <ul>
+      <li><strong>Copy into the workspace</strong> — it becomes an ordinary note, indexed for search, tags and links.</li>
+      <li><strong>Open in place</strong> — the tab is marked <strong>↗</strong> and saves write back to the original location, wherever that is.</li>
+    </ul>
+    <p>
+      An in-place file is deliberately not part of the workspace: it won't appear in the tree, in
+      search results, in the tag index or in backlinks. If you decide you want it after all, press
+      <strong>copy in</strong> in the header and it becomes a real note — including whatever unsaved
+      edits are on screen, which also makes this the escape hatch for a read-only original.
+    </p>
+    <p>
+      EEditor registers itself for <code>.md</code>, <code>.markdown</code>, <code>.txt</code>,
+      <code>.eelisp</code> and <code>.lisp</code>, as an alternative handler rather than stealing
+      those types from your existing editor.
+    </p>
+  </div></div>
+</section>
+
+<section id="agenda" class="alt">
+  <div class="wrap"><div class="prose">
+    <h2>8. The agenda</h2>
+    <p>
+      The agenda is a personal information manager in the Lotus&nbsp;Agenda tradition: you throw
+      text at it, and structure emerges from rules rather than from forms you fill in.
+    </p>
+
+    <h3>Adding items</h3>
+    <p>
+      The box at the top of the agenda panel takes plain language and parses it —
+      <em>call Bob tomorrow !!</em> becomes an item due tomorrow at high priority. Dates, priorities
+      and people are recognised as you write them.
+    </p>
+
+    <h3>Editing an item</h3>
+    <p>Click one to expand its editor, which holds:</p>
+    <ul>
+      <li><strong>text</strong> — the item itself</li>
+      <li><strong>when</strong> — a due date</li>
+      <li><strong>priority</strong></li>
+      <li><strong>notes</strong> — free text underneath</li>
+      <li><strong>recurrence</strong> — daily, weekly or monthly, with an interval</li>
+      <li><strong>categories</strong> — one or more, from those you've defined</li>
+    </ul>
+
+    <h3>Categories</h3>
+    <p>
+      Categories are hierarchical: <code>work/clients/acme</code> is a child of
+      <code>work/clients</code>. Assigning a child implies its parents, and an exclusive parent
+      allows only one of its children at a time — so an item can't be both
+      <code>status/open</code> and <code>status/done</code>.
+    </p>
+
+    <h3>Rules</h3>
+    <p>
+      Rules are the part that makes the agenda feel alive. A rule is a condition and an action; run
+      them and every matching item is filed automatically. Open the
+      <strong>setup</strong> panel to define categories and rules, then <strong>apply</strong> them.
+    </p>
+<pre><code>(defrule invoices
+  :when   (str-matches text <span class="st">"invoice|bill|payment"</span>)
+  :assign <span class="st">"finance/invoices"</span>)</code></pre>
+    <p>
+      Inside a condition the item is in scope: <code>text</code>, <code>notes</code>,
+      <code>id</code>, <code>categories</code> and <code>props</code> are bound, along with
+      <code>(get "field")</code>, <code>(has-category "work")</code>, <code>(overdue?)</code> and
+      <code>(match n)</code> for the capture groups of the last regular expression. Because rules
+      are stored as EELisp and re-evaluated, anything the language can express, a rule can decide.
+    </p>
+
+    <h3>Views</h3>
+    <p>
+      A view is a saved filter with optional grouping — <em>everything overdue, grouped by
+      category</em>. Define with <code>defview</code>, list with <code>views</code>, display with
+      <code>show</code>.
+    </p>
+
+    <h3>The calendar</h3>
+    <p>
+      The <strong>calendar</strong> button opens a month grid of dated items. Drag an item to
+      another day to reschedule it; the change is written straight back.
+    </p>
+
+    <h3>Recurrence</h3>
+    <p>
+      A recurring item regenerates when completed. <code>every</code> handles the date arithmetic —
+      daily, weekly and monthly, with intervals like <em>every 2 weeks</em> — without depending on
+      an external calendar.
+    </p>
+  </div></div>
+</section>
+
+<section id="repl">
+  <div class="wrap"><div class="prose">
+    <h2>9. The REPL</h2>
+    <p>
+      <kbd>⌘J</kbd> shows and hides the EELisp REPL. Type an expression, press <kbd>⌘↵</kbd>, and
+      the result appears above the prompt.
+    </p>
+    <p>
+      Results are not text dumps. A query renders as a real table; <code>defform</code> and
+      <code>edit</code> render as a real form with working fields, including computed ones. This is
+      dBASE&nbsp;III's interaction model, rebuilt.
+    </p>
+<pre><code>λ (deftable notes (title:string body:string))
+λ (insert notes {:title <span class="st">"Kickoff"</span> :body <span class="st">"Ship by Friday"</span>})
+λ (browse notes)          <span class="cm">; → a table widget</span>
+λ (edit notes 1)          <span class="cm">; → a form widget</span></code></pre>
+    <h3>Snippets</h3>
+    <p>
+      The <strong>snippets</strong> button loads the standard EELisp bundle — ten modules and over a
+      hundred and fifty functions covering text, maths, dates, conversion, crypto, reference tables,
+      networking, world clocks and Bitcoin. Once loaded they're callable from the REPL and from your
+      keybindings alike.
+    </p>
+    <p>
+      The full language is documented at <a href="https://eelisp.app">eelisp.app</a>.
+    </p>
+  </div></div>
+</section>
+
+<section id="keybindings" class="alt">
+  <div class="wrap"><div class="prose">
+    <h2>10. Keybindings</h2>
+    <p>
+      <kbd>⌘⇧K</kbd> opens <code>.eeditor/keybindings.eelisp</code>, writing the documented defaults
+      into it the first time. That file <em>is</em> the shortcut table. Save it and it reloads at
+      once; delete it and the built-in defaults apply again.
+    </p>
+
+    <h3>Writing a binding</h3>
+<pre><code>(bind <span class="st">"Mod-i"</span> <em>body…</em>)</code></pre>
+    <p>
+      Modifiers join with <code>-</code> or <code>+</code>. <code>Mod</code> is <kbd>⌘</kbd> on
+      macOS and <kbd>Ctrl</kbd> elsewhere, and <code>Cmd</code>, <code>Ctrl</code>, <code>Alt</code>
+      (Option) and <code>Shift</code> can be named directly: <code>"Mod-Shift-f"</code>,
+      <code>"Ctrl-Alt-t"</code>. Every binding needs at least one modifier — function keys and
+      <kbd>Esc</kbd> may go bare. A later binding wins the same key, and unbinding one hands the key
+      back to the editor's own behaviour.
+    </p>
+
+    <h3>What a binding returns</h3>
+    <p>
+      The body is EELisp, evaluated on the engine when the key fires. It returns editor commands as
+      data, and a binding may list several — they run in order against the live document.
+    </p>
+    <div class="table-wrap"><table>
+      <tr><th>Command</th><th>Effect</th></tr>
+      <tr><td><code>(ed-cmd "save")</code></td><td>run a built-in command (table below)</td></tr>
+      <tr><td><code>(ed-insert text)</code></td><td>insert at the caret, caret after the text</td></tr>
+      <tr><td><code>(ed-insert-at pos text)</code></td><td>insert at an absolute offset</td></tr>
+      <tr><td><code>(ed-goto pos)</code></td><td>caret to an absolute offset</td></tr>
+      <tr><td><code>(ed-goto-line n)</code></td><td>caret to the start of line <em>n</em> (1-based)</td></tr>
+      <tr><td><code>(ed-select from to)</code></td><td>select a range</td></tr>
+      <tr><td><code>(ed-replace text)</code></td><td>replace the selection</td></tr>
+      <tr><td><code>(ed-replace-range from to text)</code></td><td>replace an explicit range</td></tr>
+      <tr><td><code>(ed-set-buffer text)</code></td><td>replace the whole document</td></tr>
+      <tr><td><code>(ed-open "notes/x.md")</code></td><td>open a file in a tab</td></tr>
+      <tr><td><code>(ed-new path)</code><br><code>(ed-new path text)</code></td><td>create the note if it doesn't exist, then open it — never overwrites</td></tr>
+      <tr><td><code>(ed-message text)</code></td><td>show a toast</td></tr>
+      <tr><td><code>(ed-nothing)</code></td><td>do nothing, useful as a <code>cond</code> branch</td></tr>
+    </table></div>
+
+    <h3>What your code can see</h3>
+    <p>These are defined fresh before every run:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Variable</th><th>Is</th></tr>
+      <tr><td><code>*file*</code></td><td>path of the current note</td></tr>
+      <tr><td><code>*cursor*</code></td><td>caret offset</td></tr>
+      <tr><td><code>*line*</code> / <code>*col*</code></td><td>caret line and column, both 1-based</td></tr>
+      <tr><td><code>*line-text*</code></td><td>text of the caret's line</td></tr>
+      <tr><td><code>*lines*</code></td><td>number of lines in the document</td></tr>
+      <tr><td><code>*sel-from*</code> / <code>*sel-to*</code></td><td>selection bounds</td></tr>
+      <tr><td><code>*selection*</code></td><td>the selected text</td></tr>
+      <tr><td><code>*buffer*</code></td><td>the whole document</td></tr>
+      <tr><td><code>*date*</code></td><td><code>"YYYY-MM-DD"</code>, local time</td></tr>
+      <tr><td><code>*time*</code></td><td><code>"HH:MM"</code></td></tr>
+      <tr><td><code>*now*</code></td><td><code>"YYYY-MM-DD HH:MM:SS"</code></td></tr>
+    </table></div>
+    <p class="muted">
+      <small>
+        <code>*selection*</code> and <code>*buffer*</code> are only computed when your binding
+        mentions them, so a shortcut stays fast in a large document.
+      </small>
+    </p>
+
+    <h3>Choosing what opens at launch</h3>
+    <p>
+      <code>(on-start …)</code> runs the same kind of commands once, after the workspace loads. With
+      no <code>on-start</code> form at all, EEditor opens <code>welcome.md</code>, or the first note
+      it finds.
+    </p>
+<pre><code>(on-start (ed-open <span class="st">"todo.md"</span>))         <span class="cm">; always this note</span>
+(on-start (ed-cmd <span class="st">"daily-note"</span>))       <span class="cm">; today's note, created if needed</span>
+(on-start (ed-new (str *date* <span class="st">".md"</span>)))  <span class="cm">; the same, spelled out</span>
+(on-start)                              <span class="cm">; nothing — an empty editor</span></code></pre>
+    <p>
+      An empty <code>(on-start)</code> is deliberately different from leaving the form out: one says
+      "open nothing", the other says "decide for me".
+    </p>
+
+    <h3>Built-in commands</h3>
+    <p>Anything here can be named by <code>(ed-cmd "…")</code>:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Command</th><th>Does</th></tr>
+      <tr><td><code>save</code></td><td>save the current note</td></tr>
+      <tr><td><code>quick-open</code></td><td>fuzzy file finder</td></tr>
+      <tr><td><code>search</code></td><td>full-text search</td></tr>
+      <tr><td><code>daily-note</code></td><td>open (or create) today's note</td></tr>
+      <tr><td><code>new-file</code> / <code>new-folder</code></td><td>create at the workspace root, asking for a name</td></tr>
+      <tr><td><code>open-file</code></td><td>pick any file; asks whether to copy it in or edit in place</td></tr>
+      <tr><td><code>copy-into-workspace</code></td><td>turn the current ↗ note into a copy in the workspace</td></tr>
+      <tr><td><code>open-keys</code> / <code>reload-keys</code></td><td>edit or re-read this config</td></tr>
+      <tr><td><code>toggle-repl</code> / <code>focus-repl</code></td><td>show/hide the REPL, or jump into it</td></tr>
+      <tr><td><code>focus-editor</code></td><td>put the caret back in the document</td></tr>
+      <tr><td><code>toggle-preview</code></td><td>editor ⇄ rendered Markdown</td></tr>
+      <tr><td><code>toggle-theme</code></td><td>light ⇄ dark</td></tr>
+      <tr><td><code>export-pdf</code></td><td>print the current note to PDF</td></tr>
+      <tr><td><code>snippets</code></td><td>load the standard EELisp bundle</td></tr>
+      <tr><td><code>calendar</code></td><td>open the month grid</td></tr>
+      <tr><td><code>agenda-setup</code></td><td>categories and rules panel</td></tr>
+      <tr><td><code>close-tab</code> / <code>next-tab</code> / <code>prev-tab</code></td><td>tab management</td></tr>
+    </table></div>
+
+    <h3>Worked examples</h3>
+<pre><code><span class="cm">;; A timestamped heading at the caret, on its own line</span>
+(bind <span class="st">"Mod-Shift-i"</span>
+  (ed-insert (str (cond (= *col* 1) <span class="st">""</span> true <span class="st">"\n"</span>) <span class="st">"## "</span> *time* <span class="st">"\n\n"</span>)))
+
+<span class="cm">;; Wrap the selection in bold</span>
+(bind <span class="st">"Mod-b"</span> (ed-replace (str <span class="st">"**"</span> *selection* <span class="st">"**"</span>)))
+
+<span class="cm">;; A task line</span>
+(bind <span class="st">"Mod-Shift-t"</span> (ed-insert <span class="st">"- [ ] "</span>))
+
+<span class="cm">;; Link back to today's note</span>
+(bind <span class="st">"Mod-Shift-b"</span> (ed-insert (str <span class="st">"[["</span> *date* <span class="st">"]]"</span>)))
+
+<span class="cm">;; File this note under a dated folder and tell me about it</span>
+(bind <span class="st">"Mod-Alt-n"</span>
+  (ed-new (str <span class="st">"journal/"</span> *date* <span class="st">".md"</span>) (str <span class="st">"# "</span> *date* <span class="st">"\n\n"</span>))
+  (ed-message <span class="st">"journal entry ready"</span>))</code></pre>
+
+    <div class="note">
+      <p>
+        Mistakes are reported, not swallowed: a binding that fails prints its error in the REPL and
+        shows a toast naming the key, and problems in the config itself are listed when it reloads.
+      </p>
+    </div>
+  </div></div>
+</section>
+
+<section id="mobile">
+  <div class="wrap"><div class="prose">
+    <h2>11. iPhone and iPad</h2>
+    <p>
+      Below 900 pixels the layout becomes a single pane with a tab bar — <strong>Files</strong>,
+      <strong>Editor</strong>, <strong>REPL</strong> — so the same app works on a phone without
+      pretending to be a desktop.
+    </p>
+    <p>
+      The workspace is the app's Documents folder, exposed in <strong>Files → On My iPhone →
+      EEditor</strong>. Anything you put there appears in EEditor, and anything EEditor writes is
+      visible to other apps and to whatever backup or sync you already use.
+    </p>
+    <p>
+      <strong>file…</strong> imports a single document through the system picker.
+      <strong>folder…</strong> points EEditor at an external folder — an iCloud Drive directory, for
+      instance — and remembers it across launches.
+    </p>
+  </div></div>
+</section>
+
+<section id="shortcuts" class="alt">
+  <div class="wrap"><div class="prose">
+    <h2>12. Shortcut reference</h2>
+    <p>The defaults. <kbd>⌘</kbd> is <kbd>Ctrl</kbd> on Windows and Linux.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Key</th><th>Does</th></tr>
+      <tr><td><kbd>⌘S</kbd></td><td>Save</td></tr>
+      <tr><td><kbd>⌘P</kbd></td><td>Quick open</td></tr>
+      <tr><td><kbd>⌘⇧F</kbd></td><td>Full-text search</td></tr>
+      <tr><td><kbd>⌘D</kbd></td><td>Today's note</td></tr>
+      <tr><td><kbd>⌘I</kbd></td><td>New note stamped with the minute</td></tr>
+      <tr><td><kbd>⌘⇧I</kbd></td><td>Timestamped heading at the caret</td></tr>
+      <tr><td><kbd>⌘⇧N</kbd></td><td>New file</td></tr>
+      <tr><td><kbd>⌘E</kbd></td><td>Preview ⇄ edit</td></tr>
+      <tr><td><kbd>⌘J</kbd></td><td>Show/hide the REPL</td></tr>
+      <tr><td><kbd>⌘⇧K</kbd></td><td>Edit these keybindings</td></tr>
+      <tr><td><kbd>⌘⇧↵</kbd></td><td>Run the <code>eelisp</code> block at the caret</td></tr>
+      <tr><td><kbd>⌘↵</kbd></td><td>Evaluate in the REPL</td></tr>
+      <tr><td><kbd>⌘</kbd>-click</td><td>Follow a wiki link from the editor</td></tr>
+    </table></div>
+    <p>Every one of these is a line in your keybindings file, and every one can be changed.</p>
+  </div></div>
+</section>
+
+</div>
+
+<footer>
+  <div class="wrap foot-cols">
+    <div><p><strong>EEditor</strong><br><span class="muted">A notes editor with a database and a Lisp inside.</span></p></div>
+    <div><p><a href="index.html">Home</a><br><a href="download.html">Download</a><br><a href="tutorial.html">Tutorial</a></p></div>
+    <div><p><a href="https://eelisp.app">EELisp — the engine</a><br><a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></p></div>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Download EEditor 2.0 — macOS, Windows, Linux, iOS</title>
+<meta name="description" content="Download EEditor 2.0.0 for macOS (Intel and Apple Silicon), Windows 10/11, and Linux. Free, no account required.">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="/">e<span class="lam">λ</span>e EEditor</a>
+    <div class="nav-links">
+      <a href="index.html#features">Features</a>
+      <a href="manual.html">Manual</a>
+      <a href="tutorial.html">Tutorial</a>
+      <a href="https://eelisp.app">EELisp</a>
+      <a href="download.html" aria-current="page">Download</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" style="padding-bottom:40px">
+  <div class="wrap">
+    <p class="eyebrow">Version 2.0.0 · 9 August 2026</p>
+    <h1>Download EEditor</h1>
+    <p class="lede">Free, no account, no telemetry. Pick your platform.</p>
+  </div>
+</header>
+
+<section style="padding-top:24px">
+  <div class="wrap">
+    <div class="grid">
+
+      <div class="card">
+        <h3>macOS</h3>
+        <p class="muted"><small>macOS 11 Big Sur or later · Intel &amp; Apple Silicon in one image</small></p>
+        <p><a class="btn" href="/downloads/eeditor-2.0.0-macos-universal.dmg">Download .dmg</a></p>
+        <p><small class="muted">12.5 MB</small></p>
+      </div>
+
+      <div class="card">
+        <h3>Windows</h3>
+        <p class="muted"><small>Windows 10 or 11, 64-bit</small></p>
+        <p><a class="btn" href="/downloads/eeditor-2.0.0-windows-x64-setup.exe">Download installer</a></p>
+        <p><small class="muted">4.0 MB · or the <a href="/downloads/eeditor-2.0.0-windows-x64.msi">.msi package</a> (5.6 MB)</small></p>
+      </div>
+
+      <div class="card">
+        <h3>Linux</h3>
+        <p class="muted"><small>x86-64 · glibc 2.35+ (Ubuntu 22.04 and newer)</small></p>
+        <p><a class="btn" href="/downloads/eeditor-2.0.0-linux-x86_64.AppImage">Download AppImage</a></p>
+        <p><small class="muted">79.7 MB · or the <a href="/downloads/eeditor-2.0.0-linux-amd64.deb">.deb package</a> (6.1 MB)</small></p>
+      </div>
+
+      <div class="card">
+        <h3>iPhone &amp; iPad</h3>
+        <p class="muted"><small>iOS / iPadOS 14 or later</small></p>
+        <p><a class="btn btn-ghost" href="https://apps.apple.com/app/id0000000000">View on the App&nbsp;Store</a></p>
+        <p><small class="muted">Universal app. The workspace appears in Files under On&nbsp;My&nbsp;iPhone → EEditor.</small></p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <div class="prose">
+      <h2>First launch</h2>
+
+      <h3>macOS</h3>
+      <p>
+        These builds are <strong>ad-hoc signed</strong>, not signed with an Apple Developer ID, so
+        Gatekeeper will refuse the first double-click. Open it once the long way and macOS
+        remembers:
+      </p>
+      <ol>
+        <li>Open the <code>.dmg</code> and drag <strong>EEditor</strong> to Applications.</li>
+        <li><strong>Right-click</strong> the app in Applications and choose <strong>Open</strong>.</li>
+        <li>Confirm in the dialog. Every launch after this is a normal double-click.</li>
+      </ol>
+      <p>
+        If the dialog doesn't offer <em>Open</em>, go to <strong>System Settings → Privacy &amp;
+        Security</strong> and click <strong>Open Anyway</strong> next to the message about EEditor.
+      </p>
+
+      <h3>Windows</h3>
+      <p>
+        The installer is unsigned, so SmartScreen shows a blue warning the first time. Click
+        <strong>More info</strong>, then <strong>Run anyway</strong>. The <code>.msi</code> is the
+        same application if you'd rather deploy it that way.
+      </p>
+
+      <h3>Linux</h3>
+      <p>The AppImage needs no installation — mark it executable and run it:</p>
+<pre><code>chmod +x eeditor-2.0.0-linux-x86_64.AppImage
+./eeditor-2.0.0-linux-x86_64.AppImage</code></pre>
+      <p>Or install the Debian package:</p>
+<pre><code>sudo apt install ./eeditor-2.0.0-linux-amd64.deb</code></pre>
+      <p>
+        Both need a WebKitGTK runtime, which every mainstream desktop already ships. On a minimal
+        install: <code>sudo apt install libwebkit2gtk-4.1-0</code>.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="prose">
+      <h2>Where your notes go</h2>
+      <p>
+        On first run EEditor creates a workspace folder and opens it. Use <strong>open…</strong> in
+        the sidebar to point it somewhere else — a Dropbox folder, a git repository, an external
+        drive. The choice is remembered.
+      </p>
+      <p>
+        Everything is a plain file. There is no database of your notes, no lock file and no
+        proprietary format; the SQLite database holds only the agenda and any tables you create
+        yourself in EELisp.
+      </p>
+
+      <h2>Verifying a download</h2>
+      <p>Checksums for every file in this release:</p>
+<pre><code>curl -O https://eeditor.app/downloads/SHA256SUMS
+shasum -a 256 -c SHA256SUMS --ignore-missing</code></pre>
+
+      <h2>Release notes</h2>
+      <p><strong>2.0.0</strong> — the cross-platform rewrite.</p>
+      <ul>
+        <li>Windows and Linux builds for the first time; macOS ships as one universal binary.</li>
+        <li>New engine: EELisp rebuilt in Rust, with tail calls, working macros and transactions.</li>
+        <li>Keybindings are now a file of EELisp you edit, with <code>(on-start …)</code> to choose the note you land on.</li>
+        <li>Open files from outside the workspace by drag-and-drop or <em>Open&nbsp;With</em>, in place or copied in.</li>
+        <li>Editor tabs, wiki-link autocomplete, backlinks bar, PDF export, and a calendar you can drag items around in.</li>
+      </ul>
+      <p class="muted"><small>Older Mac-only releases are no longer distributed here.</small></p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot-cols">
+    <div><p><strong>EEditor</strong><br><span class="muted">A notes editor with a database and a Lisp inside.</span></p></div>
+    <div><p><a href="index.html">Home</a><br><a href="manual.html">Manual</a><br><a href="tutorial.html">Tutorial</a></p></div>
+    <div><p><a href="https://eelisp.app">EELisp — the engine</a><br><a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></p></div>
+  </div>
+</footer>
+
+</body>
+</html>
