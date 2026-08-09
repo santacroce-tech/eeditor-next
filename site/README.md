@@ -38,14 +38,21 @@ this folder doesn't, such as the `downloads/` directory below.
 
 ## Publishing installers
 
-The download page links to `/downloads/…` on this domain rather than to GitHub, because the app repo
-is private and its release assets need authentication. `scripts/publish-downloads.sh` in the repo
-root pulls a release's assets, renames them to the names the page expects, writes `SHA256SUMS`, and
-uploads the lot:
+`download.html` links straight at GitHub release assets, so **a new release needs nothing done to
+the server** — only the version, file sizes, URLs and release notes updated on that page.
 
-```bash
-../scripts/publish-downloads.sh v2.0.0
-```
+Two things must be true or every download link 404s:
 
-Run it once per release, before announcing it. Then update the version, sizes and release notes in
-`download.html`.
+1. `santacroce-tech/eeditor-next` is **public**.
+2. The release is **published**, not left as a draft. Draft releases are invisible even on a public
+   repo, and `tauri-action` creates them as drafts on purpose.
+
+`../scripts/publish-downloads.sh v2.0.0` is still there if you ever want the files mirrored on this
+domain — it pulls a release, gives the assets clean names, writes `SHA256SUMS` and rsyncs them to
+`/var/www/eeditor.app/downloads/`. Nothing on the site depends on it today.
+
+## Deploying
+
+The server also hosts eelisp.app, roberto.santacroce.xyz and a dozen other vhosts; nginx serves this
+one from `/var/www/eeditor.app` with `try_files $uri $uri/ =404`, so plain `.html` files are all it
+needs. Backups of the previous site live in `/root/site-backups/` on the server.

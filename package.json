@@ -2,6 +2,10 @@
   "name": "eeditor-next",
   "version": "2.0.0",
   "private": true,
+  "description": "EEditor — a notes editor with a database and a Lisp inside",
+  "author": "Roberto Santacroce Martins <roberto@santacroce.xyz>",
+  "license": "MIT",
+  "repository": "https://github.com/santacroce-tech/eeditor-next",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k \"node dev/bridge.mjs\" \"vite\"",

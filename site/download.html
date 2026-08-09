@@ -39,32 +39,39 @@
       <div class="card">
         <h3>macOS</h3>
         <p class="muted"><small>macOS 11 Big Sur or later · Intel &amp; Apple Silicon in one image</small></p>
-        <p><a class="btn" href="/downloads/eeditor-2.0.0-macos-universal.dmg">Download .dmg</a></p>
+        <p><a class="btn" href="https://github.com/santacroce-tech/eeditor-next/releases/download/v2.0.0/eeditor-next_2.0.0_universal.dmg">Download .dmg</a></p>
         <p><small class="muted">12.5 MB</small></p>
       </div>
 
       <div class="card">
         <h3>Windows</h3>
         <p class="muted"><small>Windows 10 or 11, 64-bit</small></p>
-        <p><a class="btn" href="/downloads/eeditor-2.0.0-windows-x64-setup.exe">Download installer</a></p>
-        <p><small class="muted">4.0 MB · or the <a href="/downloads/eeditor-2.0.0-windows-x64.msi">.msi package</a> (5.6 MB)</small></p>
+        <p><a class="btn" href="https://github.com/santacroce-tech/eeditor-next/releases/download/v2.0.0/eeditor-next_2.0.0_x64-setup.exe">Download installer</a></p>
+        <p><small class="muted">4.0 MB · or the <a href="https://github.com/santacroce-tech/eeditor-next/releases/download/v2.0.0/eeditor-next_2.0.0_x64_en-US.msi">.msi package</a> (5.6 MB)</small></p>
       </div>
 
       <div class="card">
         <h3>Linux</h3>
         <p class="muted"><small>x86-64 · glibc 2.35+ (Ubuntu 22.04 and newer)</small></p>
-        <p><a class="btn" href="/downloads/eeditor-2.0.0-linux-x86_64.AppImage">Download AppImage</a></p>
-        <p><small class="muted">79.7 MB · or the <a href="/downloads/eeditor-2.0.0-linux-amd64.deb">.deb package</a> (6.1 MB)</small></p>
+        <p><a class="btn" href="https://github.com/santacroce-tech/eeditor-next/releases/download/v2.0.0/eeditor-next_2.0.0_amd64.AppImage">Download AppImage</a></p>
+        <p><small class="muted">79.7 MB · or the <a href="https://github.com/santacroce-tech/eeditor-next/releases/download/v2.0.0/eeditor-next_2.0.0_amd64.deb">.deb package</a> (6.1 MB)</small></p>
       </div>
 
       <div class="card">
-        <h3>iPhone &amp; iPad</h3>
-        <p class="muted"><small>iOS / iPadOS 14 or later</small></p>
-        <p><a class="btn btn-ghost" href="https://apps.apple.com/app/id0000000000">View on the App&nbsp;Store</a></p>
-        <p><small class="muted">Universal app. The workspace appears in Files under On&nbsp;My&nbsp;iPhone → EEditor.</small></p>
+        <h3>Build it yourself</h3>
+        <p class="muted"><small>MIT licensed · Rust + Node</small></p>
+        <p><a class="btn btn-ghost" href="https://github.com/santacroce-tech/eeditor-next">View the source</a></p>
+        <p><small class="muted">App and engine are both open source. <code>npm install &amp;&amp; npm run tauri build</code>.</small></p>
       </div>
 
     </div>
+    <p style="margin-top:26px">
+      <small class="muted">
+        Every build, with checksums, is on the
+        <a href="https://github.com/santacroce-tech/eeditor-next/releases">releases page</a>.
+        An iPhone and iPad version is in testing and will be announced here.
+      </small>
+    </p>
   </div>
 </section>
 
@@ -126,9 +133,11 @@
       </p>
 
       <h2>Verifying a download</h2>
-      <p>Checksums for every file in this release:</p>
-<pre><code>curl -O https://eeditor.app/downloads/SHA256SUMS
-shasum -a 256 -c SHA256SUMS --ignore-missing</code></pre>
+      <p>
+        GitHub publishes a SHA-256 digest for every asset — open the release, expand the asset list,
+        and compare it with what you have:
+      </p>
+<pre><code>shasum -a 256 eeditor-next_2.0.0_universal.dmg</code></pre>
 
       <h2>Release notes</h2>
       <p><strong>2.0.0</strong> — the cross-platform rewrite.</p>
@@ -150,6 +159,7 @@ shasum -a 256 -c SHA256SUMS --ignore-missing</code></pre>
     <div><p><a href="index.html">Home</a><br><a href="manual.html">Manual</a><br><a href="tutorial.html">Tutorial</a></p></div>
     <div><p><a href="https://eelisp.app">EELisp — the engine</a><br><a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></p></div>
   </div>
+  <div class="wrap" style="margin-top:22px"><p id="mitline"><small>EEditor and EELisp are free software under the <a href="https://github.com/santacroce-tech/eeditor-next/blob/main/LICENSE">MIT licence</a>. © 2026 Roberto Santacroce Martins.</small></p></div>
 </footer>
 
 </body>
