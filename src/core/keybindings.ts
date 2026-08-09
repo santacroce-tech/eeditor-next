@@ -4,28 +4,43 @@
 // A config is a list of top-level forms:
 //
 //   (bind "Mod-i" (ed-goto-line 2) (ed-insert (str "## " *date* "\n\n")))
+//   (on-start (ed-open "todo.md"))
 //
 // We only parse far enough to pull out the key and the *source text* of the body — the body itself
 // is EELisp and is evaluated by the engine when the key fires. Wrapping it in `(list …)` means a
 // binding can list several commands and still hand back one value.
 
-export interface Binding {
+/** A body of forms, compiled to the value we hand the engine. */
+interface Body {
+  /** Lisp source: the body forms wrapped in `(list …)`, or `(list)` for an empty body. */
+  source: string;
+  /** Set when the body is exactly `(ed-cmd "name")` — dispatched without the engine. */
+  command?: string;
+}
+
+export interface Binding extends Body {
   /** Canonical id matched against a KeyboardEvent (see keyId / eventKeyId). */
   id: string;
   /** The key as written in the config, e.g. "Mod-Shift-I" — for messages. */
   spec: string;
-  /** Lisp source evaluated when the key fires: the body forms wrapped in `(list …)`. */
-  source: string;
-  /** Set when the body is exactly `(ed-cmd "name")` — dispatched without the engine. */
-  command?: string;
   /** 1-based line of the `(bind …)` form, for error messages. */
+  line: number;
+}
+
+/** What `(on-start …)` runs when the workspace has finished loading. */
+export interface StartHook extends Body {
   line: number;
 }
 
 export interface ParsedConfig {
   bindings: Binding[];
+  /** The `(on-start …)` form. Absent → EEditor picks the first file itself. */
+  start?: StartHook;
   errors: string[];
 }
+
+/** Source for a body that does nothing — `(on-start)`, i.e. "start with no file open". */
+export const EMPTY_BODY = "(list)";
 
 // ── key specs ──────────────────────────────────────────────────────────────
 
@@ -175,13 +190,22 @@ function topLevelForms(src: string): { forms: Form[]; errors: string[] } {
 
 const CMD_ONLY = /^\(\s*ed-cmd\s+"([A-Za-z0-9_-]+)"\s*\)$/;
 
-function parseBind(form: Form, mac: boolean): { binding: Binding } | { error: string } {
+function compileBody(text: string): Body {
+  const cmd = CMD_ONLY.exec(text);
+  return { source: text === "" ? EMPTY_BODY : `(list ${text})`, command: cmd ? cmd[1] : undefined };
+}
+
+function parseForm(form: Form, mac: boolean): { binding: Binding } | { start: StartHook } | { error: string } {
   const inner = form.text.slice(1, -1);
-  const head = /^\s*bind\s/.exec(inner);
+  const head = /^\s*(bind|on-start)(?=[\s)]|$)/.exec(inner);
   if (!head) {
     const what = form.text.slice(0, 40).replace(/\s+/g, " ");
-    return { error: `line ${form.line}: expected (bind "Key" …), got ${what}…` };
+    return { error: `line ${form.line}: expected (bind "Key" …) or (on-start …), got ${what}…` };
   }
+  if (head[1] === "on-start") {
+    return { start: { ...compileBody(inner.slice(head[0].length).trim()), line: form.line } };
+  }
+
   let i = head[0].length;
   while (i < inner.length && /\s/.test(inner[i])) i++;
   if (inner[i] !== '"') return { error: `line ${form.line}: bind needs a quoted key, e.g. (bind "Mod-i" …)` };
@@ -194,28 +218,21 @@ function parseBind(form: Form, mac: boolean): { binding: Binding } | { error: st
   const body = inner.slice(str.end).trim();
   if (body === "") return { error: `line ${form.line}: (bind "${str.value}" …) has no body` };
 
-  const cmd = CMD_ONLY.exec(body);
-  return {
-    binding: {
-      id: key.id,
-      spec: str.value,
-      source: `(list ${body})`,
-      command: cmd ? cmd[1] : undefined,
-      line: form.line,
-    },
-  };
+  return { binding: { ...compileBody(body), id: key.id, spec: str.value, line: form.line } };
 }
 
-/** Parse a keybindings config. Later bindings win over earlier ones for the same key. */
+/** Parse a keybindings config. Later forms win over earlier ones (per key, and for `on-start`). */
 export function parseKeybindings(src: string, mac: boolean = isMacPlatform()): ParsedConfig {
   const { forms, errors } = topLevelForms(src);
   const byId = new Map<string, Binding>();
+  let start: StartHook | undefined;
   for (const form of forms) {
-    const r = parseBind(form, mac);
+    const r = parseForm(form, mac);
     if ("error" in r) errors.push(r.error);
+    else if ("start" in r) start = r.start;
     else byId.set(r.binding.id, r.binding);
   }
-  return { bindings: [...byId.values()], errors };
+  return { bindings: [...byId.values()], start, errors };
 }
 
 // ── emitting lisp ──────────────────────────────────────────────────────────

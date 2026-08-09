@@ -6,7 +6,7 @@
 // Dispatch runs on the document in the *capture* phase, so a bound key wins over CodeMirror's own
 // bindings — and unbinding a key in the config hands it straight back to CodeMirror.
 
-import { parseKeybindings, eventKeyId, lispString, type Binding } from "../core/keybindings";
+import { parseKeybindings, eventKeyId, lispString, EMPTY_BODY, type Binding, type StartHook } from "../core/keybindings";
 import type { EngineClient } from "../engine/client";
 import type { WorkspaceClient } from "../engine/workspace";
 import type { JsonValue } from "../engine/types";
@@ -23,6 +23,11 @@ export type CommandTable = Record<string, () => void | Promise<void>>;
 export interface Keybindings {
   /** Re-read the config (falling back to the bundled defaults) and rebuild the key map. */
   reload(): Promise<void>;
+  /**
+   * Run the config's `(on-start …)`, once the workspace is loaded. Returns false when the config
+   * has no such form, so the caller can fall back to its own choice of file.
+   */
+  runStart(): Promise<boolean>;
   /** Open the config in an editor tab, writing the defaults first if it doesn't exist yet. */
   openConfig(): Promise<void>;
   isConfigPath(path: string): boolean;
@@ -37,6 +42,8 @@ export interface KeybindingsOptions {
   /** Path of the note in the editor — exposed to bindings as *file*. */
   file: () => string;
   openFile: (path: string) => Promise<void>;
+  /** Create the note if it isn't there yet, then open it (the `ed-new` command). */
+  createFile: (path: string, content: string) => Promise<void>;
   /** Where errors and `println` output from a binding go (the REPL scrollback). */
   note: (text: string) => void;
 }
@@ -55,12 +62,14 @@ const COMMANDS = new Set([
   "replace-range",
   "set-buffer",
   "open",
+  "new",
   "message",
 ]);
 
 export function createKeybindings(opts: KeybindingsOptions): Keybindings {
   const { ws, engine, editor, commands } = opts;
   let map = new Map<string, Binding>();
+  let start: StartHook | undefined;
   let preludeLoaded = false;
 
   // ── config ──
@@ -72,8 +81,10 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
     } catch {
       src = DEFAULT_CONFIG; // no config yet (or unreadable) — the bundled defaults still apply
     }
-    const { bindings, errors } = parseKeybindings(src);
+    const parsed = parseKeybindings(src);
+    const { bindings, errors } = parsed;
     map = new Map(bindings.map((b) => [b.id, b]));
+    start = parsed.start;
     for (const e of errors) opts.note(`; keybindings: ${e}`);
     if (errors.length > 0) toast(`keybindings: ${errors.length} problem(s) — see the REPL`);
   }
@@ -100,8 +111,11 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
     return true;
   }
 
+  /** What `run` needs: a body to evaluate, and a name for its error messages. */
+  type Runnable = { spec: string; source: string; command?: string };
+
   /** `(def *x* …)` bindings the lisp body can read. Kept in sync with default.eelisp's header. */
-  function context(binding: Binding): string {
+  function context(binding: Runnable): string {
     const state = editor.view.state;
     const sel = state.selection.main;
     const line = state.doc.lineAt(sel.head);
@@ -162,6 +176,9 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
         return false;
       case "open":
         void opts.openFile(text(args[0]));
+        return false;
+      case "new":
+        void opts.createFile(text(args[0]), text(args[1]));
         return false;
       case "insert": {
         const at = view.state.selection.main.head;
@@ -224,7 +241,7 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
     return touched;
   }
 
-  async function run(binding: Binding): Promise<void> {
+  async function run(binding: Runnable): Promise<void> {
     if (binding.command) {
       runCommand(binding.command); // no engine round-trip for a plain (ed-cmd "…")
       return;
@@ -256,8 +273,16 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
     true,
   );
 
+  /** `(on-start …)`. An empty `(on-start)` still counts: it means "launch with nothing open". */
+  async function runStart(): Promise<boolean> {
+    if (!start) return false;
+    if (start.source !== EMPTY_BODY) await run({ spec: "on-start", ...start });
+    return true;
+  }
+
   return {
     reload,
+    runStart,
     openConfig,
     isConfigPath: (p) => p === KEYBINDINGS_PATH,
     bindings: () => [...map.values()],
