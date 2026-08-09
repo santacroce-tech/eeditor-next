@@ -1,0 +1,94 @@
+name: Release
+
+# Push a tag to cut a release:  git tag v2.0.0 && git push origin v2.0.0
+# The release is created as a DRAFT — check the installers, then publish it by hand.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and attach the installers to (e.g. v2.0.0)"
+        required: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # One disk image for both Intel and Apple Silicon.
+          - platform: macos-latest
+            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+            args: --target universal-apple-darwin --bundles app,dmg
+          # 22.04, not latest: an AppImage built against a newer glibc won't start on older distros.
+          - platform: ubuntu-22.04
+            rust-targets: ""
+            args: --bundles deb,appimage
+          - platform: windows-latest
+            rust-targets: ""
+            args: --bundles msi,nsis
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: eeditor-next
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      # The Tauri crate depends on the engine by path (`../../eelisp-rs`).
+      - uses: actions/checkout@v4
+        with:
+          repository: santacroce-tech/eelisp-rs
+          path: eelisp-rs
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: eeditor-next/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: eeditor-next/src-tauri
+
+      - name: System dependencies (webkit2gtk for Tauri)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev \
+            libsoup-3.0-dev libgtk-3-dev librsvg2-dev patchelf \
+            libayatana-appindicator3-dev libxdo-dev build-essential
+
+      - name: Install app dependencies
+        working-directory: eeditor-next
+        run: npm ci
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: eeditor-next
+          tagName: ${{ github.event.inputs.tag || github.ref_name }}
+          releaseName: EEditor __VERSION__
+          releaseBody: |
+            Desktop builds of EEditor __VERSION__.
+
+            | Platform | File |
+            |---|---|
+            | macOS (Intel + Apple Silicon) | `.dmg` |
+            | Windows 10/11 (x64) | `.msi` or `-setup.exe` |
+            | Linux (x64) | `.AppImage` or `.deb` |
+
+            The macOS build is ad-hoc signed: on first launch, right-click the app and
+            choose **Open** (or allow it under System Settings → Privacy & Security).
+            The Windows installer is unsigned, so SmartScreen will ask once —
+            **More info → Run anyway**.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
