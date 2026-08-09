@@ -5,8 +5,12 @@ on:
     branches: [main]
   pull_request:
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
-  build:
+  # Fast feedback: everything that needs nothing but Node.
+  frontend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,3 +25,59 @@ jobs:
         run: npm test
       - name: Build frontend
         run: npm run build
+
+  # The parts the frontend job can't see: the Tauri shell compiles, and the app's
+  # contract with the real engine binary still holds.
+  #
+  # `src-tauri` depends on the engine by path (`../../eelisp-rs`), so both repos are
+  # checked out side by side, exactly as they sit on a dev machine.
+  native:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: eeditor-next
+      - uses: actions/checkout@v4
+        with:
+          repository: santacroce-tech/eelisp-rs
+          path: eelisp-rs
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: eeditor-next/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            eeditor-next/src-tauri
+            eelisp-rs
+      - name: System dependencies (webkit2gtk for Tauri)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev \
+            libsoup-3.0-dev libgtk-3-dev librsvg2-dev patchelf \
+            libayatana-appindicator3-dev libxdo-dev build-essential
+
+      - name: Build the engine binary
+        working-directory: eelisp-rs
+        run: cargo build --release --bin eelisp
+
+      - name: Install app dependencies
+        working-directory: eeditor-next
+        run: npm ci
+
+      # `tauri-build` expects frontendDist (../dist) to exist before the crate compiles.
+      - name: Build frontend
+        working-directory: eeditor-next
+        run: npm run build
+
+      - name: Engine contract (smoke)
+        working-directory: eeditor-next
+        env:
+          EELISP_BIN: ${{ github.workspace }}/eelisp-rs/target/release/eelisp
+        run: npm run smoke
+
+      - name: Compile the Tauri shell
+        working-directory: eeditor-next
+        run: cargo check --manifest-path src-tauri/Cargo.toml --all-targets

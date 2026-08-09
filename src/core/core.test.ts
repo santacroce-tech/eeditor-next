@@ -195,6 +195,20 @@ describe("keybindings config", () => {
     expect(parseKeybindings(`(bind "Mod-i")`, true).errors[0]).toContain("no body");
   });
 
+  it("picks up (on-start …), including the empty one", () => {
+    const one = parseKeybindings(`(bind "Mod-s" (ed-cmd "save"))\n(on-start (ed-open "todo.md"))`, true);
+    expect(one.errors).toEqual([]);
+    expect(one.bindings).toHaveLength(1); // on-start is not a binding
+    expect(one.start?.source).toBe(`(list (ed-open "todo.md"))`);
+    // a lone (ed-cmd "…") skips the engine here too
+    expect(parseKeybindings(`(on-start (ed-cmd "daily-note"))`, true).start?.command).toBe("daily-note");
+    // "start with nothing open" — an empty body, which is not the same as no form at all
+    expect(parseKeybindings(`(on-start)`, true).start?.source).toBe("(list)");
+    expect(parseKeybindings(`(bind "Mod-s" (ed-cmd "save"))`, true).start).toBeUndefined();
+    // later wins, as with keys
+    expect(parseKeybindings(`(on-start (ed-open "a.md"))\n(on-start (ed-open "b.md"))`, true).start?.source).toContain("b.md");
+  });
+
   it("lets a later binding win the same key", () => {
     const { bindings } = parseKeybindings(`(bind "Mod-i" (ed-cmd "a"))\n(bind "Mod-I" (ed-cmd "b"))`, true);
     expect(bindings).toHaveLength(1);

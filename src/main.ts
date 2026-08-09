@@ -616,23 +616,36 @@ function main(): void {
     return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
   };
 
-  // Open today's note (YYYY-MM-DD.md at the workspace root), creating it with a date heading
-  // if it doesn't exist yet. Never overwrites an existing daily note.
-  async function openDailyNote(): Promise<void> {
-    const date = todayISO();
-    const path = `${date}.md`;
-    if (!sidebar.files().some((f) => f.path === path)) {
-      try {
-        await ws.write(path, `# ${date}\n\n`);
-      } catch (e) {
-        toast(`Could not create daily note: ${String(e)}`);
-        return;
-      }
+  /**
+   * Open a note, creating it with `content` if it isn't there yet — the `ed-new` command and the
+   * daily note. `create` fails when the path is taken, so an existing note is never overwritten.
+   */
+  async function openOrCreate(path: string, content: string): Promise<void> {
+    let created = false;
+    try {
+      await ws.create(path, false);
+      created = true;
+    } catch {
+      /* already there — just open it */
+    }
+    if (created) {
+      if (content) await ws.write(path, content).catch(() => {});
       await sidebar.refresh();
       await tags.refresh();
     }
-    await openFile(path);
+    try {
+      await openFile(path);
+    } catch (e) {
+      toast(`Could not open ${path}: ${String(e)}`);
+      return;
+    }
     editor.view.focus();
+  }
+
+  // Today's note (YYYY-MM-DD.md at the workspace root), with a date heading when it's new.
+  async function openDailyNote(): Promise<void> {
+    const date = todayISO();
+    await openOrCreate(`${date}.md`, `# ${date}\n\n`);
   }
 
   // ── commands: everything a keybinding can name via (ed-cmd "…") ──
@@ -742,21 +755,27 @@ function main(): void {
     commands,
     file: () => currentPath,
     openFile: (p) => openFile(p),
+    createFile: (p, content) => openOrCreate(p, content),
     note: (t) => repl.note(t),
   });
   keysBtn.addEventListener("click", () => void keys.openConfig());
-  void keys.reload();
 
   setHead();
-  // Restore a previously-picked external folder (iOS) first, then load the tree once.
+  // Restore a previously-picked external folder (iOS) first, then load the tree once. The
+  // keybindings live in the workspace, so they're read after it settles — and the config's
+  // `(on-start …)`, if it has one, decides what to open instead of openFirstFile.
   void ws
     .restoreWorkspace()
     .catch(() => null)
     .finally(() => {
-      void sidebar.refresh().then(() => {
-        void openFirstFile();
-        void tags.refresh();
-      });
+      void sidebar
+        .refresh()
+        .catch(() => {}) // an unreadable tree must not cost us the shortcuts
+        .then(async () => {
+          await keys.reload();
+          if (!(await keys.runStart().catch(() => false))) await openFirstFile();
+          void tags.refresh();
+        });
     });
   void agenda.refresh();
 }

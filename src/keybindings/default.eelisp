@@ -19,10 +19,16 @@
 ;;   (ed-replace-range from to text)
 ;;   (ed-set-buffer text)            replace the whole document
 ;;   (ed-open "notes/x.md")          open a file in a tab
+;;   (ed-new path)                   create the note if it doesn't exist, then open it
+;;   (ed-new path text)              …with text as its starting content
 ;;   (ed-message text)               toast
 ;;
 ;; A binding may list several commands; they run in order against the live document.
 ;; Anything the standard bundle (the REPL's "snippets" button) defines is callable here too.
+;;
+;; (on-start body…) runs the same kind of commands once, when EEditor has loaded the workspace —
+;; it decides which note you land on. Without it, EEditor opens welcome.md, or the first note it
+;; finds. See the bottom of this file.
 ;;
 ;; Context, defined fresh before every run:
 ;;   *file*        path of the current note        *cursor*   caret offset
@@ -46,17 +52,21 @@
 
 ;; ── lisp ───────────────────────────────────────────────────────────────────
 
-;; ⌘I — a timestamped "## " heading at the top of the note (line 2), caret on the blank
-;; line under it, ready to type.
+;; ⌘I — a new note stamped with the minute, e.g. "2026-08-09 1430.md", with the same stamp as
+;; its heading. Press it twice in the same minute and you land back in the same note.
+;; (No ":" in the name — Finder shows a colon as a "/".)
 (bind "Mod-i"
-  (ed-goto-line 2)
-  (ed-insert (str "## " *date* " " *time* "\n\n")))
+  (ed-new (str *date* " " (str-replace *time* ":" "") ".md")
+          (str "# " *date* " " *time* "\n\n")))
 
-;; ⌘⇧I — the same heading, but at the caret instead of the top of the note.
+;; ⌘⇧I — a timestamped "## " heading at the caret, caret on the blank line under it.
 (bind "Mod-Shift-i"
   (ed-insert (str (cond (= *col* 1) "" true "\n") "## " *time* "\n\n")))
 
 ;; A few more ideas — uncomment to enable:
+;;
+;; ⌘⌥I — the same heading, but at the top of the note (line 2)
+;; (bind "Mod-Alt-i" (ed-goto-line 2) (ed-insert (str "## " *date* " " *time* "\n\n")))
 ;;
 ;; ⌘B — wrap the selection in bold
 ;; (bind "Mod-b" (ed-replace (str "**" *selection* "**")))
@@ -69,6 +79,18 @@
 ;;
 ;; ⌘⇧B — link back to today's note
 ;; (bind "Mod-Shift-b" (ed-insert (str "[[" *date* "]]")))
+
+;; ── what opens at launch ───────────────────────────────────────────────────
+;; Uncomment one. With every (on-start …) commented out, EEditor falls back to welcome.md — or,
+;; failing that, the first note in the tree.
+;;
+;; (on-start (ed-open "todo.md"))              ;; always this note
+;; (on-start (ed-cmd "daily-note"))            ;; today's note, created if needed
+;; (on-start (ed-new (str *date* ".md")))      ;; the same, spelled out
+;; (on-start)                                  ;; nothing — start on an empty editor
+;;
+;; *date*, *time* and *now* are set here as well; the rest of the context describes the caret,
+;; which at launch has no note to point at yet (*file* is "").
 
 ;; ── built-in commands ──────────────────────────────────────────────────────
 ;; save · quick-open · search · daily-note · new-file · new-folder · open-keys · reload-keys

@@ -1,10 +1,10 @@
 [package]
 name = "app"
-version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
-license = ""
-repository = ""
+version = "2.0.0"
+description = "EEditor — a notes editor built on the EELisp engine"
+authors = ["Roberto Santacroce Martins <roberto@santacroce.xyz>"]
+license = "MIT"
+repository = "https://github.com/santacroce-tech/eeditor-next"
 edition = "2021"
 rust-version = "1.77.2"
 

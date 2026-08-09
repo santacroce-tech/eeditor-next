@@ -14,5 +14,6 @@
 (defn ed-replace-range (from to text) (list "replace-range" from to text))
 (defn ed-set-buffer (text) (list "set-buffer" text))        ;; replace the whole document
 (defn ed-open (path) (list "open" path))                    ;; open a file in a tab
+(defn ed-new (path . text) (cons "new" (cons path text)))   ;; create the note if missing, then open it
 (defn ed-message (text) (list "message" text))              ;; toast
 (defn ed-nothing () (list))                                 ;; do nothing (useful in a cond)
