@@ -34,7 +34,7 @@ export interface StartHook extends Body {
 
 export interface ParsedConfig {
   bindings: Binding[];
-  /** The `(on-start …)` form. Absent → EEditor picks the first file itself. */
+  /** The `(on-start …)` form. Absent → EEditor picks the note to open itself. */
   start?: StartHook;
   errors: string[];
 }

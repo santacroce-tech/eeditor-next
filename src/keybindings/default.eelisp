@@ -27,8 +27,8 @@
 ;; Anything the standard bundle (the REPL's "snippets" button) defines is callable here too.
 ;;
 ;; (on-start body…) runs the same kind of commands once, when EEditor has loaded the workspace —
-;; it decides which note you land on. Without it, EEditor opens welcome.md, or the first note it
-;; finds. See the bottom of this file.
+;; it decides which note you land on. Without it, EEditor opens welcome.md while that's still
+;; around, and today's note after that. See the bottom of this file.
 ;;
 ;; Context, defined fresh before every run:
 ;;   *file*        path of the current note        *cursor*   caret offset
@@ -82,7 +82,7 @@
 
 ;; ── what opens at launch ───────────────────────────────────────────────────
 ;; Uncomment one. With every (on-start …) commented out, EEditor falls back to welcome.md — or,
-;; failing that, the first note in the tree.
+;; once that's gone, to today's note, creating it if it isn't there yet.
 ;;
 ;; (on-start (ed-open "todo.md"))              ;; always this note
 ;; (on-start (ed-cmd "daily-note"))            ;; today's note, created if needed

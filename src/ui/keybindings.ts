@@ -78,8 +78,13 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
     let src: string;
     try {
       src = await ws.read(KEYBINDINGS_PATH);
-    } catch {
-      src = DEFAULT_CONFIG; // no config yet (or unreadable) — the bundled defaults still apply
+    } catch (e) {
+      // No config yet, or it's there but unreadable — either way the bundled defaults apply. Say
+      // so: every (on-start …) in them is commented out, so a silent fallback is indistinguishable
+      // from a config whose own (on-start …) is still commented, and you land on the fallback note
+      // with nothing to explain why.
+      src = DEFAULT_CONFIG;
+      opts.note(`; keybindings: ${KEYBINDINGS_PATH} not read (${String(e)}) — using the built-in defaults`);
     }
     const parsed = parseKeybindings(src);
     const { bindings, errors } = parsed;
