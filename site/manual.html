@@ -404,8 +404,8 @@
     <h3>Choosing what opens at launch</h3>
     <p>
       <code>(on-start …)</code> runs the same kind of commands once, after the workspace loads. With
-      no <code>on-start</code> form at all, EEditor opens <code>welcome.md</code>, or the first note
-      it finds.
+      no <code>on-start</code> form at all, EEditor opens <code>welcome.md</code> while that is still
+      around, and today's note — created if it doesn't exist yet — once it isn't.
     </p>
 <pre><code>(on-start (ed-open <span class="st">"todo.md"</span>))         <span class="cm">; always this note</span>
 (on-start (ed-cmd <span class="st">"daily-note"</span>))       <span class="cm">; today's note, created if needed</span>

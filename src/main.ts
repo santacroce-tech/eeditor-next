@@ -531,11 +531,16 @@ function main(): void {
   // clicking a tag opens full-text search filtered to that tag
   const tags = createTagsPanel(tagsBody, ws, () => sidebar.files(), (tag) => search.open("#" + tag));
 
-  // open welcome.md if present, else the first file in the workspace
+  // What opens at launch when the config has no (on-start …): welcome.md while it's still there —
+  // the intro is worth reading once — and after that today's note, created if it doesn't exist yet.
+  // So a launch always lands somewhere to write, even in a workspace with nothing in it.
   const openFirstFile = async (): Promise<void> => {
-    const files = sidebar.files();
-    const target = files.find((f) => f.name === "welcome.md") ?? files[0];
-    if (target) await openFile(target.path).catch(() => {});
+    const welcome = sidebar.files().find((f) => f.name === "welcome.md");
+    if (welcome) {
+      await openFile(welcome.path).catch(() => {});
+      return;
+    }
+    await openDailyNote();
   };
 
   openBtn.addEventListener("click", () => {
