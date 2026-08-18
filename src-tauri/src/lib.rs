@@ -7,13 +7,18 @@
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use eelisp::server::EngineHandle;
 use serde_json::{json, Value};
 use tauri::{Emitter, Manager};
 
-struct Workspace(Mutex<PathBuf>);
+/// The folder being edited. An `Arc` because the engine thread holds the same handle — that is
+/// how `(current-dir)` answers with the workspace, and keeps answering after the user picks a
+/// different one.
+struct Workspace(Arc<Mutex<PathBuf>>);
 
 /// Files outside the workspace that the user has explicitly opened in place (drag-and-drop, "Open
 /// With", the file picker). `external_read`/`external_write` refuse anything not in here, so the
@@ -27,13 +32,155 @@ struct ExternalFiles(Mutex<HashSet<PathBuf>>);
 #[derive(Default)]
 struct PendingOpens(Mutex<Vec<PathBuf>>);
 
-const TEXT_EXT: &[&str] = &["md", "markdown", "txt", "eelisp", "lisp", "json", "yaml", "yml", "toml"];
+/// Set once the quit has been handed to the frontend (or forced), so the deferral happens exactly
+/// once. See `defer_exit` — quitting must not drop unsaved buffers.
+#[derive(Default)]
+struct ExitGuard(AtomicBool);
 
-fn is_text_file(p: &Path) -> bool {
+/// How long we wait for the frontend to flush before quitting regardless. A wedged webview must
+/// never make the app unquittable; saving a handful of text files takes milliseconds.
+const EXIT_FLUSH_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// Id of our own Quit item (see `build_menu`).
+const MENU_QUIT: &str = "quit";
+
+/// Hand the quit to the frontend — it holds the unsaved buffers — and arrange to exit anyway if it
+/// never answers. Returns false when the exit was already deferred once and should now go through.
+fn defer_exit(app: &tauri::AppHandle) -> bool {
+    if app.state::<ExitGuard>().0.swap(true, Ordering::SeqCst) {
+        return false;
+    }
+    let _ = app.emit("app-exiting", ());
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(EXIT_FLUSH_TIMEOUT);
+        handle.exit(0);
+    });
+    true
+}
+
+/// The default application menu, with one deliberate change: Quit is ours rather than the
+/// predefined item. The predefined one terminates the process through the OS, which never reaches
+/// the event loop — so ⌘Q would take the last second of typing with it. Everything else mirrors
+/// `Menu::default` (the Edit menu in particular: on macOS its items are what make ⌘C/⌘V work).
+#[cfg(desktop)]
+fn build_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+    use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
+
+    let pkg = app.package_info();
+    let name = pkg.name.clone();
+    let about = AboutMetadata {
+        name: Some(name.clone()),
+        version: Some(pkg.version.to_string()),
+        copyright: app.config().bundle.copyright.clone(),
+        authors: app.config().bundle.publisher.clone().map(|p| vec![p]),
+        ..Default::default()
+    };
+    let quit = MenuItem::with_id(app, MENU_QUIT, format!("Quit {name}"), true, Some("CmdOrCtrl+Q"))?;
+
+    Menu::with_items(
+        app,
+        &[
+            #[cfg(target_os = "macos")]
+            &Submenu::with_items(
+                app,
+                name.clone(),
+                true,
+                &[
+                    &PredefinedMenuItem::about(app, None, Some(about.clone()))?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &PredefinedMenuItem::services(app, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &PredefinedMenuItem::hide(app, None)?,
+                    &PredefinedMenuItem::hide_others(app, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &quit,
+                ],
+            )?,
+            &Submenu::with_items(
+                app,
+                "File",
+                true,
+                &[
+                    &PredefinedMenuItem::close_window(app, None)?,
+                    #[cfg(not(target_os = "macos"))]
+                    &quit,
+                ],
+            )?,
+            &Submenu::with_items(
+                app,
+                "Edit",
+                true,
+                &[
+                    &PredefinedMenuItem::undo(app, None)?,
+                    &PredefinedMenuItem::redo(app, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &PredefinedMenuItem::cut(app, None)?,
+                    &PredefinedMenuItem::copy(app, None)?,
+                    &PredefinedMenuItem::paste(app, None)?,
+                    &PredefinedMenuItem::select_all(app, None)?,
+                ],
+            )?,
+            #[cfg(target_os = "macos")]
+            &Submenu::with_items(app, "View", true, &[&PredefinedMenuItem::fullscreen(app, None)?])?,
+            &Submenu::with_items(
+                app,
+                "Window",
+                true,
+                &[
+                    &PredefinedMenuItem::minimize(app, None)?,
+                    &PredefinedMenuItem::maximize(app, None)?,
+                    #[cfg(target_os = "macos")]
+                    &PredefinedMenuItem::separator(app)?,
+                    &PredefinedMenuItem::close_window(app, None)?,
+                ],
+            )?,
+            &Submenu::with_items(
+                app,
+                "Help",
+                true,
+                &[
+                    #[cfg(not(target_os = "macos"))]
+                    &PredefinedMenuItem::about(app, None, Some(about))?,
+                ],
+            )?,
+        ],
+    )
+}
+
+/// EEditor edits text, not only Markdown: a source file, a log, a csv, a config, a file with no
+/// extension at all are all fair game. So the rule is a *denylist* — formats whose bytes are not
+/// text — rather than a list of blessed extensions. What the list can't answer (an unknown
+/// extension, no extension) is settled by looking at the content: see `read_text`.
+const BINARY_EXT: &[&str] = &[
+    // images
+    "png", "jpg", "jpeg", "gif", "bmp", "tiff", "tif", "webp", "heic", "heif", "ico", "icns", "psd", "ai",
+    // documents & archives
+    "pdf", "zip", "gz", "bz2", "xz", "7z", "rar", "tar", "dmg", "iso", "doc", "docx", "xls", "xlsx", "ppt",
+    "pptx", "numbers", "pages", "sketch", "epub",
+    // audio & video
+    "mp3", "wav", "aac", "flac", "ogg", "m4a", "mp4", "m4v", "mov", "avi", "mkv", "webm",
+    // fonts
+    "ttf", "otf", "woff", "woff2", "eot",
+    // executables, objects & databases
+    "exe", "dll", "so", "dylib", "o", "a", "bin", "class", "jar", "wasm", "pyc", "db", "sqlite", "sqlite3",
+];
+
+fn is_binary_ext(p: &Path) -> bool {
     p.extension()
         .and_then(|x| x.to_str())
-        .map(|x| TEXT_EXT.contains(&x.to_lowercase().as_str()))
+        .map(|x| BINARY_EXT.contains(&x.to_lowercase().as_str()))
         .unwrap_or(false)
+}
+
+/// Read a file as text, refusing what is plainly not. UTF-8 is the real test; the NUL-byte check
+/// just makes the common case cheap and gives a message that says what actually went wrong.
+fn read_text(p: &Path) -> Result<String, String> {
+    let bytes = fs::read(p).map_err(|e| format!("read {}: {}", p.display(), e))?;
+    if bytes.contains(&0) {
+        return Err(format!("{} is a binary file — EEditor edits text", p.display()));
+    }
+    String::from_utf8(bytes).map_err(|_| format!("{} is not UTF-8 text", p.display()))
 }
 
 #[tauri::command]
@@ -64,7 +211,7 @@ fn children_of(dir: &Path, rel: &str) -> Vec<Value> {
         let crel = if rel.is_empty() { name.clone() } else { format!("{}/{}", rel, name) };
         if e.path().is_dir() {
             out.push(json!({ "name": name, "path": crel, "isDir": true, "children": children_of(&e.path(), &crel) }));
-        } else if is_text_file(&e.path()) {
+        } else if !is_binary_ext(&e.path()) {
             out.push(json!({ "name": name, "path": crel, "isDir": false }));
         }
     }
@@ -81,7 +228,7 @@ fn fs_tree(ws: tauri::State<Workspace>) -> String {
 #[tauri::command]
 fn fs_read(ws: tauri::State<Workspace>, path: String) -> Result<String, String> {
     let p = resolve(&ws.0.lock().unwrap(), &path)?;
-    fs::read_to_string(p).map_err(|e| e.to_string())
+    read_text(&p)
 }
 
 #[tauri::command]
@@ -194,10 +341,7 @@ fn external_open(
     if !p.is_file() {
         return Err(format!("{} is not a file", p.display()));
     }
-    if !is_text_file(&p) {
-        return Err(format!("{} is not a text file EEditor can edit", p.display()));
-    }
-    let content = fs::read_to_string(&p).map_err(|e| format!("read {}: {}", p.display(), e))?;
+    let content = read_text(&p)?;
     let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "untitled".into());
 
     // Already ours? Then it is not "external" at all — hand back the relative path.
@@ -224,6 +368,70 @@ fn external_write(ext: tauri::State<ExternalFiles>, path: String, content: Strin
     fs::write(p, content).map_err(|e| e.to_string())
 }
 
+/// Where a workspace file actually sits on disk. The tree deals in workspace-relative paths, which
+/// is the right currency inside the app and useless the moment you want to point another program at
+/// the file. Goes through `resolve`, so it can only ever name something inside the workspace.
+#[tauri::command]
+fn fs_abs_path(ws: tauri::State<Workspace>, path: String) -> Result<String, String> {
+    let p = resolve(&ws.0.lock().unwrap(), &path)?;
+    Ok(p.canonicalize().unwrap_or(p).to_string_lossy().to_string())
+}
+
+/// Show a workspace file in the system file manager.
+#[tauri::command]
+fn fs_reveal(ws: tauri::State<Workspace>, path: String) -> Result<(), String> {
+    let p = resolve(&ws.0.lock().unwrap(), &path)?;
+    reveal(&p)
+}
+
+/// Show a file opened in place. Same session-scoped grant as reading and writing it: revealing a
+/// path is a smaller thing than opening it, but it still says "this file exists, here".
+#[tauri::command]
+fn external_reveal(ext: tauri::State<ExternalFiles>, path: String) -> Result<(), String> {
+    let p = granted(&ext, &path)?;
+    reveal(&p)
+}
+
+/// Hand a path to the platform's file manager, selecting the file where the platform can.
+/// Arguments are passed as arguments — never through a shell — so a path with spaces, quotes or
+/// a leading dash is just a path.
+#[cfg(target_os = "macos")]
+fn reveal(p: &Path) -> Result<(), String> {
+    std::process::Command::new("open")
+        .arg("-R")
+        .arg(p)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("could not reveal {}: {}", p.display(), e))
+}
+
+#[cfg(target_os = "windows")]
+fn reveal(p: &Path) -> Result<(), String> {
+    std::process::Command::new("explorer")
+        .arg(format!("/select,{}", p.display()))
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("could not reveal {}: {}", p.display(), e))
+}
+
+/// No portable "reveal" here — `xdg-open` opens the containing folder, which is as close as the
+/// desktop spec gets.
+#[cfg(all(unix, not(target_os = "macos"), not(target_os = "ios")))]
+fn reveal(p: &Path) -> Result<(), String> {
+    let dir = p.parent().unwrap_or(p);
+    std::process::Command::new("xdg-open")
+        .arg(dir)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("could not open {}: {}", dir.display(), e))
+}
+
+/// iOS has no file manager to reveal into; the Files app is the user's own way in.
+#[cfg(target_os = "ios")]
+fn reveal(_p: &Path) -> Result<(), String> {
+    Err("not available on iOS".into())
+}
+
 fn granted(ext: &tauri::State<ExternalFiles>, path: &str) -> Result<PathBuf, String> {
     check_granted(&ext.0.lock().unwrap(), path)
 }
@@ -245,6 +453,14 @@ fn check_granted(set: &HashSet<PathBuf>, path: &str) -> Result<PathBuf, String> 
 #[tauri::command]
 fn take_pending_opens(pending: tauri::State<PendingOpens>) -> Vec<String> {
     pending.0.lock().unwrap().drain(..).map(|p| p.to_string_lossy().to_string()).collect()
+}
+
+/// The frontend has flushed its unsaved buffers — quit for real. Arms the guard first so the
+/// `ExitRequested` this raises goes straight through instead of being deferred a second time.
+#[tauri::command]
+fn finish_exit(app: tauri::AppHandle, guard: tauri::State<ExitGuard>) {
+    guard.0.store(true, Ordering::SeqCst);
+    app.exit(0);
 }
 
 /// Open a native folder dialog, set it as the workspace root, and remember it for next launch.
@@ -428,12 +644,20 @@ fn queue_opens(app: &tauri::AppHandle, paths: Vec<PathBuf>) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let app = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // Our Quit item runs the same deferral as any other exit (see `defer_exit`).
+    #[cfg(desktop)]
+    let builder = builder.menu(build_menu).on_menu_event(|app, event| {
+        if event.id() == MENU_QUIT && !defer_exit(app) {
+            app.exit(0);
+        }
+    });
+    let app = builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_ios_files::init())
-        .manage(EngineHandle::spawn(":memory:".to_string()))
         .manage(ExternalFiles::default())
         .manage(PendingOpens::default())
+        .manage(ExitGuard::default())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -442,7 +666,15 @@ pub fn run() {
             }
             let ws = initial_workspace(app.handle());
             eprintln!("[eeditor] workspace: {}", ws.display());
-            app.manage(Workspace(Mutex::new(ws)));
+            let root = Arc::new(Mutex::new(ws));
+            // The engine's editor RPC is installed on its own thread, reading through the same
+            // handle the fs commands write to — so `(current-dir)` is never stale.
+            let engine_root = root.clone();
+            app.manage(EngineHandle::spawn_with(":memory:".to_string(), move |it| {
+                it.editor.borrow_mut().current_dir =
+                    Some(Box::new(move || engine_root.lock().unwrap().display().to_string()));
+            }));
+            app.manage(Workspace(root));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -457,7 +689,11 @@ pub fn run() {
             external_open,
             external_read,
             external_write,
+            external_reveal,
+            fs_abs_path,
+            fs_reveal,
             take_pending_opens,
+            finish_exit,
             pick_workspace,
             restore_workspace
         ])
@@ -466,11 +702,21 @@ pub fn run() {
 
     // A file association delivers its file through RunEvent::Opened — at launch on a cold start, or
     // while we're already running when the user picks EEditor from Finder's "Open With".
-    app.run(|_app, _event| {
-        #[cfg(any(target_os = "macos", target_os = "ios"))]
-        if let tauri::RunEvent::Opened { urls } = _event {
-            queue_opens(_app, urls.iter().filter_map(|u| u.to_file_path().ok()).collect());
+    app.run(|app, event| match event {
+        // Quitting (⌘Q, the Dock, the last window closing) must not throw away unsaved edits, and
+        // the unsaved edits live in the webview. So the first exit is deferred: we ask the frontend
+        // to flush and it calls `finish_exit` when it's done. The watchdog is the backstop — a
+        // frontend that never answers delays the quit, it doesn't prevent it.
+        tauri::RunEvent::ExitRequested { api, .. } => {
+            if defer_exit(app) {
+                api.prevent_exit();
+            }
         }
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        tauri::RunEvent::Opened { urls } => {
+            queue_opens(app, urls.iter().filter_map(|u| u.to_file_path().ok()).collect());
+        }
+        _ => {}
     });
 }
 
@@ -502,6 +748,23 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    /// `fs_abs_path` hands the frontend a real filesystem path, so the confinement it leans on is
+    /// worth pinning: `resolve` names things inside the workspace and refuses everything else.
+    #[test]
+    fn resolve_stays_inside_the_workspace() {
+        let t = Tmp::new("resolve");
+        let root = t.0.join("ws");
+        fs::create_dir_all(root.join("notes")).unwrap();
+        t.file("ws/notes/a.md", "x");
+        t.file("outside.md", "x");
+
+        assert_eq!(resolve(&root, "notes/a.md").unwrap(), root.join("notes/a.md"));
+        assert_eq!(resolve(&root, "").unwrap(), root.clone());
+        // a detour that lands outside is still outside, however it is spelled
+        assert!(resolve(&root, "../outside.md").is_err());
+        assert!(resolve(&root, "notes/../../outside.md").is_err());
     }
 
     #[test]
@@ -552,11 +815,29 @@ mod tests {
     }
 
     #[test]
-    fn only_text_extensions_are_editable() {
-        assert!(is_text_file(Path::new("/x/a.md")));
-        assert!(is_text_file(Path::new("/x/a.MD")));
-        assert!(is_text_file(Path::new("/x/a.eelisp")));
-        assert!(!is_text_file(Path::new("/x/a.png")));
-        assert!(!is_text_file(Path::new("/x/noext")));
+    fn any_extension_is_editable_except_the_binary_ones() {
+        // the notes we started from
+        assert!(!is_binary_ext(Path::new("/x/a.md")));
+        assert!(!is_binary_ext(Path::new("/x/a.eelisp")));
+        // …and everything else that is still text
+        assert!(!is_binary_ext(Path::new("/x/main.rs")));
+        assert!(!is_binary_ext(Path::new("/x/data.csv")));
+        assert!(!is_binary_ext(Path::new("/x/Makefile"))); // no extension at all
+        assert!(!is_binary_ext(Path::new("/x/.gitignore")));
+        // formats whose bytes aren't text
+        assert!(is_binary_ext(Path::new("/x/a.png")));
+        assert!(is_binary_ext(Path::new("/x/a.PNG")));
+        assert!(is_binary_ext(Path::new("/x/a.sqlite3")));
+    }
+
+    #[test]
+    fn read_text_takes_any_text_file_and_refuses_binary_content() {
+        let t = Tmp::new("readtext");
+        let code = t.file("script.py", "print('hi')\n");
+        assert_eq!(read_text(&code).unwrap(), "print('hi')\n");
+
+        // an extension the denylist doesn't know, but the content gives it away
+        let blob = t.file("mystery.dat", "PK\u{0}\u{0}binary");
+        assert!(read_text(&blob).is_err());
     }
 }

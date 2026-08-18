@@ -6,7 +6,7 @@
 
 import { marked } from "marked";
 import { createEngineClient } from "./engine/client";
-import { createWorkspaceClient, type ExternalFile, type FileNode } from "./engine/workspace";
+import { createWorkspaceClient, inTauri, type ExternalFile, type FileNode } from "./engine/workspace";
 import { createEditor, type ThemeName } from "./ui/editor";
 import { createRepl } from "./ui/repl";
 import { createSidebar } from "./ui/sidebar";
@@ -20,7 +20,7 @@ import { createSnippets } from "./ui/snippets";
 import { createKeybindings, type CommandTable } from "./ui/keybindings";
 import { createOpenWith } from "./ui/openwith";
 import { exportPdf } from "./ui/pdf";
-import { promptModal, confirmModal, showContextMenu, toast, type MenuItem } from "./ui/dialogs";
+import { promptModal, confirmModal, infoModal, showContextMenu, toast, type MenuItem } from "./ui/dialogs";
 import { resolveWikiLink } from "./core/fuzzy";
 import { backlinksTo } from "./core/backlinks";
 import { linkifyWikiLinks } from "./ui/wikilinks";
@@ -29,6 +29,12 @@ import "./styles.css";
 
 const parentDir = (p: string): string => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
 const joinPath = (dir: string, name: string): string => (dir ? `${dir}/${name}` : name);
+/** Each platform has its own name for the thing that shows you a file. */
+const REVEAL_LABEL = /Mac/.test(navigator.userAgent)
+  ? "Reveal in Finder"
+  : /Win/.test(navigator.userAgent)
+    ? "Show in Explorer"
+    : "Show in file manager";
 
 function section(parent: HTMLElement, title: string, cls: string): { head: HTMLElement; body: HTMLElement } {
   const wrap = document.createElement("div");
@@ -275,7 +281,15 @@ function main(): void {
       close.title = "Close tab";
       close.addEventListener("click", (e) => {
         e.stopPropagation();
-        closeTab(i);
+        void closeTab(i);
+      });
+      // A file opened in place is not in the tree, so the tab is the only place to ask where it is.
+      tab.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        showContextMenu(e.clientX, e.clientY, [
+          ...locationItems(t.path, t.external),
+          { label: "Close tab", action: () => void closeTab(tabs.indexOf(t)) },
+        ]);
       });
       tab.append(label, close);
       tabBar.appendChild(tab);
@@ -285,8 +299,15 @@ function main(): void {
   function switchTab(idx: number): void {
     if (idx < 0 || idx >= tabs.length) return;
     if (activeIdx >= 0 && activeIdx < tabs.length) {
-      tabs[activeIdx].content = editor.getDoc(); // snapshot outgoing tab
-      tabs[activeIdx].dirty = dirty;
+      const outgoing = tabs[activeIdx];
+      outgoing.content = editor.getDoc(); // snapshot outgoing tab
+      outgoing.dirty = dirty;
+      // A pending autosave belongs to the file it was typed into, not to whatever is on screen a
+      // second later — so flush it here rather than letting the timer fire against the new tab.
+      if (outgoing.dirty) {
+        cancelPendingSave();
+        void saveTab(outgoing);
+      }
     }
     activeIdx = idx;
     const t = tabs[idx];
@@ -300,10 +321,18 @@ function main(): void {
     void refreshBacklinks();
   }
 
-  function closeTab(idx: number): void {
-    if (idx < 0 || idx >= tabs.length) return;
-    const wasActive = idx === activeIdx;
-    tabs.splice(idx, 1);
+  /** Closing is not a way to discard work: whatever is unsaved goes to disk first. */
+  async function closeTab(idx: number): Promise<void> {
+    const tab = tabs[idx];
+    if (!tab) return;
+    if (tab.dirty && !(await saveTab(tab))) {
+      const ok = await confirmModal(`${basename(tab.path)} could not be saved. Close it and lose the changes?`);
+      if (!ok) return;
+    }
+    const at = tabs.indexOf(tab); // the tab list may have moved while we were saving
+    if (at < 0) return;
+    const wasActive = at === activeIdx;
+    tabs.splice(at, 1);
     if (tabs.length === 0) {
       activeIdx = -1;
       currentPath = "";
@@ -316,9 +345,9 @@ function main(): void {
     }
     if (wasActive) {
       activeIdx = -1; // don't snapshot the just-removed tab
-      switchTab(Math.min(idx, tabs.length - 1));
+      switchTab(Math.min(at, tabs.length - 1));
     } else {
-      if (idx < activeIdx) activeIdx -= 1;
+      if (at < activeIdx) activeIdx -= 1;
       renderTabs();
     }
   }
@@ -326,8 +355,12 @@ function main(): void {
   // autosave — debounced 1s (matches EEditorCore/AutoSaveService)
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   function scheduleSave(): void {
-    if (saveTimer) clearTimeout(saveTimer);
+    cancelPendingSave();
     saveTimer = setTimeout(() => void save(), 1000);
+  }
+  function cancelPendingSave(): void {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = undefined;
   }
 
   const repl = createRepl(replPane.body, engine);
@@ -505,11 +538,42 @@ function main(): void {
     void refreshBacklinks();
   }
 
+  /**
+   * Where a file is on disk. The tree speaks workspace-relative paths, which is the right currency
+   * inside the app and no use at all the moment you want to hand the file to something else — a
+   * terminal, a backup, an attachment. External tabs already know their absolute path.
+   */
+  async function showLocation(path: string, external = false): Promise<void> {
+    try {
+      const abs = external ? path : await ws.absPath(path);
+      await infoModal(path === "" ? "Workspace folder" : basename(abs), abs);
+    } catch (e) {
+      toast(`Could not locate ${basename(path)}: ${String(e)}`);
+    }
+  }
+
+  async function revealPath(path: string, external = false): Promise<void> {
+    try {
+      await (external ? ws.revealExternal(path) : ws.reveal(path));
+    } catch (e) {
+      toast(`Could not reveal ${basename(path)}: ${String(e)}`);
+    }
+  }
+
+  /** The location items, shared by the tree menu and the tab menu. */
+  function locationItems(path: string, external = false): MenuItem[] {
+    const items: MenuItem[] = [{ label: "Show location…", action: () => void showLocation(path, external) }];
+    if (ws.canReveal()) items.push({ label: REVEAL_LABEL, action: () => void revealPath(path, external) });
+    return items;
+  }
+
   const fileMenu = (node: FileNode, x: number, y: number): void => {
     const dir = node.isDir ? node.path : parentDir(node.path);
     const items: MenuItem[] = [
       { label: "New file…", action: () => void newFile(dir) },
       { label: "New folder…", action: () => void newFolder(dir) },
+      // the root row is the workspace itself — worth locating, even though it can't be renamed
+      ...locationItems(node.path),
     ];
     if (node.path !== "") {
       // root itself can't be renamed/deleted
@@ -553,41 +617,70 @@ function main(): void {
     });
   });
 
-  const save = async (): Promise<void> => {
-    if (!currentPath) return;
-    const tab = tabs[activeIdx];
-    const doc = editor.getDoc();
+  /**
+   * Write one tab back to disk — any tab, not only the visible one, so an edit made before you
+   * switched away still lands in the file it was typed into. Returns false when it didn't make it.
+   */
+  async function saveTab(tab: Tab): Promise<boolean> {
+    if (!tab.path) return false;
+    const isActive = tabs[activeIdx] === tab;
+    const doc = isActive ? editor.getDoc() : tab.content;
     // A file opened in place goes back to where it came from; the backend only allows it because
     // this session granted that exact path. Everything else stays inside the workspace root.
-    if (tab?.external) {
-      if (tab.readOnly) return; // already reported once; don't retry every keystroke
+    if (tab.external) {
+      if (tab.readOnly) return false; // already reported once; don't retry every keystroke
       try {
         await ws.writeExternal(tab.path, doc);
       } catch (e) {
         tab.readOnly = true;
         toast(`Could not save ${basename(tab.path)}: ${String(e)}`);
-        return;
+        return false;
       }
     } else {
       try {
-        await ws.write(currentPath, doc);
+        await ws.write(tab.path, doc);
       } catch (e) {
-        toast(`Could not save ${basename(currentPath)}: ${String(e)}`);
-        return;
+        toast(`Could not save ${basename(tab.path)}: ${String(e)}`);
+        return false;
       }
-      contentCache.set(currentPath, doc);
+      contentCache.set(tab.path, doc);
     }
-    dirty = false;
-    if (activeIdx >= 0) tabs[activeIdx].dirty = false;
-    setHead();
+    tab.content = doc;
+    // Typing while the write was in flight leaves the tab dirty — don't claim it is saved.
+    if (!(tabs[activeIdx] === tab && editor.getDoc() !== doc)) {
+      tab.dirty = false;
+      if (tabs[activeIdx] === tab) {
+        dirty = false;
+        setHead();
+      }
+    }
     renderTabs();
+    return true;
+  }
+
+  const save = async (): Promise<void> => {
+    cancelPendingSave();
+    const tab = tabs[activeIdx];
+    if (!tab || !currentPath) return;
+    if (!(await saveTab(tab))) return;
     void refreshBacklinks();
     // editing the shortcut table takes effect as soon as it's saved (autosave included)
-    if (keys.isConfigPath(currentPath)) {
+    if (keys.isConfigPath(tab.path)) {
       await keys.reload();
       toast(`Keybindings reloaded — ${keys.bindings().length} shortcuts`);
     }
   };
+
+  /**
+   * Flush every unsaved tab — the app is closing, or going to the background where it may be killed
+   * without another chance to write. Anything that can't be written is reported by `saveTab`.
+   */
+  async function saveAllDirty(): Promise<void> {
+    cancelPendingSave();
+    for (const tab of [...tabs]) {
+      if (tab.dirty) await saveTab(tab);
+    }
+  }
 
   function renderPreview(): void {
     previewHost.innerHTML = marked.parse(editor.getDoc()) as string;
@@ -681,7 +774,7 @@ function main(): void {
     "agenda-setup": () => agendaSetup.open(),
     "open-file": () => void openWith.pickAndOpen(),
     "copy-into-workspace": () => void copyActiveIntoWorkspace(),
-    "close-tab": () => closeTab(activeIdx),
+    "close-tab": () => void closeTab(activeIdx),
     "next-tab": () => {
       if (tabs.length > 1) switchTab((activeIdx + 1) % tabs.length);
     },
@@ -764,6 +857,42 @@ function main(): void {
     note: (t) => repl.note(t),
   });
   keysBtn.addEventListener("click", () => void keys.openConfig());
+
+  // ── closing the app: unsaved work goes to disk, it doesn't go away ──
+  // The autosave debounce means the last second of typing may still be in memory when the window
+  // closes, and a tab you switched away from is only on disk once it has been flushed. So every
+  // route out of the app ends in saveAllDirty().
+  let quitting = false;
+  async function saveAndQuit(): Promise<void> {
+    if (quitting) return;
+    quitting = true;
+    await saveAllDirty();
+    await ws.exitApp().catch(() => {});
+  }
+  if (inTauri()) {
+    void (async () => {
+      const [{ getCurrentWindow }, { listen }] = await Promise.all([
+        import("@tauri-apps/api/window"),
+        import("@tauri-apps/api/event"),
+      ]);
+      // Closing the window (the red button, ⌘W).
+      await getCurrentWindow().onCloseRequested((e) => {
+        e.preventDefault(); // saving is async — quit once it's done
+        void saveAndQuit();
+      });
+      // Quitting outright (⌘Q, the Dock menu): the backend holds the exit until we say go.
+      await listen("app-exiting", () => void saveAndQuit());
+    })();
+  } else {
+    window.addEventListener("beforeunload", () => void saveAllDirty());
+  }
+  // Losing focus or going to the background can be the last moment we get — a shutdown, or on iOS
+  // an app the system kills without notice. Flushing then also keeps the file on disk current for
+  // whatever the user switched to.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") void saveAllDirty();
+  });
+  window.addEventListener("blur", () => void saveAllDirty());
 
   setHead();
   // Restore a previously-picked external folder (iOS) first, then load the tree once. The

@@ -181,7 +181,6 @@ export function createOpenWith(deps: OpenWithDeps): OpenWith {
     const input = document.createElement("input");
     input.type = "file";
     input.multiple = true;
-    input.accept = ".md,.markdown,.txt,.eelisp,.lisp,.json,.yaml,.yml,.toml";
     input.style.display = "none";
     input.addEventListener("change", () => {
       const files = Array.from(input.files ?? []);

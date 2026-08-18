@@ -97,6 +97,19 @@
       file or folder closes the tabs underneath it and moves you to a neighbour rather than leaving
       a dead editor.
     </p>
+    <h3>Where a file actually is</h3>
+    <p>
+      The tree names files by where they sit in the workspace, which is no use the moment you want
+      to hand one to something else. The same right-click menu offers <strong>Show location…</strong>
+      — the full path on disk, selectable, with a <em>Copy</em> button — and
+      <strong>Reveal in Finder</strong>, which opens Finder with the file selected. Right-clicking
+      the workspace row itself locates the workspace folder.
+    </p>
+    <p>
+      Editor tabs have the same two items on right-click. That is the only way to ask about a file
+      <a href="#outside">opened in place</a> from outside the workspace: it is marked
+      <strong>↗</strong> and never appears in the tree.
+    </p>
     <p>
       Files beginning with a dot are hidden from the tree, which is why your keybindings live in
       <code>.eeditor/keybindings.eelisp</code> — present, editable, out of the way.
@@ -115,7 +128,21 @@
     <h2>3. The editor</h2>
     <p>
       The editor is CodeMirror&nbsp;6 with Markdown syntax highlighting. Edits save automatically
-      about a second after you stop typing; <kbd>⌘S</kbd> saves immediately.
+      about a second after you stop typing; <kbd>⌘S</kbd> saves immediately. Nothing unsaved survives
+      as unsaved: closing a tab, switching to another one, closing the window and quitting all write
+      what is in the buffer first.
+    </p>
+    <p>
+      Markdown is the default, not the limit — any text file opens: source code, a csv, a log, a
+      config file, a file with no extension at all. Only binary formats (images, PDFs, archives) are
+      left out of the file tree.
+    </p>
+    <h3>Tab</h3>
+    <p>
+      <kbd>Tab</kbd> indents and <kbd>⇧Tab</kbd> outdents, as in any editor; with the
+      <code>[[</code> completion list open it accepts the highlighted note. To move focus <em>out</em>
+      of the editor — to the buttons, the tabs, the REPL — use <kbd>⌥Tab</kbd>
+      (<kbd>⇧⌥Tab</kbd> goes backwards).
     </p>
     <h3>Preview</h3>
     <p>
@@ -229,7 +256,9 @@
     <p>
       EEditor registers itself for <code>.md</code>, <code>.markdown</code>, <code>.txt</code>,
       <code>.eelisp</code> and <code>.lisp</code>, as an alternative handler rather than stealing
-      those types from your existing editor.
+      those types from your existing editor. It can open far more than that — any text file — but
+      only these types are offered by the system; for the rest, drag the file in, use the
+      <strong>file…</strong> button, or pick EEditor through Finder's <em>Open With → Other…</em>.
     </p>
   </div></div>
 </section>

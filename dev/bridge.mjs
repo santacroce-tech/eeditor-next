@@ -13,10 +13,14 @@ import readline from "node:readline";
 const BIN = process.env.EELISP_BIN ?? fileURLToPath(new URL("../../eelisp-rs/target/release/eelisp", import.meta.url));
 const WS = path.resolve(process.env.WORKSPACE_ROOT ?? fileURLToPath(new URL("../workspace", import.meta.url)));
 const PORT = process.env.BRIDGE_PORT ? Number(process.env.BRIDGE_PORT) : 8787;
-const TEXT = /\.(md|markdown|txt|eelisp|lisp|json|ya?ml|toml)$/i;
+// Mirrors src-tauri's BINARY_EXT: any file is editable unless its bytes plainly aren't text.
+const BINARY =
+  /\.(png|jpe?g|gif|bmp|tiff?|webp|heic|heif|ico|icns|psd|ai|pdf|zip|gz|bz2|xz|7z|rar|tar|dmg|iso|docx?|xlsx?|pptx?|numbers|pages|sketch|epub|mp3|wav|aac|flac|ogg|m4a|mp4|m4v|mov|avi|mkv|webm|ttf|otf|woff2?|eot|exe|dll|so|dylib|o|a|bin|class|jar|wasm|pyc|db|sqlite3?)$/i;
 
 // ── engine process ──
-const child = spawn(BIN, ["--serve"], { stdio: ["pipe", "pipe", "inherit"] });
+// --workspace tells the engine where it is, so (current-dir) answers the same here as it does
+// in the desktop app.
+const child = spawn(BIN, ["--serve", "--workspace", WS], { stdio: ["pipe", "pipe", "inherit"] });
 child.on("error", (e) => (console.error(`[bridge] spawn ${BIN}: ${e.message}`), process.exit(1)));
 child.on("exit", (c) => (console.error(`[bridge] engine exited (${c})`), process.exit(1)));
 const rl = readline.createInterface({ input: child.stdout });
@@ -41,7 +45,7 @@ async function buildTree(absDir, relDir) {
     if (e.name.startsWith(".")) continue;
     const rel = relDir ? `${relDir}/${e.name}` : e.name;
     if (e.isDirectory()) out.push({ name: e.name, path: rel, isDir: true, children: await buildTree(path.join(absDir, e.name), rel) });
-    else if (TEXT.test(e.name)) out.push({ name: e.name, path: rel, isDir: false });
+    else if (!BINARY.test(e.name)) out.push({ name: e.name, path: rel, isDir: false });
   }
   return out;
 }
@@ -49,7 +53,13 @@ async function buildTree(absDir, relDir) {
 const routes = {
   "/eval": async ({ src }) => await evalSrc(String(src ?? "")), // returns a JSON string already
   "/fs/tree": async () => JSON.stringify({ name: path.basename(WS), path: "", isDir: true, children: await buildTree(WS, "") }),
-  "/fs/read": async ({ path: rel }) => JSON.stringify({ content: await readFile(safe(rel), "utf8") }),
+  "/fs/read": async ({ path: rel }) => {
+    const bytes = await readFile(safe(rel));
+    if (bytes.includes(0)) throw new Error(`${rel} is a binary file — EEditor edits text`);
+    return JSON.stringify({ content: bytes.toString("utf8") });
+  },
+  // Mirrors fs_abs_path: safe() keeps the answer inside the workspace, same as every other route.
+  "/fs/abspath": async ({ path: rel }) => JSON.stringify({ path: safe(rel) }),
   "/fs/write": async ({ path: rel, content }) => {
     const abs = safe(rel);
     await mkdir(path.dirname(abs), { recursive: true });
