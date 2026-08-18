@@ -368,6 +368,70 @@ fn external_write(ext: tauri::State<ExternalFiles>, path: String, content: Strin
     fs::write(p, content).map_err(|e| e.to_string())
 }
 
+/// Where a workspace file actually sits on disk. The tree deals in workspace-relative paths, which
+/// is the right currency inside the app and useless the moment you want to point another program at
+/// the file. Goes through `resolve`, so it can only ever name something inside the workspace.
+#[tauri::command]
+fn fs_abs_path(ws: tauri::State<Workspace>, path: String) -> Result<String, String> {
+    let p = resolve(&ws.0.lock().unwrap(), &path)?;
+    Ok(p.canonicalize().unwrap_or(p).to_string_lossy().to_string())
+}
+
+/// Show a workspace file in the system file manager.
+#[tauri::command]
+fn fs_reveal(ws: tauri::State<Workspace>, path: String) -> Result<(), String> {
+    let p = resolve(&ws.0.lock().unwrap(), &path)?;
+    reveal(&p)
+}
+
+/// Show a file opened in place. Same session-scoped grant as reading and writing it: revealing a
+/// path is a smaller thing than opening it, but it still says "this file exists, here".
+#[tauri::command]
+fn external_reveal(ext: tauri::State<ExternalFiles>, path: String) -> Result<(), String> {
+    let p = granted(&ext, &path)?;
+    reveal(&p)
+}
+
+/// Hand a path to the platform's file manager, selecting the file where the platform can.
+/// Arguments are passed as arguments — never through a shell — so a path with spaces, quotes or
+/// a leading dash is just a path.
+#[cfg(target_os = "macos")]
+fn reveal(p: &Path) -> Result<(), String> {
+    std::process::Command::new("open")
+        .arg("-R")
+        .arg(p)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("could not reveal {}: {}", p.display(), e))
+}
+
+#[cfg(target_os = "windows")]
+fn reveal(p: &Path) -> Result<(), String> {
+    std::process::Command::new("explorer")
+        .arg(format!("/select,{}", p.display()))
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("could not reveal {}: {}", p.display(), e))
+}
+
+/// No portable "reveal" here — `xdg-open` opens the containing folder, which is as close as the
+/// desktop spec gets.
+#[cfg(all(unix, not(target_os = "macos"), not(target_os = "ios")))]
+fn reveal(p: &Path) -> Result<(), String> {
+    let dir = p.parent().unwrap_or(p);
+    std::process::Command::new("xdg-open")
+        .arg(dir)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("could not open {}: {}", dir.display(), e))
+}
+
+/// iOS has no file manager to reveal into; the Files app is the user's own way in.
+#[cfg(target_os = "ios")]
+fn reveal(_p: &Path) -> Result<(), String> {
+    Err("not available on iOS".into())
+}
+
 fn granted(ext: &tauri::State<ExternalFiles>, path: &str) -> Result<PathBuf, String> {
     check_granted(&ext.0.lock().unwrap(), path)
 }
@@ -625,6 +689,9 @@ pub fn run() {
             external_open,
             external_read,
             external_write,
+            external_reveal,
+            fs_abs_path,
+            fs_reveal,
             take_pending_opens,
             finish_exit,
             pick_workspace,
@@ -681,6 +748,23 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    /// `fs_abs_path` hands the frontend a real filesystem path, so the confinement it leans on is
+    /// worth pinning: `resolve` names things inside the workspace and refuses everything else.
+    #[test]
+    fn resolve_stays_inside_the_workspace() {
+        let t = Tmp::new("resolve");
+        let root = t.0.join("ws");
+        fs::create_dir_all(root.join("notes")).unwrap();
+        t.file("ws/notes/a.md", "x");
+        t.file("outside.md", "x");
+
+        assert_eq!(resolve(&root, "notes/a.md").unwrap(), root.join("notes/a.md"));
+        assert_eq!(resolve(&root, "").unwrap(), root.clone());
+        // a detour that lands outside is still outside, however it is spelled
+        assert!(resolve(&root, "../outside.md").is_err());
+        assert!(resolve(&root, "notes/../../outside.md").is_err());
     }
 
     #[test]

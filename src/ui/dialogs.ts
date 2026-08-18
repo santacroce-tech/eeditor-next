@@ -189,6 +189,68 @@ export function choiceModal(
   });
 }
 
+/**
+ * Show a value the user will want somewhere else — a filesystem path, typically. Read-only but
+ * selectable, and one button from the clipboard: a toast can say where a file is, but it can't be
+ * copied out of, and a path you can't paste is half an answer.
+ */
+export function infoModal(title: string, value: string): Promise<void> {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "qo-overlay";
+    const panel = document.createElement("div");
+    panel.className = "dlg-panel";
+    const heading = document.createElement("div");
+    heading.className = "dlg-title";
+    heading.textContent = title;
+    const input = document.createElement("input");
+    input.className = "dlg-input";
+    input.value = value;
+    input.readOnly = true;
+    input.spellcheck = false;
+    const actions = document.createElement("div");
+    actions.className = "dlg-actions";
+    const copy = document.createElement("button");
+    copy.className = "dlg-btn";
+    copy.textContent = "Copy";
+    const ok = document.createElement("button");
+    ok.className = "dlg-btn dlg-primary";
+    ok.textContent = "Done";
+    actions.append(copy, ok);
+    panel.append(heading, input, actions);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+
+    const close = (): void => {
+      overlay.remove();
+      resolve();
+    };
+    copy.addEventListener("click", () => {
+      // The clipboard API needs a secure context and a permission the webview may withhold;
+      // selecting the text is the fallback that always works — ⌘C then does the rest.
+      void navigator.clipboard?.writeText(value).then(
+        () => {
+          copy.textContent = "Copied";
+          setTimeout(() => (copy.textContent = "Copy"), 1200);
+        },
+        () => input.select(),
+      );
+    });
+    ok.addEventListener("click", close);
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) close();
+    });
+    document.addEventListener("keydown", function onKey(e) {
+      if (e.key === "Escape" || e.key === "Enter") {
+        document.removeEventListener("keydown", onKey);
+        close();
+      }
+    });
+    input.focus();
+    input.select();
+  });
+}
+
 /** Brief non-blocking notification (bottom-center). Auto-dismisses. */
 export function toast(message: string): void {
   const t = document.createElement("div");

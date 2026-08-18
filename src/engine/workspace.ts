@@ -58,6 +58,14 @@ export interface WorkspaceClient {
   importExternal(path: string): Promise<string>;
   /** Drain paths the OS queued for us before the UI was listening (cold-start "Open With"). */
   takePendingOpens(): Promise<string[]>;
+  /** Where a workspace-relative path actually is on disk. */
+  absPath(path: string): Promise<string>;
+  /** Whether the platform has a file manager we can show a file in. */
+  canReveal(): boolean;
+  /** Show a workspace file in the system file manager. */
+  reveal(path: string): Promise<void>;
+  /** Show a file opened in place — its path is already absolute. */
+  revealExternal(path: string): Promise<void>;
   /**
    * Let the app finish quitting. A quit is held back until the editor has flushed what is unsaved
    * (see the `app-exiting` event); this is the frontend saying "done, you may go".
@@ -123,6 +131,21 @@ class HttpWorkspace implements WorkspaceClient {
   }
   async takePendingOpens(): Promise<string[]> {
     return [];
+  }
+  async absPath(path: string): Promise<string> {
+    const r = await post<{ path: string }>(`${this.base}/fs/abspath`, { path });
+    return r.path;
+  }
+  // The bridge runs on the dev machine and could shell out, but a browser tab is not the app —
+  // saying where the file is, is the part that makes sense here.
+  canReveal(): boolean {
+    return false;
+  }
+  async reveal(): Promise<void> {
+    throw new Error("revealing files needs the desktop app");
+  }
+  async revealExternal(): Promise<void> {
+    throw new Error("revealing files needs the desktop app");
   }
   async exitApp(): Promise<void> {
     /* a browser tab closes itself */
@@ -191,6 +214,22 @@ class TauriWorkspace implements WorkspaceClient {
   async takePendingOpens(): Promise<string[]> {
     const { invoke } = await import("@tauri-apps/api/core");
     return invoke<string[]>("take_pending_opens");
+  }
+  async absPath(path: string): Promise<string> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return invoke<string>("fs_abs_path", { path });
+  }
+  canReveal(): boolean {
+    // iOS has no file manager to reveal into; the Files app is the user's own way in.
+    return !/iPad|iPhone|iPod/.test(navigator.userAgent);
+  }
+  async reveal(path: string): Promise<void> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("fs_reveal", { path });
+  }
+  async revealExternal(path: string): Promise<void> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("external_reveal", { path });
   }
   async exitApp(): Promise<void> {
     const { invoke } = await import("@tauri-apps/api/core");

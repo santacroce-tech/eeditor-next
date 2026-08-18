@@ -20,7 +20,7 @@ import { createSnippets } from "./ui/snippets";
 import { createKeybindings, type CommandTable } from "./ui/keybindings";
 import { createOpenWith } from "./ui/openwith";
 import { exportPdf } from "./ui/pdf";
-import { promptModal, confirmModal, showContextMenu, toast, type MenuItem } from "./ui/dialogs";
+import { promptModal, confirmModal, infoModal, showContextMenu, toast, type MenuItem } from "./ui/dialogs";
 import { resolveWikiLink } from "./core/fuzzy";
 import { backlinksTo } from "./core/backlinks";
 import { linkifyWikiLinks } from "./ui/wikilinks";
@@ -29,6 +29,12 @@ import "./styles.css";
 
 const parentDir = (p: string): string => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
 const joinPath = (dir: string, name: string): string => (dir ? `${dir}/${name}` : name);
+/** Each platform has its own name for the thing that shows you a file. */
+const REVEAL_LABEL = /Mac/.test(navigator.userAgent)
+  ? "Reveal in Finder"
+  : /Win/.test(navigator.userAgent)
+    ? "Show in Explorer"
+    : "Show in file manager";
 
 function section(parent: HTMLElement, title: string, cls: string): { head: HTMLElement; body: HTMLElement } {
   const wrap = document.createElement("div");
@@ -277,6 +283,14 @@ function main(): void {
         e.stopPropagation();
         void closeTab(i);
       });
+      // A file opened in place is not in the tree, so the tab is the only place to ask where it is.
+      tab.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        showContextMenu(e.clientX, e.clientY, [
+          ...locationItems(t.path, t.external),
+          { label: "Close tab", action: () => void closeTab(tabs.indexOf(t)) },
+        ]);
+      });
       tab.append(label, close);
       tabBar.appendChild(tab);
     });
@@ -524,11 +538,42 @@ function main(): void {
     void refreshBacklinks();
   }
 
+  /**
+   * Where a file is on disk. The tree speaks workspace-relative paths, which is the right currency
+   * inside the app and no use at all the moment you want to hand the file to something else — a
+   * terminal, a backup, an attachment. External tabs already know their absolute path.
+   */
+  async function showLocation(path: string, external = false): Promise<void> {
+    try {
+      const abs = external ? path : await ws.absPath(path);
+      await infoModal(path === "" ? "Workspace folder" : basename(abs), abs);
+    } catch (e) {
+      toast(`Could not locate ${basename(path)}: ${String(e)}`);
+    }
+  }
+
+  async function revealPath(path: string, external = false): Promise<void> {
+    try {
+      await (external ? ws.revealExternal(path) : ws.reveal(path));
+    } catch (e) {
+      toast(`Could not reveal ${basename(path)}: ${String(e)}`);
+    }
+  }
+
+  /** The location items, shared by the tree menu and the tab menu. */
+  function locationItems(path: string, external = false): MenuItem[] {
+    const items: MenuItem[] = [{ label: "Show location…", action: () => void showLocation(path, external) }];
+    if (ws.canReveal()) items.push({ label: REVEAL_LABEL, action: () => void revealPath(path, external) });
+    return items;
+  }
+
   const fileMenu = (node: FileNode, x: number, y: number): void => {
     const dir = node.isDir ? node.path : parentDir(node.path);
     const items: MenuItem[] = [
       { label: "New file…", action: () => void newFile(dir) },
       { label: "New folder…", action: () => void newFolder(dir) },
+      // the root row is the workspace itself — worth locating, even though it can't be renamed
+      ...locationItems(node.path),
     ];
     if (node.path !== "") {
       // root itself can't be renamed/deleted

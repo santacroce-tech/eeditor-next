@@ -58,6 +58,8 @@ const routes = {
     if (bytes.includes(0)) throw new Error(`${rel} is a binary file — EEditor edits text`);
     return JSON.stringify({ content: bytes.toString("utf8") });
   },
+  // Mirrors fs_abs_path: safe() keeps the answer inside the workspace, same as every other route.
+  "/fs/abspath": async ({ path: rel }) => JSON.stringify({ path: safe(rel) }),
   "/fs/write": async ({ path: rel, content }) => {
     const abs = safe(rel);
     await mkdir(path.dirname(abs), { recursive: true });
