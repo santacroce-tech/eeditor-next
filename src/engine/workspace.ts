@@ -58,6 +58,11 @@ export interface WorkspaceClient {
   importExternal(path: string): Promise<string>;
   /** Drain paths the OS queued for us before the UI was listening (cold-start "Open With"). */
   takePendingOpens(): Promise<string[]>;
+  /**
+   * Let the app finish quitting. A quit is held back until the editor has flushed what is unsaved
+   * (see the `app-exiting` event); this is the frontend saying "done, you may go".
+   */
+  exitApp(): Promise<void>;
 }
 
 async function post<T>(url: string, body: unknown): Promise<T> {
@@ -119,6 +124,9 @@ class HttpWorkspace implements WorkspaceClient {
   async takePendingOpens(): Promise<string[]> {
     return [];
   }
+  async exitApp(): Promise<void> {
+    /* a browser tab closes itself */
+  }
 }
 
 class TauriWorkspace implements WorkspaceClient {
@@ -156,11 +164,9 @@ class TauriWorkspace implements WorkspaceClient {
   }
   async pickFile(): Promise<string | null> {
     const { open } = await import("@tauri-apps/plugin-dialog");
-    const picked = await open({
-      multiple: false,
-      directory: false,
-      filters: [{ name: "Notes", extensions: ["md", "markdown", "txt", "eelisp", "lisp", "json"] }],
-    });
+    // No extension filter: anything that turns out to be text is editable, and the backend says so
+    // by reading it. A filter here would hide files EEditor can perfectly well open.
+    const picked = await open({ multiple: false, directory: false });
     return typeof picked === "string" ? picked : null; // null = cancelled
   }
   canOpenExternal(): boolean {
@@ -186,9 +192,13 @@ class TauriWorkspace implements WorkspaceClient {
     const { invoke } = await import("@tauri-apps/api/core");
     return invoke<string[]>("take_pending_opens");
   }
+  async exitApp(): Promise<void> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("finish_exit");
+  }
 }
 
-function inTauri(): boolean {
+export function inTauri(): boolean {
   const w = globalThis as Record<string, unknown>;
   return typeof window !== "undefined" && ("__TAURI_INTERNALS__" in w || "__TAURI__" in w);
 }

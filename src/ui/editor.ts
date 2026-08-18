@@ -7,7 +7,13 @@ import { EditorState, Compartment } from "@codemirror/state";
 import { basicSetup } from "codemirror";
 import { markdown } from "@codemirror/lang-markdown";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { autocompletion, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
+import { indentLess, insertTab } from "@codemirror/commands";
+import {
+  acceptCompletion,
+  autocompletion,
+  type CompletionContext,
+  type CompletionResult,
+} from "@codemirror/autocomplete";
 
 import { eelispBlockAt } from "../core/blocks";
 import { wikiLinkAt } from "../core/wikilink";
@@ -50,6 +56,29 @@ function themeExt(name: ThemeName) {
   return name === "light" ? solarizedLight : oneDark;
 }
 
+// Everything the browser will hand focus to. The editor itself is in the list — CodeMirror's
+// content is `contenteditable` — which is what lets Alt-Tab pick up from where the caret is.
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), ' +
+  'textarea:not([disabled]), [contenteditable="true"], [tabindex]:not([tabindex="-1"])';
+
+/**
+ * Alt/Option+Tab: what a bare Tab does in a browser — move focus to the next control. Tab itself is
+ * a character in a text editor, so the focus walk needs a key of its own. Escape-then-Tab still
+ * works too; CodeMirror has that built in.
+ */
+function moveFocusOut(view: EditorView, back: boolean): boolean {
+  const visible = (el: HTMLElement): boolean =>
+    el === view.contentDOM || el.offsetWidth > 0 || el.offsetHeight > 0 || el.getClientRects().length > 0;
+  const all = Array.from(document.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(visible);
+  if (all.length < 2) return false;
+  const here = all.indexOf(view.contentDOM);
+  const next = all[(here + (back ? -1 : 1) + all.length) % all.length];
+  view.contentDOM.blur();
+  next.focus();
+  return true;
+}
+
 export function createEditor(parent: HTMLElement, doc: string, opts: EditorOptions = {}): Editor {
   const themeCompartment = new Compartment();
 
@@ -67,6 +96,21 @@ export function createEditor(parent: HTMLElement, doc: string, opts: EditorOptio
         }
         return false;
       },
+    },
+    // Tab types a tab (or indents the selected lines), the way it does in every other editor.
+    // CodeMirror leaves Tab to the browser by default, which walks focus out of the document — an
+    // accessibility default that costs you indentation. Alt/Option+Tab does the walking instead.
+    {
+      key: "Tab",
+      run: (view) => acceptCompletion(view) || insertTab(view),
+      shift: indentLess,
+      preventDefault: true,
+    },
+    {
+      key: "Alt-Tab",
+      run: (view) => moveFocusOut(view, false),
+      shift: (view) => moveFocusOut(view, true),
+      preventDefault: true,
     },
   ]);
 

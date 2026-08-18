@@ -115,7 +115,21 @@
     <h2>3. The editor</h2>
     <p>
       The editor is CodeMirror&nbsp;6 with Markdown syntax highlighting. Edits save automatically
-      about a second after you stop typing; <kbd>⌘S</kbd> saves immediately.
+      about a second after you stop typing; <kbd>⌘S</kbd> saves immediately. Nothing unsaved survives
+      as unsaved: closing a tab, switching to another one, closing the window and quitting all write
+      what is in the buffer first.
+    </p>
+    <p>
+      Markdown is the default, not the limit — any text file opens: source code, a csv, a log, a
+      config file, a file with no extension at all. Only binary formats (images, PDFs, archives) are
+      left out of the file tree.
+    </p>
+    <h3>Tab</h3>
+    <p>
+      <kbd>Tab</kbd> indents and <kbd>⇧Tab</kbd> outdents, as in any editor; with the
+      <code>[[</code> completion list open it accepts the highlighted note. To move focus <em>out</em>
+      of the editor — to the buttons, the tabs, the REPL — use <kbd>⌥Tab</kbd>
+      (<kbd>⇧⌥Tab</kbd> goes backwards).
     </p>
     <h3>Preview</h3>
     <p>
@@ -229,7 +243,9 @@
     <p>
       EEditor registers itself for <code>.md</code>, <code>.markdown</code>, <code>.txt</code>,
       <code>.eelisp</code> and <code>.lisp</code>, as an alternative handler rather than stealing
-      those types from your existing editor.
+      those types from your existing editor. It can open far more than that — any text file — but
+      only these types are offered by the system; for the rest, drag the file in, use the
+      <strong>file…</strong> button, or pick EEditor through Finder's <em>Open With → Other…</em>.
     </p>
   </div></div>
 </section>
