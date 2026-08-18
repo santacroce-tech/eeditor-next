@@ -18,7 +18,9 @@ const BINARY =
   /\.(png|jpe?g|gif|bmp|tiff?|webp|heic|heif|ico|icns|psd|ai|pdf|zip|gz|bz2|xz|7z|rar|tar|dmg|iso|docx?|xlsx?|pptx?|numbers|pages|sketch|epub|mp3|wav|aac|flac|ogg|m4a|mp4|m4v|mov|avi|mkv|webm|ttf|otf|woff2?|eot|exe|dll|so|dylib|o|a|bin|class|jar|wasm|pyc|db|sqlite3?)$/i;
 
 // ── engine process ──
-const child = spawn(BIN, ["--serve"], { stdio: ["pipe", "pipe", "inherit"] });
+// --workspace tells the engine where it is, so (current-dir) answers the same here as it does
+// in the desktop app.
+const child = spawn(BIN, ["--serve", "--workspace", WS], { stdio: ["pipe", "pipe", "inherit"] });
 child.on("error", (e) => (console.error(`[bridge] spawn ${BIN}: ${e.message}`), process.exit(1)));
 child.on("exit", (c) => (console.error(`[bridge] engine exited (${c})`), process.exit(1)));
 const rl = readline.createInterface({ input: child.stdout });

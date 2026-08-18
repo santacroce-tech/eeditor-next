@@ -8,14 +8,17 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use eelisp::server::EngineHandle;
 use serde_json::{json, Value};
 use tauri::{Emitter, Manager};
 
-struct Workspace(Mutex<PathBuf>);
+/// The folder being edited. An `Arc` because the engine thread holds the same handle — that is
+/// how `(current-dir)` answers with the workspace, and keeps answering after the user picks a
+/// different one.
+struct Workspace(Arc<Mutex<PathBuf>>);
 
 /// Files outside the workspace that the user has explicitly opened in place (drag-and-drop, "Open
 /// With", the file picker). `external_read`/`external_write` refuse anything not in here, so the
@@ -588,7 +591,6 @@ pub fn run() {
     let app = builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_ios_files::init())
-        .manage(EngineHandle::spawn(":memory:".to_string()))
         .manage(ExternalFiles::default())
         .manage(PendingOpens::default())
         .manage(ExitGuard::default())
@@ -600,7 +602,15 @@ pub fn run() {
             }
             let ws = initial_workspace(app.handle());
             eprintln!("[eeditor] workspace: {}", ws.display());
-            app.manage(Workspace(Mutex::new(ws)));
+            let root = Arc::new(Mutex::new(ws));
+            // The engine's editor RPC is installed on its own thread, reading through the same
+            // handle the fs commands write to — so `(current-dir)` is never stale.
+            let engine_root = root.clone();
+            app.manage(EngineHandle::spawn_with(":memory:".to_string(), move |it| {
+                it.editor.borrow_mut().current_dir =
+                    Some(Box::new(move || engine_root.lock().unwrap().display().to_string()));
+            }));
+            app.manage(Workspace(root));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
