@@ -772,6 +772,7 @@ function main(): void {
     snippets: () => snippets.open(),
     calendar: () => calendar.open(),
     "agenda-setup": () => agendaSetup.open(),
+    "agenda-refresh": () => void agenda.refresh(),
     "open-file": () => void openWith.pickAndOpen(),
     "copy-into-workspace": () => void copyActiveIntoWorkspace(),
     "close-tab": () => void closeTab(activeIdx),

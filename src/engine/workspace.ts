@@ -8,6 +8,13 @@ export interface FileNode {
   path: string; // relative to workspace root ("" = root)
   isDir: boolean;
   children?: FileNode[];
+  /**
+   * Root only. Folders the walk was not allowed to read, `"path: reason"` each — a macOS privacy
+   * gate, usually. Reported rather than dropped: an unreadable folder is otherwise an empty one.
+   */
+  unreadable?: string[];
+  /** Root only. The walk hit its size cap, so the tree is not the whole folder. */
+  truncated?: boolean;
 }
 
 /** A file handed to us from outside the workspace — dropped on the window, or via "Open With". */
@@ -79,7 +86,17 @@ async function post<T>(url: string, body: unknown): Promise<T> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`${url} → ${res.status}`);
+  if (!res.ok) {
+    // The bridge answers a failure with {ok:false,error} — that message is the useful part.
+    const detail = await res.text().catch(() => "");
+    let msg = "";
+    try {
+      msg = String((JSON.parse(detail) as { error?: unknown }).error ?? "");
+    } catch {
+      msg = detail;
+    }
+    throw new Error(msg || `${url} → ${res.status}`);
+  }
   return (await res.json()) as T;
 }
 

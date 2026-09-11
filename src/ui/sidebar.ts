@@ -113,18 +113,63 @@ export function createSidebar(
     return row;
   }
 
+  /** A one-line note under the tree: something was left out, and here is why. */
+  function notice(text: string, detail?: string): HTMLElement {
+    const el = document.createElement("div");
+    el.className = "tree-note";
+    el.textContent = text;
+    if (detail) el.title = detail;
+    return el;
+  }
+
+  // Two refreshes can be in flight at once (a rename refreshes the tree while a tag pass is still
+  // reading). Only the newest one gets to paint, so a slow earlier walk can't replace a newer tree.
+  let generation = 0;
+
   async function refresh(): Promise<void> {
+    const mine = ++generation;
+    root.innerHTML = "";
+    // Reading a workspace takes a moment when the disk is slow, the folder is large, or the OS is
+    // still deciding whether we may read it at all. Say so — a blank panel is indistinguishable
+    // from an app that has stopped working, which is exactly how the freeze used to look.
+    root.appendChild(notice("reading the workspace…"));
+
+    let tree: FileNode;
+    try {
+      tree = await ws.tree();
+    } catch (e) {
+      if (mine !== generation) return;
+      // Nothing was read, so nothing is open: quick-open and search must not go on offering the
+      // files of a workspace we can no longer see.
+      fileEls.clear();
+      flatFiles = [];
+      root.innerHTML = "";
+      const err = document.createElement("div");
+      err.className = "tree-error";
+      // The backend's message already says what happened and what to do about it.
+      err.textContent = String(e).replace(/^Error:\s*/, "");
+      root.appendChild(err);
+      return;
+    }
+    if (mine !== generation) return;
+
     fileEls.clear();
     flatFiles = [];
     root.innerHTML = "";
-    try {
-      const tree = await ws.tree();
-      root.appendChild(renderNode(tree, 0));
-    } catch (e) {
-      const err = document.createElement("div");
-      err.className = "tree-error";
-      err.textContent = `workspace unavailable: ${String(e)}`;
-      root.appendChild(err);
+    root.appendChild(renderNode(tree, 0));
+    // Folders that were there but couldn't be read, and a walk that stopped early, are both things
+    // the user has to be told: either one looks like files went missing.
+    const denied = tree.unreadable ?? [];
+    if (denied.length > 0) {
+      root.appendChild(
+        notice(
+          `${denied.length} folder${denied.length > 1 ? "s" : ""} could not be read`,
+          denied.join("\n"),
+        ),
+      );
+    }
+    if (tree.truncated) {
+      root.appendChild(notice("this folder is very large — the tree stops here", "Not every file is listed."));
     }
   }
 

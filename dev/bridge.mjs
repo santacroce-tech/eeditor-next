@@ -6,7 +6,7 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
-import { readFile, writeFile, readdir, mkdir, rename, rm, stat } from "node:fs/promises";
+import { readFile, writeFile, readdir, mkdir, rename, rm, stat, realpath } from "node:fs/promises";
 import path from "node:path";
 import readline from "node:readline";
 
@@ -35,24 +35,69 @@ function safe(rel) {
   if (p !== WS && !p.startsWith(WS + path.sep)) throw new Error("path escapes workspace");
   return p;
 }
-async function buildTree(absDir, relDir) {
-  const entries = await readdir(absDir, { withFileTypes: true });
-  entries.sort((a, b) =>
-    a.isDirectory() === b.isDirectory() ? a.name.localeCompare(b.name) : a.isDirectory() ? -1 : 1,
-  );
-  const out = [];
+// Mirrors src-tauri's `children_of`: bounded, cycle-proof, and it reports what it could not read
+// instead of returning an empty folder (see the TreeWalk comments there).
+const TREE_MAX_ENTRIES = 20_000;
+const TREE_MAX_DEPTH = 32;
+
+async function buildTree(absDir, relDir, depth, walk) {
+  if (depth >= TREE_MAX_DEPTH) return [];
+  let entries;
+  try {
+    entries = await readdir(absDir, { withFileTypes: true });
+  } catch (e) {
+    walk.unreadable.push(`${relDir || "."}: ${e.message ?? e}`);
+    return [];
+  }
+  // A symlink is not a directory as far as the dirent is concerned — resolve it once, here.
+  const items = [];
   for (const e of entries) {
     if (e.name.startsWith(".")) continue;
-    const rel = relDir ? `${relDir}/${e.name}` : e.name;
-    if (e.isDirectory()) out.push({ name: e.name, path: rel, isDir: true, children: await buildTree(path.join(absDir, e.name), rel) });
-    else if (!BINARY.test(e.name)) out.push({ name: e.name, path: rel, isDir: false });
+    const abs = path.join(absDir, e.name);
+    let isDir = e.isDirectory();
+    if (e.isSymbolicLink()) isDir = await stat(abs).then((st) => st.isDirectory(), () => false);
+    items.push({ name: e.name, abs, isDir });
+  }
+  items.sort((a, b) => (a.isDir === b.isDir ? a.name.localeCompare(b.name) : a.isDir ? -1 : 1));
+
+  const out = [];
+  for (const it of items) {
+    if (walk.entries >= TREE_MAX_ENTRIES) {
+      walk.truncated = true;
+      break;
+    }
+    walk.entries++;
+    const rel = relDir ? `${relDir}/${it.name}` : it.name;
+    if (it.isDir) {
+      const canon = await realpath(it.abs).catch(() => it.abs);
+      const seen = walk.seen.has(canon);
+      if (!seen) walk.seen.add(canon);
+      out.push({ name: it.name, path: rel, isDir: true, children: seen ? [] : await buildTree(it.abs, rel, depth + 1, walk) });
+    } else if (!BINARY.test(it.name)) {
+      out.push({ name: it.name, path: rel, isDir: false });
+    }
   }
   return out;
 }
 
 const routes = {
   "/eval": async ({ src }) => await evalSrc(String(src ?? "")), // returns a JSON string already
-  "/fs/tree": async () => JSON.stringify({ name: path.basename(WS), path: "", isDir: true, children: await buildTree(WS, "") }),
+  "/fs/tree": async () => {
+    // An unreadable root is an error, not an empty workspace — same as the Tauri command.
+    await readdir(WS).catch((e) => {
+      throw new Error(`${WS} can't be read: ${e.message ?? e}`);
+    });
+    const walk = { entries: 0, unreadable: [], truncated: false, seen: new Set([await realpath(WS).catch(() => WS)]) };
+    const children = await buildTree(WS, "", 0, walk);
+    return JSON.stringify({
+      name: path.basename(WS),
+      path: "",
+      isDir: true,
+      children,
+      unreadable: walk.unreadable,
+      truncated: walk.truncated,
+    });
+  },
   "/fs/read": async ({ path: rel }) => {
     const bytes = await readFile(safe(rel));
     if (bytes.includes(0)) throw new Error(`${rel} is a binary file — EEditor edits text`);
@@ -105,7 +150,8 @@ const server = createServer((req, res) => {
       res.end(out);
     } catch (e) {
       res.writeHead(500, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: false, error: String(e) }));
+      // The message, not the stringified Error — the frontend shows this text as-is.
+      res.end(JSON.stringify({ ok: false, error: e?.message ?? String(e) }));
     }
   });
 });

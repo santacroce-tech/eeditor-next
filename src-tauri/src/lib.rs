@@ -3,6 +3,10 @@
 //   • eelisp_eval(src)            → EngineHandle::eval → JSON envelope ({ok,result,output})
 //   • fs_tree / fs_read / fs_write → workspace file access, confined to the workspace root
 // Structured engine results are tagged: $tableView / $formView / $record / $resultSet / $dict / $item.
+//
+// Every command that touches the filesystem or the engine is `#[tauri::command(async)]`. A plain
+// `#[tauri::command]` runs on the main thread, where a slow — or permission-gated — call freezes the
+// window and, on macOS, deadlocks the very consent dialog that would unblock it. See `fs_tree`.
 
 use std::collections::HashSet;
 use std::fs;
@@ -173,18 +177,38 @@ fn is_binary_ext(p: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// What to say when the filesystem says no. "Permission denied (os error 13)" is true and useless:
+/// on macOS the usual cause is the privacy gate on ~/Documents, ~/Desktop, ~/Downloads or an
+/// external volume, and the fix is one settings pane away. Anything else is reported as it came.
+fn access_message(p: &Path, e: &std::io::Error) -> String {
+    if e.kind() != std::io::ErrorKind::PermissionDenied {
+        return format!("{} can't be read: {}", p.display(), e);
+    }
+    #[cfg(target_os = "macos")]
+    return format!(
+        "macOS has not granted EEditor access to {}. Allow it in System Settings → Privacy & Security \
+         → Files and Folders (or Full Disk Access) and reopen EEditor — or pick another folder with \
+         the folder… button.",
+        p.display()
+    );
+    #[cfg(not(target_os = "macos"))]
+    return format!("{} can't be read — permission denied.", p.display());
+}
+
 /// Read a file as text, refusing what is plainly not. UTF-8 is the real test; the NUL-byte check
 /// just makes the common case cheap and gives a message that says what actually went wrong.
 fn read_text(p: &Path) -> Result<String, String> {
-    let bytes = fs::read(p).map_err(|e| format!("read {}: {}", p.display(), e))?;
+    let bytes = fs::read(p).map_err(|e| access_message(p, &e))?;
     if bytes.contains(&0) {
         return Err(format!("{} is a binary file — EEditor edits text", p.display()));
     }
     String::from_utf8(bytes).map_err(|_| format!("{} is not UTF-8 text", p.display()))
 }
 
-#[tauri::command]
-fn eelisp_eval(engine: tauri::State<EngineHandle>, src: String) -> String {
+/// Evaluate EELisp. `async` for the same reason as `fs_tree`: this blocks until the engine thread
+/// answers, and a binding or an `(on-start …)` that takes its time must not take the window with it.
+#[tauri::command(async)]
+fn eelisp_eval(engine: tauri::State<'_, EngineHandle>, src: String) -> String {
     engine.eval(&src)
 }
 
@@ -198,41 +222,116 @@ fn resolve(root: &Path, rel: &str) -> Result<PathBuf, String> {
     Ok(p)
 }
 
-fn children_of(dir: &Path, rel: &str) -> Vec<Value> {
+/// A workspace is a notes folder. A walk that gets this far has been pointed at something else —
+/// a home directory, a checkout with node_modules — and finishing it would take longer than anyone
+/// waits in front of an empty window. Stop at the cap and say the tree was cut short.
+const TREE_MAX_ENTRIES: usize = 20_000;
+/// Depth is bounded too, so a cycle the canonical-path check somehow misses still terminates.
+const TREE_MAX_DEPTH: usize = 32;
+
+/// What the walk found besides files. Both fields end up on screen: a folder we were not allowed
+/// to read looks exactly like an empty one, and a tree cut short looks like files went missing.
+#[derive(Default)]
+struct TreeWalk {
+    entries: usize,
+    /// Directories `read_dir` refused, workspace-relative, with the reason.
+    unreadable: Vec<String>,
+    truncated: bool,
+    /// Canonical paths already walked — a symlink pointing back up the tree ends the walk here
+    /// instead of looping until the stack runs out.
+    seen: HashSet<PathBuf>,
+}
+
+fn children_of(dir: &Path, rel: &str, depth: usize, walk: &mut TreeWalk) -> Vec<Value> {
     let mut out = Vec::new();
-    let Ok(read) = fs::read_dir(dir) else { return out };
-    let mut items: Vec<_> = read.flatten().collect();
-    items.sort_by_key(|e| (!e.path().is_dir(), e.file_name().to_string_lossy().to_lowercase()));
-    for e in items {
+    if depth >= TREE_MAX_DEPTH {
+        return out;
+    }
+    let read = match fs::read_dir(dir) {
+        Ok(r) => r,
+        Err(e) => {
+            // Not fatal — the rest of the workspace is still worth showing — but not silent either.
+            walk.unreadable.push(format!("{}: {}", if rel.is_empty() { "." } else { rel }, e));
+            return out;
+        }
+    };
+    // The file type is read once and carried along. Asking `e.path().is_dir()` inside the sort key
+    // stats the entry again on every comparison the sort makes — and follows symlinks doing it.
+    let mut items: Vec<(PathBuf, String, bool)> = Vec::new();
+    for e in read.flatten() {
         let name = e.file_name().to_string_lossy().to_string();
         if name.starts_with('.') {
             continue;
         }
+        let path = e.path();
+        let is_dir = match e.file_type() {
+            Ok(ft) if ft.is_symlink() => path.is_dir(), // resolve the link, once
+            Ok(ft) => ft.is_dir(),
+            Err(_) => continue, // vanished between listing and stat
+        };
+        items.push((path, name, is_dir));
+    }
+    items.sort_by(|a, b| (!a.2, a.1.to_lowercase()).cmp(&(!b.2, b.1.to_lowercase())));
+    for (path, name, is_dir) in items {
+        if walk.entries >= TREE_MAX_ENTRIES {
+            walk.truncated = true;
+            break;
+        }
+        walk.entries += 1;
         let crel = if rel.is_empty() { name.clone() } else { format!("{}/{}", rel, name) };
-        if e.path().is_dir() {
-            out.push(json!({ "name": name, "path": crel, "isDir": true, "children": children_of(&e.path(), &crel) }));
-        } else if !is_binary_ext(&e.path()) {
+        if is_dir {
+            let canon = path.canonicalize().unwrap_or_else(|_| path.clone());
+            // Already walked (a symlink back into the tree): list the folder, don't descend again.
+            let children =
+                if walk.seen.insert(canon) { children_of(&path, &crel, depth + 1, walk) } else { Vec::new() };
+            out.push(json!({ "name": name, "path": crel, "isDir": true, "children": children }));
+        } else if !is_binary_ext(&path) {
             out.push(json!({ "name": name, "path": crel, "isDir": false }));
         }
     }
     out
 }
 
-#[tauri::command]
-fn fs_tree(ws: tauri::State<Workspace>) -> String {
+/// The workspace tree.
+///
+/// `async` on purpose: a *synchronous* command runs on the main thread, and this one walks the
+/// filesystem. On macOS the first read of a folder under ~/Documents (or ~/Desktop, ~/Downloads,
+/// an external volume) blocks in the kernel while the privacy gate decides — with the main thread
+/// stuck in that call the window can't paint and the consent dialog can't be answered, so the app
+/// hangs on launch showing nothing at all. Off the main thread it stays responsive and the prompt
+/// appears. The same goes for a slow network volume, or simply a large folder.
+#[tauri::command(async)]
+fn fs_tree(ws: tauri::State<'_, Workspace>) -> Result<String, String> {
     let root = ws.0.lock().unwrap().clone();
+    seed_workspace(&root);
+    // A workspace we cannot read at all is an error, not an empty tree: silence here is what made
+    // a refused permission indistinguishable from a folder with no notes in it.
+    if let Err(e) = fs::read_dir(&root) {
+        return Err(access_message(&root, &e));
+    }
     let name = root.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "workspace".into());
-    json!({ "name": name, "path": "", "isDir": true, "children": children_of(&root, "") }).to_string()
+    let mut walk = TreeWalk::default();
+    walk.seen.insert(root.canonicalize().unwrap_or_else(|_| root.clone()));
+    let children = children_of(&root, "", 0, &mut walk);
+    Ok(json!({
+        "name": name,
+        "path": "",
+        "isDir": true,
+        "children": children,
+        "unreadable": walk.unreadable,
+        "truncated": walk.truncated,
+    })
+    .to_string())
 }
 
-#[tauri::command]
-fn fs_read(ws: tauri::State<Workspace>, path: String) -> Result<String, String> {
+#[tauri::command(async)]
+fn fs_read(ws: tauri::State<'_, Workspace>, path: String) -> Result<String, String> {
     let p = resolve(&ws.0.lock().unwrap(), &path)?;
     read_text(&p)
 }
 
-#[tauri::command]
-fn fs_write(ws: tauri::State<Workspace>, path: String, content: String) -> Result<(), String> {
+#[tauri::command(async)]
+fn fs_write(ws: tauri::State<'_, Workspace>, path: String, content: String) -> Result<(), String> {
     let p = resolve(&ws.0.lock().unwrap(), &path)?;
     if let Some(parent) = p.parent() {
         let _ = fs::create_dir_all(parent);
@@ -240,8 +339,8 @@ fn fs_write(ws: tauri::State<Workspace>, path: String, content: String) -> Resul
     fs::write(p, content).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-fn fs_create(ws: tauri::State<Workspace>, path: String, is_dir: bool) -> Result<(), String> {
+#[tauri::command(async)]
+fn fs_create(ws: tauri::State<'_, Workspace>, path: String, is_dir: bool) -> Result<(), String> {
     let p = resolve(&ws.0.lock().unwrap(), &path)?;
     if p.exists() {
         return Err("already exists".into());
@@ -256,8 +355,8 @@ fn fs_create(ws: tauri::State<Workspace>, path: String, is_dir: bool) -> Result<
     }
 }
 
-#[tauri::command]
-fn fs_rename(ws: tauri::State<Workspace>, from: String, to: String) -> Result<(), String> {
+#[tauri::command(async)]
+fn fs_rename(ws: tauri::State<'_, Workspace>, from: String, to: String) -> Result<(), String> {
     let root = ws.0.lock().unwrap();
     let f = resolve(&root, &from)?;
     let t = resolve(&root, &to)?;
@@ -267,8 +366,8 @@ fn fs_rename(ws: tauri::State<Workspace>, from: String, to: String) -> Result<()
     fs::rename(f, t).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-fn fs_delete(ws: tauri::State<Workspace>, path: String) -> Result<(), String> {
+#[tauri::command(async)]
+fn fs_delete(ws: tauri::State<'_, Workspace>, path: String) -> Result<(), String> {
     let p = resolve(&ws.0.lock().unwrap(), &path)?;
     if p.is_dir() {
         fs::remove_dir_all(p).map_err(|e| e.to_string())
@@ -280,8 +379,8 @@ fn fs_delete(ws: tauri::State<Workspace>, path: String) -> Result<(), String> {
 /// Copy a file chosen via the native document picker (path may be outside the workspace — e.g. the
 /// iOS Files app / Downloads) into the workspace so it becomes an editable note. Returns the new
 /// workspace-relative path (a unique name if one already exists).
-#[tauri::command]
-fn import_file(ws: tauri::State<Workspace>, src: String) -> Result<String, String> {
+#[tauri::command(async)]
+fn import_file(ws: tauri::State<'_, Workspace>, src: String) -> Result<String, String> {
     let src_path = PathBuf::from(&src);
     let data = fs::read(&src_path).map_err(|e| format!("read {}: {}", src, e))?;
     let name = src_path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "imported.md".into());
@@ -331,10 +430,10 @@ fn workspace_rel(root: &Path, file: &Path) -> Option<String> {
 
 /// Canonicalize and classify a path we were handed, returning its content and — if it turns out to
 /// live inside the workspace after all — its workspace-relative path. Grants in-place access.
-#[tauri::command]
+#[tauri::command(async)]
 fn external_open(
-    ws: tauri::State<Workspace>,
-    ext: tauri::State<ExternalFiles>,
+    ws: tauri::State<'_, Workspace>,
+    ext: tauri::State<'_, ExternalFiles>,
     path: String,
 ) -> Result<ExternalInfo, String> {
     let p = PathBuf::from(&path).canonicalize().map_err(|e| format!("{}: {}", path, e))?;
@@ -355,15 +454,15 @@ fn external_open(
 }
 
 /// Re-read a granted external file (used when switching back to its tab).
-#[tauri::command]
-fn external_read(ext: tauri::State<ExternalFiles>, path: String) -> Result<String, String> {
+#[tauri::command(async)]
+fn external_read(ext: tauri::State<'_, ExternalFiles>, path: String) -> Result<String, String> {
     let p = granted(&ext, &path)?;
     fs::read_to_string(p).map_err(|e| e.to_string())
 }
 
 /// Save back to an external file. Only paths the user opened in place this session are writable.
-#[tauri::command]
-fn external_write(ext: tauri::State<ExternalFiles>, path: String, content: String) -> Result<(), String> {
+#[tauri::command(async)]
+fn external_write(ext: tauri::State<'_, ExternalFiles>, path: String, content: String) -> Result<(), String> {
     let p = granted(&ext, &path)?;
     fs::write(p, content).map_err(|e| e.to_string())
 }
@@ -371,23 +470,23 @@ fn external_write(ext: tauri::State<ExternalFiles>, path: String, content: Strin
 /// Where a workspace file actually sits on disk. The tree deals in workspace-relative paths, which
 /// is the right currency inside the app and useless the moment you want to point another program at
 /// the file. Goes through `resolve`, so it can only ever name something inside the workspace.
-#[tauri::command]
-fn fs_abs_path(ws: tauri::State<Workspace>, path: String) -> Result<String, String> {
+#[tauri::command(async)]
+fn fs_abs_path(ws: tauri::State<'_, Workspace>, path: String) -> Result<String, String> {
     let p = resolve(&ws.0.lock().unwrap(), &path)?;
     Ok(p.canonicalize().unwrap_or(p).to_string_lossy().to_string())
 }
 
 /// Show a workspace file in the system file manager.
-#[tauri::command]
-fn fs_reveal(ws: tauri::State<Workspace>, path: String) -> Result<(), String> {
+#[tauri::command(async)]
+fn fs_reveal(ws: tauri::State<'_, Workspace>, path: String) -> Result<(), String> {
     let p = resolve(&ws.0.lock().unwrap(), &path)?;
     reveal(&p)
 }
 
 /// Show a file opened in place. Same session-scoped grant as reading and writing it: revealing a
 /// path is a smaller thing than opening it, but it still says "this file exists, here".
-#[tauri::command]
-fn external_reveal(ext: tauri::State<ExternalFiles>, path: String) -> Result<(), String> {
+#[tauri::command(async)]
+fn external_reveal(ext: tauri::State<'_, ExternalFiles>, path: String) -> Result<(), String> {
     let p = granted(&ext, &path)?;
     reveal(&p)
 }
@@ -432,7 +531,7 @@ fn reveal(_p: &Path) -> Result<(), String> {
     Err("not available on iOS".into())
 }
 
-fn granted(ext: &tauri::State<ExternalFiles>, path: &str) -> Result<PathBuf, String> {
+fn granted(ext: &tauri::State<'_, ExternalFiles>, path: &str) -> Result<PathBuf, String> {
     check_granted(&ext.0.lock().unwrap(), path)
 }
 
@@ -602,21 +701,37 @@ fn initial_workspace(app: &tauri::AppHandle) -> PathBuf {
     // saved yet. Do NOT fall back to the raw home dir — `fs_tree` walks the whole tree eagerly, and
     // indexing all of $HOME (node_modules, Library, …) would hang the app on first launch. Default to
     // a dedicated notes folder the user can later switch via the folder picker.
+    // Named here, created on the first tree read — see `seed_workspace`.
     if let Ok(docs) = app.path().document_dir() {
-        let ws = docs.join("EEditor");
-        if fs::create_dir_all(&ws).is_ok() {
-            let empty = fs::read_dir(&ws).map(|mut d| d.next().is_none()).unwrap_or(false);
-            if empty {
-                let _ = fs::write(
-                    ws.join("welcome.md"),
-                    "# EEditor\n\nA Markdown editor with the EELisp engine.\n\nYour notes live in this folder (**Documents → EEditor**). Use the **folder…** button in the Files\nheader to point EEditor at any other folder.\n\nShortcuts: ⌘S save · ⌘P quick-open · ⌘⇧F search · ⌘D today's note · ⌘I timestamp heading ·\n⌘⇧↩ run the ```eelisp block at the cursor.\n\n```eelisp\n(+ 1 2 3)\n(map (fn (x) (* x x)) (range 1 6))\n```\n",
-                );
-            }
-            return ws;
-        }
+        return docs.join("EEditor");
     }
     app.path().home_dir().unwrap_or(cwd)
 }
+
+/// Create the default notes folder and put a welcome note in it, once per launch.
+///
+/// Deliberately *not* done in `setup()`: creating a folder inside ~/Documents is precisely the
+/// write macOS stops to ask about, `setup` runs on the main thread, and the app would hang on its
+/// very first launch with nothing drawn yet — the same freeze `fs_tree` was fixed for. `fs_tree`
+/// runs off the main thread, so the first read of the workspace is the right moment.
+#[cfg(desktop)]
+fn seed_workspace(ws: &Path) {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        // Only ever *creates*. A folder that is already there — saved from last time, or picked by
+        // the user — is left exactly as it is, welcome note or not.
+        if ws.exists() || fs::create_dir_all(ws).is_err() {
+            return;
+        }
+        let _ = fs::write(
+            ws.join("welcome.md"),
+                "# EEditor\n\nA Markdown editor with the EELisp engine.\n\nYour notes live in this folder (**Documents → EEditor**). Use the **folder…** button in the Files\nheader to point EEditor at any other folder.\n\nShortcuts: ⌘S save · ⌘P quick-open · ⌘⇧F search · ⌘D today's note · ⌘I timestamp heading ·\n⌘⇧↩ run the ```eelisp block at the cursor.\n\n```eelisp\n(+ 1 2 3)\n(map (fn (x) (* x x)) (range 1 6))\n```\n",
+        );
+    });
+}
+
+#[cfg(mobile)]
+fn seed_workspace(_ws: &Path) {}
 
 /// Queue paths the OS asked us to open and nudge the frontend. Queue-then-notify (rather than
 /// emitting the paths themselves) means a cold start and a running app take the same route: the
@@ -828,6 +943,50 @@ mod tests {
         assert!(is_binary_ext(Path::new("/x/a.png")));
         assert!(is_binary_ext(Path::new("/x/a.PNG")));
         assert!(is_binary_ext(Path::new("/x/a.sqlite3")));
+    }
+
+    /// A folder the OS refuses is the case that used to look like an empty workspace: `read_dir`
+    /// failed, the error was dropped, and the walk returned nothing. It has to be reported.
+    #[test]
+    fn the_tree_reports_a_folder_it_is_not_allowed_to_read() {
+        use std::os::unix::fs::PermissionsExt;
+        let t = Tmp::new("denied");
+        let root = t.0.join("ws");
+        fs::create_dir_all(root.join("secret")).unwrap();
+        t.file("ws/visible.md", "x");
+        t.file("ws/secret/hidden.md", "x");
+        fs::set_permissions(root.join("secret"), fs::Permissions::from_mode(0o000)).unwrap();
+
+        let mut walk = TreeWalk::default();
+        let kids = children_of(&root, "", 0, &mut walk);
+        // the readable half is still there…
+        assert!(kids.iter().any(|n| n["name"] == "visible.md"));
+        // …and the other half is named, not silently missing
+        assert_eq!(walk.unreadable.len(), 1, "{:?}", walk.unreadable);
+        assert!(walk.unreadable[0].starts_with("secret:"), "{:?}", walk.unreadable);
+
+        fs::set_permissions(root.join("secret"), fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    /// A symlink pointing back up the tree is a loop. Following it walks forever — which, on the
+    /// main thread, is a window that never comes back.
+    #[test]
+    fn the_tree_walk_terminates_on_a_symlink_loop() {
+        let t = Tmp::new("loop");
+        let root = t.0.join("ws");
+        fs::create_dir_all(root.join("sub")).unwrap();
+        t.file("ws/sub/a.md", "x");
+        std::os::unix::fs::symlink(&root, root.join("sub/back")).unwrap();
+
+        let mut walk = TreeWalk::default();
+        walk.seen.insert(root.canonicalize().unwrap());
+        let kids = children_of(&root, "", 0, &mut walk);
+
+        let sub = kids.iter().find(|n| n["name"] == "sub").unwrap();
+        let back = sub["children"].as_array().unwrap().iter().find(|n| n["name"] == "back").unwrap();
+        // listed as the folder it is, but not descended into a second time
+        assert_eq!(back["isDir"], true);
+        assert_eq!(back["children"].as_array().unwrap().len(), 0);
     }
 
     #[test]
