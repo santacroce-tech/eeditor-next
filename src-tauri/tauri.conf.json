@@ -84,6 +84,9 @@
     "android": {
       "debugApplicationIdSuffix": ".debug"
     },
+    "macOS": {
+      "infoPlist": "Info.macos.plist"
+    },
     "iOS": {
       "developmentTeam": "FFJKC46LZP",
       "minimumSystemVersion": "14.0",

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- macOS gates the folders people actually keep notes in. Without a purpose string the consent
+	     dialog is a bare "would like to access files"; with one it says why, which is the difference
+	     between an informed Allow and a reflexive Don't Allow that leaves EEditor with no workspace.
+	     Merged into the generated Info.plist via bundle.macOS.infoPlist — macOS only, iOS keeps
+	     Info.ios.plist. -->
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>EEditor needs access to your Documents folder to open and save the notes you keep there.</string>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>EEditor needs access to your Desktop to open and save notes you keep there.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>EEditor needs access to your Downloads folder to open files you have just downloaded.</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>EEditor needs access to removable volumes to open a workspace stored on one.</string>
+	<key>NSNetworkVolumesUsageDescription</key>
+	<string>EEditor needs access to network volumes to open a workspace stored on one.</string>
+</dict>
+</plist>

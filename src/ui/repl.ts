@@ -28,7 +28,7 @@ export function createRepl(parent: HTMLElement, engine: EngineClient): Repl {
   const input = document.createElement("textarea");
   input.className = "repl-input";
   input.rows = 1;
-  input.placeholder = "(+ 1 2)   —   ⌘/Ctrl+Enter to run";
+  input.placeholder = '(+ 1 2)  ·  (functions "str")  —  ⌘/Ctrl+Enter to run';
   input.spellcheck = false;
 
   inputRow.append(prompt, input);

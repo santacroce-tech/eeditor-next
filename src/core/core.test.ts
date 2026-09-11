@@ -8,6 +8,7 @@ import { wikiLinkAt, wikiLinkTargets } from "./wikilink";
 import { backlinksTo } from "./backlinks";
 import { parseKeybindings, parseKeySpec, eventKeyId, lispString } from "./keybindings";
 import { uniqueName } from "./uniquename";
+import { highlightEelisp } from "./lisphl";
 
 describe("fuzzy", () => {
   const files = [
@@ -256,5 +257,36 @@ describe("uniqueName", () => {
 
   it("splits on the last dot only", () => {
     expect(uniqueName("archive.tar.gz", ["archive.tar.gz"])).toBe("archive.tar-1.gz");
+  });
+});
+
+describe("eelisp highlighting", () => {
+  const kinds = (src: string) => highlightEelisp(src).filter((t) => t.text.trim()).map((t) => `${t.kind}:${t.text}`);
+
+  it("never loses a character", () => {
+    const src = '(defn f (x) ; halve\n  "doc \\" here"\n  (/ x 2.0))\n';
+    expect(highlightEelisp(src).map((t) => t.text).join("")).toBe(src);
+  });
+
+  it("marks comments, strings, numbers, forms and defined names", () => {
+    expect(kinds('(defn sq (x) (* x 2))')).toEqual([
+      "paren:(", "form:defn", "name:sq", "paren:(", "plain:x", "paren:)",
+      "paren:(", "plain:*", "plain:x", "number:2", "paren:)", "paren:)",
+    ]);
+    expect(kinds("; note\n42")).toEqual(["comment:; note", "number:42"]);
+    expect(kinds('"a ; not a comment"')).toEqual(['string:"a ; not a comment"']);
+    // defun is the CL spelling of the same form
+    expect(kinds("(defun f ())").slice(0, 3)).toEqual(["paren:(", "form:defun", "name:f"]);
+  });
+
+  it("handles escaped quotes and an unterminated string", () => {
+    expect(kinds('"say \\"hi\\"" 1')).toEqual(['string:"say \\"hi\\""', "number:1"]);
+    expect(highlightEelisp('"never closed')[0].kind).toBe("string");
+  });
+
+  it("reads negative and exponent numbers as numbers, bare symbols as plain", () => {
+    expect(kinds("-3.5 1e6 .5 - x2")).toEqual([
+      "number:-3.5", "number:1e6", "number:.5", "plain:-", "plain:x2",
+    ]);
   });
 });

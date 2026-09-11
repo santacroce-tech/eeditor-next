@@ -352,12 +352,47 @@
 λ (insert notes {:title <span class="st">"Kickoff"</span> :body <span class="st">"Ship by Friday"</span>})
 λ (browse notes)          <span class="cm">; → a table widget</span>
 λ (edit notes 1)          <span class="cm">; → a form widget</span></code></pre>
+    <h3>Asking the language what it knows</h3>
+    <p>
+      Two functions answer that from inside the REPL, so you never have to leave the app to look
+      something up. <code>(functions)</code> lists everything in scope — every builtin, every macro,
+      every special form, and anything you or the snippets bundle have defined — with its call shape.
+      Give it a fragment of a name and it lists only those.
+    </p>
+<pre><code>λ (functions <span class="st">"date-"</span>)
+builtins
+  date-add     (date-add date n unit) → string
+  date-diff    (date-diff a b) → number
+  date-format  (date-format d pattern) → string
+
+<span class="cm">— 3 of 186 functions matching "date-"</span></code></pre>
+    <p>
+      <code>(source f)</code> then shows one of them. For a builtin that's its manual entry —
+      signature, what it does, a worked example. For anything written in EELisp it's the definition
+      <em>as it was written</em>, comments and all:
+    </p>
+<pre><code>λ (source zzalinhar)
+zzalinhar — function
+
+  <span class="cm">;; ─── zzalinhar — Text alignment ───</span>
+  <span class="cm">;; Aligns text to left, right, center, or justified within a given width.</span>
+  <span class="cm">;; (zzalinhar "hello" 20 :center)  → "       hello        "</span>
+  (defn zzalinhar (text width align)
+    …</code></pre>
+    <p>
+      That applies to your own code too. A <code>;;</code> comment written directly above a
+      <code>defn</code> — in a snippet, in a note, in your keybindings file — becomes that function's
+      documentation, and <code>(source …)</code> reads it back months later — as does a comment
+      written after a one-line definition on the same line. The name is not evaluated, so
+      <code>(source map)</code> works as well as <code>(source 'map)</code>.
+    </p>
+
     <h3>Snippets</h3>
     <p>
       The <strong>snippets</strong> button loads the standard EELisp bundle — ten modules and over a
       hundred and fifty functions covering text, maths, dates, conversion, crypto, reference tables,
       networking, world clocks and Bitcoin. Once loaded they're callable from the REPL and from your
-      keybindings alike.
+      keybindings alike — and <code>(functions "zz")</code> is the fastest way to see what arrived.
     </p>
     <p>
       The full language is documented at <a href="https://eelisp.app">eelisp.app</a>.

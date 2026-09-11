@@ -8,6 +8,7 @@
   --border: #313244;
   --ok: #a6e3a1;
   --err: #f38ba8;
+  --kw: #cba6f7;   /* special forms in a code listing */
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
 }
 
@@ -22,6 +23,7 @@
   --border: #ddd6c1;
   --ok: #859900;
   --err: #dc322f;
+  --kw: #6c71c4;
 }
 :root[data-theme="light"] .qo-row.active { color: #fdf6e3; }
 
@@ -62,7 +64,8 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-s
 .tree-file:hover { background: var(--bg); }
 .tree-file.active { background: var(--border); color: #fff; }
 .tree-caret { display: inline-block; width: 12px; color: var(--muted); }
-.tree-error { padding: 8px 12px; color: var(--err); font-size: 12px; }
+.tree-error { padding: 8px 12px; color: var(--err); font-size: 12px; line-height: 1.4; }
+.tree-note { padding: 6px 12px; color: var(--muted); font-size: 11px; font-style: italic; }
 
 .agenda { display: flex; flex-direction: column; height: 100%; }
 .agenda-add { padding: 6px 8px; }
@@ -319,6 +322,33 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-s
 .snip-fns { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 10px 10px; }
 .snip-fn { background: var(--bg-2); color: var(--muted); border: 1px solid var(--border);
   border-radius: 6px; padding: 1px 6px; font: 10px var(--mono); }
+.snip-srcbtn { background: var(--bg-2); color: var(--muted); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 8px; font: 600 11px var(--mono); cursor: pointer; white-space: nowrap; }
+.snip-srcbtn:hover { color: var(--fg); border-color: var(--accent); }
+
+/* source view — the panel widens to fit code, and swaps the list for a read-only listing */
+.snip-view { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.snip-panel-src { width: 760px; }
+.snip-back { background: none; color: var(--muted); border: none; padding: 0 8px 0 0;
+  font: 600 12px var(--mono); cursor: pointer; }
+.snip-back:hover { color: var(--fg); }
+.snip-head .snip-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+.snip-actions { display: flex; gap: 6px; }
+.snip-copy { background: var(--bg); color: var(--muted); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 10px; font: 600 11px var(--mono); cursor: pointer; }
+.snip-copy:hover { color: var(--fg); border-color: var(--accent); }
+.snip-src { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 12px 14px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  font: 12px/1.55 var(--mono); color: var(--fg); tab-size: 2; }
+/* block + max-content so the pre's right padding survives a horizontal scroll */
+.snip-src code { display: block; min-width: max-content; font: inherit; white-space: pre; }
+.hl-comment { color: var(--muted); font-style: italic; }
+.hl-string { color: var(--ok); }
+.hl-number { color: var(--accent); }
+.hl-form { color: var(--kw); font-weight: 600; }
+.hl-name { color: var(--fg); font-weight: 600; }
+.hl-paren { color: var(--muted); }
 
 /* ── mobile / narrow layout ── (phones + iPad portrait; iPad landscape & desktop keep 3 panes) */
 .tabbar { display: none; }
