@@ -109,6 +109,8 @@ const routes = {
   "/fs/abspath": async ({ path: rel }) => JSON.stringify({ path: safe(rel) }),
   "/fs/write": async ({ path: rel, content }) => {
     const abs = safe(rel);
+    // mirrors refuse_sheet: a sheet's cells are written by the engine, never saved as text
+    if (/\.eesheet$/i.test(abs)) throw new Error(`${rel} is a sheet — its cells are written by the engine, not saved as text`);
     await mkdir(path.dirname(abs), { recursive: true });
     await writeFile(abs, String(content ?? ""), "utf8");
     return JSON.stringify({ ok: true });

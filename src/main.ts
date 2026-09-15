@@ -479,8 +479,9 @@ function main(): void {
     switchTab(tabs.length - 1);
   };
 
-  async function openSheet(path: string): Promise<void> {
-    const tab: Tab = { path, content: "", dirty: false, sheet: true };
+  /** A sheet tab. `external` for one opened in place from outside the workspace, by absolute path. */
+  async function openSheet(path: string, external = false): Promise<void> {
+    const tab: Tab = { path, content: "", dirty: false, sheet: true, external: external || undefined };
     const view = createSheetView({
       client: sheets,
       path,
@@ -939,6 +940,11 @@ function main(): void {
       switchTab(existing);
       return;
     }
+    // The engine opens a sheet by its absolute path; there is no text to carry into a tab.
+    if (isSheetPath(f.path)) {
+      void openSheet(f.path, true).catch((e) => toast(`Could not open ${f.name}: ${String(e)}`));
+      return;
+    }
     tabs.push({ path: f.path, content: f.content, dirty: false, external: true });
     switchTab(tabs.length - 1);
     editor.view.focus();
@@ -951,6 +957,7 @@ function main(): void {
   async function copyActiveIntoWorkspace(): Promise<void> {
     const tab = activeExternal();
     if (!tab) return;
+    if (tab.sheet) return copySheetIntoWorkspace(tab);
     const rootNames = sidebar.files().filter((f) => !f.path.includes("/")).map((f) => f.name);
     const name = uniqueName(basename(tab.path), rootNames);
     try {
@@ -973,6 +980,36 @@ function main(): void {
     sidebar.setActive(name);
     void refreshBacklinks();
     toast(`Copied into the workspace as ${name}`);
+  }
+  /**
+   * A sheet comes in as its file, byte for byte — there is no buffer to copy. The engine lets go of the
+   * original first, so the copy is taken of a file nothing is halfway through writing.
+   */
+  async function copySheetIntoWorkspace(tab: Tab): Promise<void> {
+    const view = sheetViews.get(tab.path);
+    await view?.commit();
+    await sheets.close(tab.path).catch(() => {});
+    let rel: string;
+    try {
+      rel = await ws.importExternal(tab.path);
+    } catch (e) {
+      toast(`Could not copy in: ${String(e)}`);
+      return;
+    }
+    if (view) {
+      sheetViews.delete(tab.path);
+      view.path = rel;
+      sheetViews.set(rel, view);
+      void view.load();
+    }
+    tab.path = rel;
+    tab.external = undefined;
+    currentPath = rel;
+    await sidebar.refresh();
+    setHead();
+    renderTabs();
+    sidebar.setActive(rel);
+    toast(`Copied into the workspace as ${rel}`);
   }
   copyInBtn.addEventListener("click", () => void copyActiveIntoWorkspace());
 

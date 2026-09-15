@@ -254,10 +254,18 @@ numbered columns); the manual gained a Sheets chapter, the EELisp reference a Sh
 
 ## Milestone 5 — the OS knows what a `.eesheet` is
 
-`exportedType` `com.eeditor.app.eesheet` (conforms to `public.data`), `rank: Owner`, the same
-declaration in `Info.ios.plist`, pinned by `dev/associations.test.mjs`. Dragged in from outside, a
-sheet takes the existing *copy in / open in place* path; in place works because the engine opens
-absolute paths.
+*Done on `feat/sheets`.*
+
+`exportedType` `com.eeditor.app.sheet`, conforming to `public.data` and `public.database` — never to
+text, or every text editor would offer to open (and save over) a SQLite file — `rank: Owner`, the
+same declaration in `Info.ios.plist`, pinned by `dev/associations.test.mjs`. Dragged in or handed
+over by "Open With", a sheet takes the existing *copy in / open in place* question: `external_open`
+no longer reads it as text, in place opens a ↗ sheet tab the engine reads by absolute path, and copy
+in copies the file's bytes after the engine lets go of it. A browser drop, which only sees text,
+refuses a sheet.
+
+Second line of defence: `fs_write`, `external_write` and the bridge's `/fs/write` refuse any
+`.eesheet` — whatever goes wrong upstream, nothing saves a note's text over a sheet.
 
 ---
 

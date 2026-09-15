@@ -43,6 +43,15 @@ describe("macOS file associations", () => {
     }
   });
 
+  it("declares a sheet as EEditor's own data, never as text", () => {
+    // Conforming to text would let every text editor offer to open a SQLite file — and save over it.
+    const sheet = byExt("eesheet");
+    expect(sheet.rank).toBe("Owner");
+    expect(sheet.contentTypes).toContain(sheet.exportedType.identifier);
+    expect(sheet.exportedType.conformsTo).toContain("public.data");
+    expect(sheet.exportedType.conformsTo).not.toContain("public.plain-text");
+  });
+
   it("stays a good citizen for types other apps own", () => {
     // Owner would make EEditor the default handler for every .md and .txt on the machine.
     for (const ext of ["md", "txt"]) expect(byExt(ext).rank).toBe("Alternate");
