@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { scalarText, renderEnvelope, renderValue } from "./render";
-import type { Envelope, JsonValue } from "./types";
+import { dictGet, type Envelope, type JsonValue } from "./types";
 
 describe("scalarText", () => {
   it("formats scalars, lists, keywords, dicts", () => {
@@ -80,5 +80,14 @@ describe("renderEnvelope", () => {
       expect(m.fields[0].name).toBe("p");
       expect(m.computed[0]).toEqual({ name: "d", expression: "(* p 2)" });
     }
+  });
+});
+
+describe("dictGet", () => {
+  it("reads one key of a $dict", () => {
+    const info: JsonValue = { $dict: [["path", ":memory:"], ["error", "couldn't open x.db"]] };
+    expect(dictGet(info, "error")).toBe("couldn't open x.db");
+    expect(dictGet(info, "missing")).toBeUndefined();
+    expect(dictGet("not a dict", "path")).toBeUndefined();
   });
 });

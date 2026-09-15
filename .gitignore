@@ -7,3 +7,6 @@ src-tauri/gen/
 
 # local project notes (kept out of the repo)
 memory.md
+
+# the dev workspace's engine database (tables + agenda), written by the bridge
+workspace/.eeditor/eeditor.db*

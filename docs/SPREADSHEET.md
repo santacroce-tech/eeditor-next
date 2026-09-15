@@ -40,25 +40,28 @@ a grid without it is hostile and it is cheap: **undo/redo of cell edits**. Not i
 - `EngineHandle::open_database(path) -> Result<(), String>` — a new `Job` that swaps the `Database`
   behind the shared `Rc<RefCell<…>>` (db + agenda builtins see it at once) and resets `Agendas`.
   A job rather than an eval'd string, so no path ever has to be escaped into EELisp source.
-- `(database-path)` → the file in use, or `":memory:"`. How the app notices the fallback, and how a
-  user answers "where is my agenda".
+- `(database-info)` → `{:path …}` — the file in use, or `":memory:"` — plus `:error` when the file
+  the host asked for couldn't be opened. How the app notices the fallback, and how a user answers
+  "where is my agenda".
 - Open with `busy_timeout` (the dev bridge and the desktop app can share a workspace) and the default
   rollback journal — no `-wal`/`-shm` sidecars in synced folders.
 - `eelisp --serve --db <path>`: parse args *before* building the interpreter (today `main` builds it
   first). Without `--db`, still `:memory:` — the smoke test relies on that.
 
 **eeditor-next**
-- `setup()`: spawn with `<ws>/.eeditor/eeditor.db` (create `.eeditor/` first). The open runs on the
-  engine thread, never the main thread — the TCC gate note in `memory.md` applies.
+- `setup()`: spawn with `<ws>/.eeditor/eeditor.db`; the engine creates `.eeditor/` when it's
+  missing. The open runs on the engine thread, never the main thread — the TCC gate note in
+  `memory.md` applies.
 - `pick_workspace` / `restore_workspace`: after moving the root, `engine.open_database(new path)`.
-- Frontend at launch: `(database-path)` = `":memory:"` in the app → toast *"Agenda isn't being
-  saved: couldn't open …"*.
+- Frontend at launch and after a workspace change: an `:error` in `(database-info)` → a dialog,
+  *"The agenda isn't being saved"*, with the reason copyable.
 - `dev/bridge.mjs` passes `--db <ws>/.eeditor/eeditor.db`; `.gitignore` gets
   `workspace/.eeditor/eeditor.db*`.
 - `.eeditor/` is a dot‑folder, so the tree already hides the database.
 
-**Tests**: `tests/host.rs` — a file database survives drop + respawn; an unopenable path falls back to
-memory and says so; `open_database` swaps agenda contents. Smoke: `--serve --db tmp` persists across
+**Tests**: `tests/database.rs` — a file database survives drop + respawn; the folder is created; an unopenable path falls back to
+memory and says so; `open_database` swaps agenda contents, and a failed one lands in memory rather
+than in the old file. Smoke: `--serve --db tmp` persists across
 two processes.
 
 ---
