@@ -6,6 +6,7 @@
 
 import { marked } from "marked";
 import { createEngineClient } from "./engine/client";
+import { dictGet } from "./engine/types";
 import { createWorkspaceClient, inTauri, type ExternalFile, type FileNode } from "./engine/workspace";
 import { createEditor, type ThemeName } from "./ui/editor";
 import { createRepl } from "./ui/repl";
@@ -607,9 +608,22 @@ function main(): void {
     await openDailyNote();
   };
 
+  /**
+   * The agenda and tables live in the workspace's database. When the engine couldn't open it, it
+   * runs in memory — everything still works and all of it is gone at quit, so say so now.
+   */
+  async function checkDatabase(): Promise<void> {
+    const env = await engine.evalSrc("(database-info)");
+    const error = env.ok ? dictGet(env.result, "error") : undefined;
+    if (typeof error === "string") await infoModal("The agenda isn't being saved — it lasts until you quit", error);
+  }
+
   openBtn.addEventListener("click", () => {
     void ws.pickWorkspace().then((picked) => {
       if (!picked) return;
+      // the backend has already moved the engine to the new workspace's database
+      void agenda.refresh();
+      void checkDatabase();
       void sidebar.refresh().then(() => {
         void tags.refresh();
         void openFirstFile();
@@ -911,8 +925,10 @@ function main(): void {
           if (!(await keys.runStart().catch(() => false))) await openFirstFile();
           void tags.refresh();
         });
+      // A restored folder (iOS) brings its own database, so the agenda is read once it's in place.
+      void agenda.refresh();
+      void checkDatabase();
     });
-  void agenda.refresh();
 }
 
 main();

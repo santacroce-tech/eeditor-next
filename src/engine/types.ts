@@ -97,5 +97,9 @@ export const isTable = (v: JsonValue): v is { $table: TableDef } => has(v, "$tab
 export const isKeyword = (v: JsonValue): v is { $kw: string } => has(v, "$kw");
 export const isSymbol = (v: JsonValue): v is { $sym: string } => has(v, "$sym");
 export const isDict = (v: JsonValue): v is { $dict: [string, JsonValue][] } => has(v, "$dict");
+/** One key of a `$dict`, or undefined when the value isn't a dict or has no such key. */
+export function dictGet(v: JsonValue, key: string): JsonValue | undefined {
+  return isDict(v) ? v.$dict.find(([k]) => k === key)?.[1] : undefined;
+}
 export const isCallable = (v: JsonValue): v is { $fn: string } | { $builtin: string } | { $macro: string } =>
   has(v, "$fn") || has(v, "$builtin") || has(v, "$macro");

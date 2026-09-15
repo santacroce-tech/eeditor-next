@@ -19,8 +19,9 @@ const BINARY =
 
 // ── engine process ──
 // --workspace tells the engine where it is, so (current-dir) answers the same here as it does
-// in the desktop app.
-const child = spawn(BIN, ["--serve", "--workspace", WS], { stdio: ["pipe", "pipe", "inherit"] });
+// in the desktop app; --db keeps the tables and agenda in the workspace, where the app keeps them.
+const DB = path.join(WS, ".eeditor", "eeditor.db");
+const child = spawn(BIN, ["--serve", "--workspace", WS, "--db", DB], { stdio: ["pipe", "pipe", "inherit"] });
 child.on("error", (e) => (console.error(`[bridge] spawn ${BIN}: ${e.message}`), process.exit(1)));
 child.on("exit", (c) => (console.error(`[bridge] engine exited (${c})`), process.exit(1)));
 const rl = readline.createInterface({ input: child.stdout });
@@ -156,4 +157,4 @@ const server = createServer((req, res) => {
   });
 });
 
-server.listen(PORT, () => console.error(`[bridge] http://localhost:${PORT}  engine=${BIN}  workspace=${WS}`));
+server.listen(PORT, () => console.error(`[bridge] http://localhost:${PORT}  engine=${BIN}  workspace=${WS}  db=${DB}`));

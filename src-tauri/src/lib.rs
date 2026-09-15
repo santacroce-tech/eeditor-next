@@ -45,6 +45,25 @@ struct ExitGuard(AtomicBool);
 /// never make the app unquittable; saving a handful of text files takes milliseconds.
 const EXIT_FLUSH_TIMEOUT: Duration = Duration::from_secs(3);
 
+/// Where a workspace keeps the engine's database — its tables and agenda — beside the keybindings.
+/// A dot-folder, so the tree never lists it.
+fn engine_db_path(workspace: &Path) -> String {
+    workspace.join(".eeditor").join("eeditor.db").display().to_string()
+}
+
+/// The workspace moved: take the engine's database with it. Blocking (the open can sit behind a
+/// macOS privacy prompt), so it runs on a blocking thread — never the main one. A file that can't
+/// be opened leaves the engine in memory; the frontend asks `(database-info)` and says so.
+async fn follow_workspace(app: &tauri::AppHandle, workspace: PathBuf) {
+    let app = app.clone();
+    let _ = tauri::async_runtime::spawn_blocking(move || {
+        if let Err(e) = app.state::<EngineHandle>().open_database(&engine_db_path(&workspace)) {
+            eprintln!("[eeditor] engine database: {e}");
+        }
+    })
+    .await;
+}
+
 /// Id of our own Quit item (see `build_menu`).
 const MENU_QUIT: &str = "quit";
 
@@ -587,6 +606,7 @@ async fn pick_workspace(
     if let Some(p) = &path {
         *ws.0.lock().unwrap() = p.clone();
         save_workspace(&app, p);
+        follow_workspace(&app, p.clone()).await;
     }
     Ok(path.map(|p| p.to_string_lossy().to_string()))
 }
@@ -607,6 +627,7 @@ async fn pick_workspace(app: tauri::AppHandle, ws: tauri::State<'_, Workspace>) 
         .unwrap_or(None);
     if let Some(p) = &path {
         *ws.0.lock().unwrap() = PathBuf::from(p);
+        follow_workspace(&app, PathBuf::from(p)).await;
     }
     Ok(path)
 }
@@ -626,6 +647,7 @@ async fn restore_workspace(app: tauri::AppHandle, ws: tauri::State<'_, Workspace
         .unwrap_or(None);
     if let Some(p) = &path {
         *ws.0.lock().unwrap() = PathBuf::from(p);
+        follow_workspace(&app, PathBuf::from(p)).await;
     }
     Ok(path)
 }
@@ -781,11 +803,15 @@ pub fn run() {
             }
             let ws = initial_workspace(app.handle());
             eprintln!("[eeditor] workspace: {}", ws.display());
+            // The tables and agenda live in the workspace, so they survive a quit. The engine
+            // opens the file on its own thread — setup() is the main thread, and a workspace under
+            // ~/Documents can hold the first touch behind a privacy prompt.
+            let db = engine_db_path(&ws);
             let root = Arc::new(Mutex::new(ws));
             // The engine's editor RPC is installed on its own thread, reading through the same
             // handle the fs commands write to — so `(current-dir)` is never stale.
             let engine_root = root.clone();
-            app.manage(EngineHandle::spawn_with(":memory:".to_string(), move |it| {
+            app.manage(EngineHandle::spawn_with(db, move |it| {
                 it.editor.borrow_mut().current_dir =
                     Some(Box::new(move || engine_root.lock().unwrap().display().to_string()));
             }));
