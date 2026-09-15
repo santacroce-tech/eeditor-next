@@ -189,6 +189,13 @@ const BINARY_EXT: &[&str] = &[
     "exe", "dll", "so", "dylib", "o", "a", "bin", "class", "jar", "wasm", "pyc", "db", "sqlite", "sqlite3",
 ];
 
+/// SQLite's companions to a database: a rollback journal that exists for the length of each write
+/// to a sheet, and the WAL pair a database in WAL mode keeps. Not documents — and a journal that
+/// flickers into the tree while a cell saves looks like a stray file.
+fn is_sqlite_sidecar(name: &str) -> bool {
+    ["-journal", "-wal", "-shm"].iter().any(|s| name.ends_with(s))
+}
+
 fn is_binary_ext(p: &Path) -> bool {
     p.extension()
         .and_then(|x| x.to_str())
@@ -279,7 +286,7 @@ fn children_of(dir: &Path, rel: &str, depth: usize, walk: &mut TreeWalk) -> Vec<
     let mut items: Vec<(PathBuf, String, bool)> = Vec::new();
     for e in read.flatten() {
         let name = e.file_name().to_string_lossy().to_string();
-        if name.starts_with('.') {
+        if name.starts_with('.') || is_sqlite_sidecar(&name) {
             continue;
         }
         let path = e.path();
@@ -953,6 +960,13 @@ mod tests {
         // a sibling file is still refused
         let other = t.file("other.md", "x");
         assert!(check_granted(&set, other.to_str().unwrap()).is_err());
+    }
+
+    #[test]
+    fn sqlite_journals_are_not_listed() {
+        assert!(is_sqlite_sidecar("Budget.eesheet-journal"));
+        assert!(is_sqlite_sidecar("eeditor.db-wal") && is_sqlite_sidecar("eeditor.db-shm"));
+        assert!(!is_sqlite_sidecar("journal.md"));
     }
 
     #[test]

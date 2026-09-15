@@ -53,7 +53,8 @@ async function buildTree(absDir, relDir, depth, walk) {
   // A symlink is not a directory as far as the dirent is concerned — resolve it once, here.
   const items = [];
   for (const e of entries) {
-    if (e.name.startsWith(".")) continue;
+    // dotfiles, and SQLite's journal/WAL companions (mirrors is_sqlite_sidecar)
+    if (e.name.startsWith(".") || /-(journal|wal|shm)$/.test(e.name)) continue;
     const abs = path.join(absDir, e.name);
     let isDir = e.isDirectory();
     if (e.isSymbolicLink()) isDir = await stat(abs).then((st) => st.isDirectory(), () => false);

@@ -46,6 +46,8 @@ export interface KeybindingsOptions {
   createFile: (path: string, content: string) => Promise<void>;
   /** Where errors and `println` output from a binding go (the REPL scrollback). */
   note: (text: string) => void;
+  /** Put focus back on the document after a binding ran — the grid, when a sheet is showing. */
+  focus?: () => void;
 }
 
 const pad2 = (n: number): string => String(n).padStart(2, "0");
@@ -259,7 +261,7 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
       return;
     }
     if (env.output) opts.note(env.output.replace(/\n$/, ""));
-    if (apply(env.result)) editor.view.focus();
+    if (apply(env.result)) (opts.focus ?? (() => editor.view.focus()))();
   }
 
   // ── dispatch ──

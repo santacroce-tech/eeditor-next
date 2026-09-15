@@ -7,6 +7,9 @@
 import { marked } from "marked";
 import { createEngineClient } from "./engine/client";
 import { dictGet } from "./engine/types";
+import { createSheetClient } from "./engine/sheet";
+import { isSheetPath, SHEET_EXT } from "./core/sheet";
+import { createSheetView, type SheetView } from "./ui/sheet";
 import { createWorkspaceClient, inTauri, type ExternalFile, type FileNode } from "./engine/workspace";
 import { createEditor, type ThemeName } from "./ui/editor";
 import { createRepl } from "./ui/repl";
@@ -71,6 +74,7 @@ function main(): void {
 
   const engine = createEngineClient();
   const ws = createWorkspaceClient();
+  const sheets = createSheetClient(engine);
 
   const shell = document.createElement("div");
   shell.className = "shell";
@@ -183,7 +187,11 @@ function main(): void {
   const backlinksBar = document.createElement("div");
   backlinksBar.className = "backlinks-bar";
   backlinksBar.style.display = "none";
-  editorPane.body.append(tabBar, editorHost, previewHost, backlinksBar);
+  // A sheet tab shows its grid here instead of the text editor (see showSheet).
+  const sheetHost = document.createElement("div");
+  sheetHost.className = "sheet-host";
+  sheetHost.style.display = "none";
+  editorPane.body.append(tabBar, editorHost, previewHost, sheetHost, backlinksBar);
 
   // ── repl pane ──
   const replPane = pane(shell, "repl-pane");
@@ -235,9 +243,14 @@ function main(): void {
     external?: boolean;
     /** External file the OS won't let us write; saving is skipped rather than failing every second. */
     readOnly?: boolean;
+    /** A .eesheet: drawn by its SheetView, written by the engine — never through ws.write. */
+    sheet?: boolean;
   }
   let tabs: Tab[] = [];
   let activeIdx = -1;
+  /** One grid per open sheet tab, kept while the tab is open so selection, scroll and undo survive a switch. */
+  const sheetViews = new Map<string, SheetView>();
+  const activeSheet = (): SheetView | undefined => (tabs[activeIdx]?.sheet ? sheetViews.get(tabs[activeIdx].path) : undefined);
   let suppressChange = false; // guards programmatic setDoc from marking the doc dirty
   let currentPath = "";
   let dirty = false;
@@ -301,8 +314,10 @@ function main(): void {
     if (idx < 0 || idx >= tabs.length) return;
     if (activeIdx >= 0 && activeIdx < tabs.length) {
       const outgoing = tabs[activeIdx];
-      outgoing.content = editor.getDoc(); // snapshot outgoing tab
-      outgoing.dirty = dirty;
+      if (!outgoing.sheet) {
+        outgoing.content = editor.getDoc(); // snapshot outgoing tab
+        outgoing.dirty = dirty;
+      }
       // A pending autosave belongs to the file it was typed into, not to whatever is on screen a
       // second later — so flush it here rather than letting the timer fire against the new tab.
       if (outgoing.dirty) {
@@ -312,14 +327,45 @@ function main(): void {
     }
     activeIdx = idx;
     const t = tabs[idx];
-    setEditorDoc(t.content);
+    // A sheet leaves the text editor empty, so a keybinding's *buffer* never shows another tab's note.
+    setEditorDoc(t.sheet ? "" : t.content);
     currentPath = t.path;
     dirty = t.dirty;
+    showSurface(t);
     setHead();
     sidebar.setActive(t.external ? "" : t.path); // an external file has no row in the tree
     renderTabs();
     if (previewing) renderPreview();
     void refreshBacklinks();
+  }
+
+  /**
+   * Which surface the editor pane shows: the text editor (or its preview), or a sheet's grid. The
+   * text-only buttons go away for a sheet — there is nothing to preview or print yet.
+   */
+  function showSurface(t: Tab | undefined): void {
+    const sheet = t?.sheet ? sheetViews.get(t.path) : undefined;
+    sheetHost.style.display = sheet ? "" : "none";
+    editorHost.style.display = sheet || previewing ? "none" : "";
+    previewHost.style.display = !sheet && previewing ? "" : "none";
+    previewBtn.style.display = sheet ? "none" : "";
+    pdfBtn.style.display = sheet ? "none" : "";
+    if (sheet) {
+      sheetHost.replaceChildren(sheet.el);
+      void sheet.refreshIfChanged();
+      requestAnimationFrame(() => sheet.focus());
+    }
+  }
+
+  /** Forget a sheet's grid and let the engine close the file. */
+  async function dropSheet(path: string): Promise<void> {
+    const view = sheetViews.get(path);
+    if (view) {
+      await view.commit();
+      view.destroy();
+      sheetViews.delete(path);
+    }
+    await sheets.close(path).catch(() => {});
   }
 
   /** Closing is not a way to discard work: whatever is unsaved goes to disk first. */
@@ -334,11 +380,13 @@ function main(): void {
     if (at < 0) return;
     const wasActive = at === activeIdx;
     tabs.splice(at, 1);
+    if (tab.sheet) await dropSheet(tab.path);
     if (tabs.length === 0) {
       activeIdx = -1;
       currentPath = "";
       dirty = false;
       setEditorDoc("");
+      showSurface(undefined);
       setHead();
       renderTabs();
       renderBacklinks([]);
@@ -371,7 +419,8 @@ function main(): void {
   const editor = createEditor(editorHost, "", {
     theme,
     onChange: () => {
-      if (suppressChange) return;
+      // A sheet's tab has no text to save: a keybinding typing into the hidden editor is ignored.
+      if (suppressChange || tabs[activeIdx]?.sheet) return;
       if (!dirty) {
         dirty = true;
         if (activeIdx >= 0) tabs[activeIdx].dirty = true;
@@ -415,11 +464,33 @@ function main(): void {
       switchTab(existing);
       return;
     }
+    if (isSheetPath(path)) return openSheet(path);
     const content = await ws.read(path);
     contentCache.set(path, content);
     tabs.push({ path, content, dirty: false });
     switchTab(tabs.length - 1);
   };
+
+  async function openSheet(path: string): Promise<void> {
+    const tab: Tab = { path, content: "", dirty: false, sheet: true };
+    const view = createSheetView({
+      client: sheets,
+      path,
+      onError: (m) => toast(m),
+      onEditing: (on) => {
+        tab.dirty = on;
+        if (tabs[activeIdx] === tab) {
+          dirty = on;
+          setHead();
+        }
+        renderTabs();
+      },
+    });
+    await view.load();
+    sheetViews.set(path, view);
+    tabs.push(tab);
+    switchTab(tabs.length - 1);
+  }
 
   // ── backlinks: which notes link here via [[…]] ──
   const contentCache = new Map<string, string>();
@@ -442,8 +513,8 @@ function main(): void {
   }
   async function refreshBacklinks(): Promise<void> {
     // An outside file isn't part of the note graph — nothing can [[link]] to a path the tree can't see.
-    if (!currentPath || activeExternal()) return renderBacklinks([]);
-    const entries = sidebar.files();
+    if (!currentPath || activeExternal() || isSheetPath(currentPath)) return renderBacklinks([]);
+    const entries = textFiles();
     await Promise.all(
       entries.map((f) =>
         contentCache.has(f.path)
@@ -459,6 +530,7 @@ function main(): void {
   async function newFile(dir: string): Promise<void> {
     const name = await promptModal("New file", "untitled.md", "Create");
     if (!name) return;
+    if (isSheetPath(name)) return createSheet(joinPath(dir, name));
     const path = joinPath(dir, name);
     try {
       await ws.create(path, false);
@@ -468,6 +540,21 @@ function main(): void {
     }
     await sidebar.refresh();
     await tags.refresh();
+    await openFile(path);
+  }
+  async function newSheet(dir: string): Promise<void> {
+    const name = await promptModal("New sheet", "Untitled", "Create");
+    if (!name) return;
+    await createSheet(joinPath(dir, isSheetPath(name) ? name : name + SHEET_EXT));
+  }
+  async function createSheet(path: string): Promise<void> {
+    try {
+      await sheets.create(path);
+    } catch (e) {
+      toast(`Could not create ${path}: ${String(e instanceof Error ? e.message : e)}`);
+      return;
+    }
+    await sidebar.refresh();
     await openFile(path);
   }
   async function newFolder(dir: string): Promise<void> {
@@ -485,6 +572,8 @@ function main(): void {
     const name = await promptModal("Rename", node.name, "Rename");
     if (!name || name === node.name) return;
     const to = joinPath(parentDir(node.path), name);
+    // The engine holds a sheet's file open; SQLite would go on writing its journal under the old name.
+    await closeSheetsUnder(node.path);
     try {
       await ws.rename(node.path, to);
     } catch (e) {
@@ -497,6 +586,11 @@ function main(): void {
     tabs.forEach((t) => {
       t.path = renamePath(t.path);
     });
+    for (const [p, view] of [...sheetViews]) {
+      sheetViews.delete(p);
+      view.path = renamePath(p);
+      sheetViews.set(view.path, view);
+    }
     if (currentPath) currentPath = renamePath(currentPath);
     contentCache.delete(node.path);
     await sidebar.refresh();
@@ -509,6 +603,7 @@ function main(): void {
     const kind = node.isDir ? "folder" : "file";
     const ok = await confirmModal(`Delete ${kind} "${node.name}"?`);
     if (!ok) return;
+    await closeSheetsUnder(node.path);
     try {
       await ws.remove(node.path);
     } catch (e) {
@@ -517,6 +612,7 @@ function main(): void {
     }
     // close any tabs under the deleted path and reconcile the active document
     const gone = (p: string): boolean => p === node.path || p.startsWith(node.path + "/");
+    for (const p of [...sheetViews.keys()].filter(gone)) await dropSheet(p);
     if (tabs.some((t) => gone(t.path))) {
       const activePath = tabs[activeIdx]?.path;
       tabs = tabs.filter((t) => !gone(t.path));
@@ -525,6 +621,7 @@ function main(): void {
         currentPath = "";
         dirty = false;
         setEditorDoc("");
+        showSurface(undefined);
         setHead();
         renderTabs();
       } else {
@@ -537,6 +634,17 @@ function main(): void {
     await sidebar.refresh();
     await tags.refresh();
     void refreshBacklinks();
+  }
+
+  /**
+   * Before a file or folder moves or goes: write any cell being typed into, and have the engine let go
+   * of every sheet file under it — the open tabs' and any a note or the REPL touched.
+   */
+  async function closeSheetsUnder(path: string): Promise<void> {
+    const under = (p: string): boolean => p === path || p.startsWith(path + "/");
+    for (const view of sheetViews.values()) if (under(view.path)) await view.commit();
+    const files = sidebar.files().map((f) => f.path).filter((p) => isSheetPath(p) && under(p));
+    await Promise.all(files.map((p) => sheets.close(p).catch(() => {})));
   }
 
   /**
@@ -572,6 +680,7 @@ function main(): void {
     const dir = node.isDir ? node.path : parentDir(node.path);
     const items: MenuItem[] = [
       { label: "New file…", action: () => void newFile(dir) },
+      { label: "New sheet…", action: () => void newSheet(dir) },
       { label: "New folder…", action: () => void newFolder(dir) },
       // the root row is the workspace itself — worth locating, even though it can't be renamed
       ...locationItems(node.path),
@@ -585,16 +694,18 @@ function main(): void {
   };
 
   const sidebar = createSidebar(filesSec.body, ws, (p) => void openFile(p), fileMenu);
+  /** The files whose text search, tags and backlinks read — a sheet is a database, not text. */
+  const textFiles = () => sidebar.files().filter((f) => !isSheetPath(f.path));
   newBtn.addEventListener("click", () => void newFile(""));
   newFolderBtn.addEventListener("click", () => void newFolder(""));
   const quickOpen = createQuickOpen(() => sidebar.files(), (p) => void openFile(p));
   const search = createSearch(
-    () => sidebar.files(),
+    textFiles,
     (p) => ws.read(p),
     (p, line) => void openFile(p).then(() => editor.gotoLine(line)),
   );
   // clicking a tag opens full-text search filtered to that tag
-  const tags = createTagsPanel(tagsBody, ws, () => sidebar.files(), (tag) => search.open("#" + tag));
+  const tags = createTagsPanel(tagsBody, ws, textFiles, (tag) => search.open("#" + tag));
 
   // What opens at launch when the config has no (on-start …): welcome.md while it's still there —
   // the intro is worth reading once — and after that today's note, created if it doesn't exist yet.
@@ -637,6 +748,11 @@ function main(): void {
    */
   async function saveTab(tab: Tab): Promise<boolean> {
     if (!tab.path) return false;
+    // Everything a sheet holds is already written; a cell being typed into is the only thing to flush.
+    if (tab.sheet) {
+      await sheetViews.get(tab.path)?.commit();
+      return true;
+    }
     const isActive = tabs[activeIdx] === tab;
     const doc = isActive ? editor.getDoc() : tab.content;
     // A file opened in place goes back to where it came from; the backend only allows it because
@@ -707,6 +823,7 @@ function main(): void {
     if (a.dataset.target) openWikiLink(a.dataset.target);
   });
   function togglePreview(): void {
+    if (tabs[activeIdx]?.sheet) return;
     previewing = !previewing;
     if (previewing) renderPreview();
     previewHost.style.display = previewing ? "" : "none";
@@ -715,6 +832,7 @@ function main(): void {
   }
   previewBtn.addEventListener("click", togglePreview);
   function exportCurrentPdf(): void {
+    if (tabs[activeIdx]?.sheet) return;
     const html = marked.parse(editor.getDoc()) as string;
     const title = currentPath ? basename(currentPath).replace(/\.[^./]+$/, "") : "untitled";
     exportPdf(title, html, (m) => toast(m));
@@ -751,13 +869,20 @@ function main(): void {
       toast(`Could not open ${path}: ${String(e)}`);
       return;
     }
-    editor.view.focus();
+    focusDocument();
   }
 
   // Today's note (YYYY-MM-DD.md at the workspace root), with a date heading when it's new.
   async function openDailyNote(): Promise<void> {
     const date = todayISO();
     await openOrCreate(`${date}.md`, `# ${date}\n\n`);
+  }
+
+  /** Focus whatever the editor pane is showing: a sheet's grid, or the text. */
+  function focusDocument(): void {
+    const sheet = activeSheet();
+    if (sheet) sheet.focus();
+    else editor.view.focus();
   }
 
   // ── commands: everything a keybinding can name via (ed-cmd "…") ──
@@ -768,6 +893,7 @@ function main(): void {
     "daily-note": () => void openDailyNote(),
     "new-file": () => void newFile(""),
     "new-folder": () => void newFolder(""),
+    "new-sheet": () => void newSheet(""),
     "open-keys": () => void keys.openConfig(),
     "reload-keys": () => void keys.reload(),
     "toggle-repl": toggleRepl,
@@ -778,7 +904,7 @@ function main(): void {
     },
     "focus-editor": () => {
       if (narrow()) setMobileView("editor");
-      editor.view.focus();
+      focusDocument();
     },
     "toggle-preview": togglePreview,
     "toggle-theme": () => applyTheme(theme === "dark" ? "light" : "dark"),
@@ -870,6 +996,7 @@ function main(): void {
     openFile: (p) => openFile(p),
     createFile: (p, content) => openOrCreate(p, content),
     note: (t) => repl.note(t),
+    focus: focusDocument,
   });
   keysBtn.addEventListener("click", () => void keys.openConfig());
 
@@ -908,6 +1035,8 @@ function main(): void {
     if (document.visibilityState === "hidden") void saveAllDirty();
   });
   window.addEventListener("blur", () => void saveAllDirty());
+  // Coming back to the window: a sheet may have been changed meanwhile (another app on the same file).
+  window.addEventListener("focus", () => void activeSheet()?.refreshIfChanged());
 
   setHead();
   // Restore a previously-picked external folder (iOS) first, then load the tree once. The
