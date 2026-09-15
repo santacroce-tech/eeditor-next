@@ -486,3 +486,15 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-s
 .sheet-sizer { pointer-events: none; }
 .sheet-editor { position: absolute; left: 0; top: 0; z-index: 2; box-sizing: border-box; padding: 0 5px;
   border: 2px solid var(--accent); background: var(--bg); color: var(--fg); font: 13px var(--mono); outline: none; }
+.sheet-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; padding: 4px 8px;
+  border-bottom: 1px solid var(--border); background: var(--bg-2); }
+.sheet-tool { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 22px;
+  padding: 0 6px; background: var(--bg); color: var(--muted); border: 1px solid var(--border); border-radius: 4px;
+  font: 600 11px var(--mono); cursor: pointer; }
+.sheet-tool:hover { color: var(--fg); border-color: var(--accent); }
+.sheet-tool.on { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--bg)); }
+.sheet-tool.bold { font: 700 12px system-ui, sans-serif; }
+.sheet-tool.italic { font: italic 600 12px Georgia, serif; }
+.sheet-tool-gap { width: 6px; }
+.sheet-num { height: 22px; background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 4px;
+  font: 11px var(--mono); padding: 0 4px; }

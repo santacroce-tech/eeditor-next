@@ -94,6 +94,31 @@ export interface Fmt {
   align?: "left" | "center" | "right";
 }
 
+/** A change to merge into formats: a key set to null is removed. */
+export type FmtChange = { [K in keyof Fmt]?: Fmt[K] | null };
+
+/**
+ * How many decimal places a number is showing, so "one more" starts from what's on screen: its
+ * format's `dp`, else the format's own default — a currency's minor unit, at most 2 for a percent,
+ * at most 3 for a grouped number — else as many as the value has, up to 10.
+ */
+export function decimalsShown(value: JsonValue, fmt: Fmt | null, locale?: string): number {
+  if (fmt?.dp !== undefined) return fmt.dp;
+  if (typeof value !== "number") return 0;
+  const own = (n: number): number => (Number.isInteger(n) ? 0 : (String(n).split(".")[1] ?? "").replace(/e.*$/, "").length);
+  switch (fmt?.num) {
+    case "currency":
+      return new Intl.NumberFormat(locale, { style: "currency", currency: fmt.cur ?? currencyFor(locale) }).resolvedOptions()
+        .maximumFractionDigits ?? 2;
+    case "percent":
+      return Math.min(2, own(Number((value * 100).toPrecision(12))));
+    case "number":
+      return Math.min(3, own(value));
+    default:
+      return Math.min(10, own(value));
+  }
+}
+
 export interface Cell {
   row: number;
   col: number;
@@ -227,6 +252,8 @@ export const selectCell = (p: Pos): Selection => ({ anchor: p, focus: p });
 
 export const ROW_HEIGHT = 24;
 export const DEFAULT_COL_WIDTH = 96;
+export const MIN_COL_WIDTH = 24;
+export const MAX_COL_WIDTH = 1000;
 export const HEADER_HEIGHT = 24;
 
 /**
@@ -253,6 +280,15 @@ export class ColumnLayout {
       x += w - this.defaultWidth;
     }
     return x;
+  }
+
+  /** The column whose right edge is within `slop` of x — where a drag resizes it — or null. */
+  edgeAt(x: number, slop: number): number | null {
+    const col = this.at(x);
+    const left = this.left(col);
+    if (x - left <= slop && col > 0) return col - 1;
+    if (left + this.width(col) - x <= slop) return col;
+    return null;
   }
 
   /** The column under x (clamped to 0 on the left). */

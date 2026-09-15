@@ -217,12 +217,21 @@ see stored values, rename a sheet.
 
 ## Milestone 3 — formats, widths, rows and columns
 
+*Done on `feat/sheets`.*
+
 - Toolbar: bold, italic, alignment, number format (general / number / currency / percent), decimals
-  ±. Applies to the selection via `sheet-format`.
-- Drag a column header's edge → `sheet-col-width` on release.
-- Header context menu: insert/delete rows or columns → reload from the returned payload.
-- Undo covers formats too (`(ref, previous fmt)`); row/column structure changes are not undoable in
-  v1 — say so in the menu item's confirm.
+  ±, clear format. It shows the active cell's format and applies to the selection via
+  `sheet-format`. "More decimals" starts from what's on screen — a currency's minor unit, a
+  percent's two places — not from the stored `dp`, which is usually absent.
+- Drag a column header's edge → `sheet-col-width` on release; double-click the edge for the default.
+- Right-click (long press on touch, or the context-menu key) on a column header, a row header or a
+  cell: insert rows/columns before or after, delete them, clear contents or format. The menu acts on
+  the selection; a header outside a whole-row/column selection selects its row or column first.
+  Dragging across headers selects several. Selecting a whole row never scrolls off to its end.
+- Undo covers formats: an entry keeps each cell's exact format, and `sheet-format` gained a block
+  form — rows of formats, set rather than merged — to put back formats that differed cell by cell.
+  Inserting or deleting rows and columns is not undoable and clears the undo history (every position
+  in it has moved); deleting asks first and says so.
 
 ---
 

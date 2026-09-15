@@ -6,6 +6,7 @@ import {
   colIndex,
   colName,
   ColumnLayout,
+  decimalsShown,
   display,
   errorTag,
   extent,
@@ -88,6 +89,20 @@ describe("display", () => {
   });
 });
 
+describe("decimal places", () => {
+  it("counts what a number shows, unless its format says", () => {
+    expect(decimalsShown(1234.5, null)).toBe(1);
+    expect(decimalsShown(3, null)).toBe(0);
+    expect(decimalsShown(0.125, null)).toBe(3);
+    expect(decimalsShown(3, { dp: 2 })).toBe(2);
+    expect(decimalsShown("text", null)).toBe(0);
+    expect(decimalsShown(1200, { num: "currency", cur: "USD" }, "en-US")).toBe(2);
+    expect(decimalsShown(1200, { num: "currency", cur: "JPY" }, "en-US")).toBe(0);
+    expect(decimalsShown(0.12345, { num: "percent" })).toBe(2);
+    expect(decimalsShown(0.5, { num: "percent" })).toBe(0);
+  });
+});
+
 describe("selection", () => {
   it("moves, extends, and stops at the edge", () => {
     const s = selectCell({ row: 0, col: 0 });
@@ -108,6 +123,14 @@ describe("layout", () => {
     for (const [x, col] of [[0, 0], [99, 0], [100, 1], [299, 1], [300, 2], [400, 3], [449, 3], [450, 4], [10_000, 99]] as const) {
       expect(layout.at(x), `x=${x}`).toBe(col);
     }
+  });
+
+  it("finds the column edge under the pointer, from either side", () => {
+    const layout = new ColumnLayout(new Map(), 100);
+    expect(layout.edgeAt(98, 4)).toBe(0);
+    expect(layout.edgeAt(102, 4)).toBe(0);
+    expect(layout.edgeAt(150, 4)).toBeNull();
+    expect(layout.edgeAt(2, 4)).toBeNull(); // no column left of A to resize
   });
 
   it("lays out what's used plus room to keep going", () => {
@@ -136,6 +159,10 @@ describe("sheet client", () => {
     expect(sent[2]).toContain('{:num "currency" :dp 2 :bold true}');
     await client.format("B", "A1", null);
     expect(sent[3]).toContain('"A1" nil)');
+    await client.format("B", "A1", [[{ bold: true }, null]]);
+    expect(sent[4]).toContain(`"A1" '(({:bold true} nil)))`);
+    await client.format("B", "A1", { align: null });
+    expect(sent[5]).toContain('{:align nil}');
   });
 
   it("turns an engine error into a rejection", async () => {
