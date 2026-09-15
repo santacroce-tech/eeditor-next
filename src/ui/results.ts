@@ -16,7 +16,7 @@ function renderTable(m: TableModel): HTMLElement {
   const table = el("table");
   const thead = el("thead");
   const htr = el("tr");
-  htr.appendChild(el("th", "col-id", "id"));
+  htr.appendChild(el("th", "col-id", m.idLabel ?? "id"));
   for (const c of m.columns) htr.appendChild(el("th", undefined, c));
   thead.appendChild(htr);
   table.appendChild(thead);

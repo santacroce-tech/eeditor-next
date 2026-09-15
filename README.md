@@ -86,6 +86,7 @@ src/
     client.ts    EngineClient — Tauri (invoke) or HTTP (dev bridge) transport
     render.ts    pure JsonValue → RenderModel (scalar / table / form / error) — DOM-free, testable
     workspace.ts WorkspaceClient (tree/read/write) — Tauri fs commands or dev-bridge /fs/*
+    sheet.ts     SheetClient — the engine's sheet-* builtins, typed
   core/          ported EEditorCore ViewModels (pure, unit-tested)
     fuzzy.ts     quick-open subsequence match + prefix/substring/length ranking + wiki-links
     tags.ts      #hashtag extraction (skips fences/headings/hex/mid-word) + counts
@@ -93,6 +94,7 @@ src/
     blocks.ts    find the ```eelisp block at the cursor (in-editor execution)
     search.ts    full-text search: line matches + 3-line context (SearchService)
     keybindings.ts  parse .eeditor/keybindings.eelisp → bindings; key-spec ↔ KeyboardEvent matching
+    sheet.ts     sheets: A1 addressing, decoding cells, number formats, selection, column layout
     core.test.ts / engine/render.test.ts  — 27 vitest cases
   ui/
     editor.ts    CodeMirror 6 editor; switchable theme (one-dark / solarized-light); ⌘⇧⏎ runs the ```eelisp block
@@ -105,6 +107,7 @@ src/
     repl.ts      REPL: scrollback + `run(src)` (reused by in-editor block execution); hide/show (λ, ⌘J)
     results.ts   RenderModel → DOM (table + form widgets)
     keybindings.ts  runs a binding: built-in command, or lisp on the engine → editor commands
+    sheet.ts     a .eesheet tab: virtualised grid, formula bar, toolbar, row/column menus, undo
   keybindings/
     prelude.eelisp   the ed-* command constructors loaded into the engine
     default.eelisp   the shipped shortcut table (also the docs) — copied in on first edit
@@ -118,6 +121,13 @@ dev/
   smoke.mjs      end-to-end engine contract test (10/10)
 src-tauri/       Tauri v2 backend: eelisp_eval + fs_tree/read/write commands
 ```
+
+### Sheets are EELisp in a grid
+
+A `.eesheet` opens as a spreadsheet: `=(sum B1:B2)` is a formula, uppercase `C3`/`A1:C9` are cell
+values, and each sheet is a SQLite file the engine owns (see `docs/SPREADSHEET.md`). Cells store their
+last result, so opening a sheet runs no code. A sheet tab never goes through the text save path, and
+after any REPL, snippet or keybinding evaluation the sheet on screen reloads if its version moved.
 
 ### Keyboard shortcuts are a lisp file
 

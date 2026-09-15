@@ -5,7 +5,7 @@
 // editor keymap because it acts on the block under the caret.
 
 import { marked } from "marked";
-import { createEngineClient } from "./engine/client";
+import { createEngineClient, observeEvals } from "./engine/client";
 import { dictGet } from "./engine/types";
 import { createSheetClient } from "./engine/sheet";
 import { isSheetPath, SHEET_EXT } from "./core/sheet";
@@ -412,8 +412,16 @@ function main(): void {
     saveTimer = undefined;
   }
 
-  const repl = createRepl(replPane.body, engine);
-  const snippets = createSnippets(engine, repl);
+  // Code typed at the REPL, run from a snippet or bound to a key may change a sheet, so after each
+  // one the sheet on screen checks its version. The grid's own calls go straight to `engine` — its
+  // writes already carry the new version, and must not ask it to look again.
+  let sheetRefresh: ReturnType<typeof setTimeout> | undefined;
+  const watched = observeEvals(engine, () => {
+    clearTimeout(sheetRefresh);
+    sheetRefresh = setTimeout(() => void activeSheet()?.refreshIfChanged(), 120);
+  });
+  const repl = createRepl(replPane.body, watched);
+  const snippets = createSnippets(watched, repl);
   snippetsBtn.addEventListener("click", () => snippets.open());
 
   const editor = createEditor(editorHost, "", {
@@ -989,7 +997,7 @@ function main(): void {
 
   const keys = createKeybindings({
     ws,
-    engine,
+    engine: watched,
     editor,
     commands,
     file: () => currentPath,

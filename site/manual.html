@@ -44,10 +44,11 @@
         <li><a href="#links">6. Links between notes</a></li>
         <li><a href="#outside">7. Files from outside</a></li>
         <li><a href="#agenda">8. The agenda</a></li>
-        <li><a href="#repl">9. The REPL</a></li>
-        <li><a href="#keybindings">10. Keybindings</a></li>
-        <li><a href="#mobile">11. iPhone and iPad</a></li>
-        <li><a href="#shortcuts">12. Shortcut reference</a></li>
+        <li><a href="#sheets">9. Sheets</a></li>
+        <li><a href="#repl">10. The REPL</a></li>
+        <li><a href="#keybindings">11. Keybindings</a></li>
+        <li><a href="#mobile">12. iPhone and iPad</a></li>
+        <li><a href="#shortcuts">13. Shortcut reference</a></li>
       </ul>
     </div>
   </div>
@@ -336,9 +337,95 @@
   </div></div>
 </section>
 
-<section id="repl">
+<section id="sheets">
   <div class="wrap"><div class="prose">
-    <h2>9. The REPL</h2>
+    <h2>9. Sheets</h2>
+    <p>
+      A sheet is a grid of cells whose formulas are EELisp. Each one is a file in your workspace —
+      <code>Budget.eesheet</code> — so it sits in the file tree, opens in a tab, and can be renamed,
+      moved or revealed like any note. Right-click a folder and choose <strong>New sheet…</strong>,
+      or type a name ending in <code>.eesheet</code> into <strong>＋</strong>.
+    </p>
+
+    <h3>What a cell holds</h3>
+    <p>What you type decides it:</p>
+    <ul>
+      <li><code>1200</code> — a number</li>
+      <li><code>rent</code> — text, and <code>'42</code> keeps something number-shaped as text</li>
+      <li><code>=(sum B1:B2)</code> — a formula: one EELisp expression after <code>=</code></li>
+    </ul>
+    <p>
+      Inside a formula <code>B1</code> is that cell's value, and <code>B1:B9</code> is a list of the
+      values in the range, with <code>nil</code> for the empty ones. <code>$B$1</code> works as well.
+      Any function in scope can be called — a builtin, one from the snippets, or a
+      <code>defn</code> from one of your notes — and a formula can read the database.
+    </p>
+<pre><code>=(sum B1:B9)
+=(/ B10 12)
+=(if (&gt; B10 1500) <span class="st">"over"</span> <span class="st">"ok"</span>)
+=(count-records contacts)</code></pre>
+    <p>
+      Change a cell and everything that depends on it recalculates, in order, and is written at
+      once — a sheet has nothing to save. Formulas that read each other in a circle show
+      <strong>#CYCLE</strong>, a formula that failed shows <strong>#ERR</strong>, and one that reads
+      a failed cell fails too, naming the cell where the trouble started. The line under the formula
+      bar spells out the error of the selected cell.
+    </p>
+
+    <h3>Opening a sheet runs nothing</h3>
+    <p>
+      Every cell keeps its last result, so a sheet opens showing the values it was saved with — no
+      code runs because you opened a file, even one someone sent you. Formulas run when you change
+      what they read, or when you press <strong>↻</strong>, which recalculates all of them. That is
+      also how to refresh a formula that reads the database, another sheet or the clock: those
+      aren't tracked.
+    </p>
+
+    <h3>Moving around and typing</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Key</th><th>Does</th></tr>
+      <tr><td>arrows · <kbd>Tab</kbd> · <kbd>⇧Tab</kbd></td><td>Move; <kbd>⇧</kbd>+arrows or a drag selects a range</td></tr>
+      <tr><td>typing</td><td>Replace the cell; arrows then write it and move on</td></tr>
+      <tr><td><kbd>↵</kbd> or <kbd>F2</kbd></td><td>Edit what's in the cell; <kbd>↵</kbd> again writes it and moves down</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>Leave the cell as it was</td></tr>
+      <tr><td><kbd>⌫</kbd></td><td>Clear the selection</td></tr>
+      <tr><td><kbd>⌘Z</kbd> · <kbd>⇧⌘Z</kbd></td><td>Undo · redo typing and formatting</td></tr>
+      <tr><td><kbd>⌘A</kbd></td><td>Select everything</td></tr>
+    </table></div>
+    <p>
+      The box left of the formula bar names the selection; type <code>C3</code> or
+      <code>A1:B9</code> there to jump.
+    </p>
+
+    <h3>Formats, columns and rows</h3>
+    <p>
+      The toolbar sets bold, italic, alignment, a number format — number, currency, percent — and
+      decimal places for the selection, and undo takes it back. Drag the edge of a column header to
+      resize a column; double-click the edge to reset it. Right-click a row or column header, or
+      long-press on a touch screen, to insert or delete rows and columns. Formulas follow their cells
+      when rows and columns move, and a formula that read a deleted cell shows
+      <strong>#REF!</strong>. Inserting and deleting can't be undone.
+    </p>
+
+    <h3>Sheets from EELisp</h3>
+    <p>
+      The REPL, an <code>eelisp</code> block in a note and your keybindings reach the same sheets by
+      name, and an open sheet shows the change straight away:
+    </p>
+<pre><code>(sheet-get <span class="st">"Budget"</span> <span class="st">"B3"</span>)
+(sheet-rows <span class="st">"Budget"</span> <span class="st">"A1:B2"</span>)      <span class="cm">; a table in the REPL</span>
+(sheet-set <span class="st">"Budget"</span> <span class="st">"B2"</span> <span class="st">"500"</span>)
+(sheet-put <span class="st">"People"</span> <span class="st">"A1"</span> (query contacts :order <span class="st">"name"</span>))</code></pre>
+    <p>
+      Every sheet function is in the
+      <a href="https://eelisp.app/reference.html#sheets">EELisp reference</a>.
+    </p>
+  </div></div>
+</section>
+
+<section id="repl" class="alt">
+  <div class="wrap"><div class="prose">
+    <h2>10. The REPL</h2>
     <p>
       <kbd>⌘J</kbd> shows and hides the EELisp REPL. Type an expression, press <kbd>⌘↵</kbd>, and
       the result appears above the prompt.
@@ -400,9 +487,9 @@ zzalinhar — function
   </div></div>
 </section>
 
-<section id="keybindings" class="alt">
+<section id="keybindings">
   <div class="wrap"><div class="prose">
-    <h2>10. Keybindings</h2>
+    <h2>11. Keybindings</h2>
     <p>
       <kbd>⌘⇧K</kbd> opens <code>.eeditor/keybindings.eelisp</code>, writing the documented defaults
       into it the first time. That file <em>is</em> the shortcut table. Save it and it reloads at
@@ -531,9 +618,9 @@ zzalinhar — function
   </div></div>
 </section>
 
-<section id="mobile">
+<section id="mobile" class="alt">
   <div class="wrap"><div class="prose">
-    <h2>11. iPhone and iPad</h2>
+    <h2>12. iPhone and iPad</h2>
     <p>
       Below 900 pixels the layout becomes a single pane with a tab bar — <strong>Files</strong>,
       <strong>Editor</strong>, <strong>REPL</strong> — so the same app works on a phone without
@@ -552,9 +639,9 @@ zzalinhar — function
   </div></div>
 </section>
 
-<section id="shortcuts" class="alt">
+<section id="shortcuts">
   <div class="wrap"><div class="prose">
-    <h2>12. Shortcut reference</h2>
+    <h2>13. Shortcut reference</h2>
     <p>The defaults. <kbd>⌘</kbd> is <kbd>Ctrl</kbd> on Windows and Linux.</p>
     <div class="table-wrap"><table>
       <tr><th>Key</th><th>Does</th></tr>

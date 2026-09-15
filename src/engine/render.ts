@@ -19,6 +19,8 @@ export interface TableModel {
   title: string;
   columns: string[];
   rows: { id: number; cells: string[] }[];
+  /** Heading of the leading column: a record's "id", or "#" for rows counted from 1. */
+  idLabel?: string;
 }
 
 export interface FormFieldModel {
@@ -102,11 +104,34 @@ function formModel(fv: FormViewJson): FormModel {
   };
 }
 
+/**
+ * A list whose every item is a list of plain values reads better as a table than as nested
+ * parentheses — `(sheet-rows "Budget" "A1:C9")`, `zip`. Anything holding deeper structure stays text.
+ */
+function rowsTable(items: JsonValue[]): TableModel | null {
+  if (items.length === 0 || !items.every(Array.isArray)) return null;
+  const rows = items as JsonValue[][];
+  const width = Math.max(...rows.map((r) => r.length));
+  const plain = (x: JsonValue): boolean => !Array.isArray(x) && (typeof x !== "object" || x === null || isSymbol(x) || isKeyword(x));
+  if (width === 0 || !rows.every((r) => r.every(plain))) return null;
+  return {
+    kind: "table",
+    title: `${rows.length} row${rows.length === 1 ? "" : "s"}`,
+    idLabel: "#",
+    columns: Array.from({ length: width }, (_, c) => String(c + 1)),
+    rows: rows.map((r, i) => ({ id: i + 1, cells: Array.from({ length: width }, (_, c) => (c < r.length ? scalarText(r[c]) : "")) })),
+  };
+}
+
 /** A result value → what to render. */
 export function renderValue(v: JsonValue): RenderModel {
   if (isTableView(v)) return tableModel(v.$tableView);
   if (isFormView(v)) return formModel(v.$formView);
   if (isResultSet(v)) return resultSetTable(v.$resultSet, v.$resultSet.table);
+  if (Array.isArray(v)) {
+    const table = rowsTable(v);
+    if (table) return table;
+  }
   return { kind: "scalar", text: scalarText(v) };
 }
 

@@ -237,6 +237,11 @@ see stored values, rename a sheet.
 
 ## Milestone 4 — EELisp and notes
 
+*Done on `feat/sheets`. The refresh hook is `observeEvals` in `engine/client.ts`, wrapped around the
+engine handed to the REPL, snippets and keybindings — the grid's own client talks to the engine
+directly, so its writes never set off a check. Rows of plain values render as a table (`#` and
+numbered columns); the manual gained a Sheets chapter, the EELisp reference a Sheets section.*
+
 - From the REPL, a ```eelisp block or a keybinding: `(sheet-get "Budget" "C3")`,
   `(sheet-rows "Budget" "A1:C5")`, `(sheet-set …)`, and `(sheet-put "Report" "A1" (query contacts
   :order "name"))` to snapshot a table into a sheet. Reading the database *from* a formula is plain

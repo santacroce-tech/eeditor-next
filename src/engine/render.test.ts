@@ -91,3 +91,27 @@ describe("dictGet", () => {
     expect(dictGet("not a dict", "path")).toBeUndefined();
   });
 });
+
+describe("rows of plain values", () => {
+  it("render as a table, ragged rows padded", () => {
+    const m = renderValue([["rent", 1200], ["food", 450, "weekly"]]);
+    expect(m).toEqual({
+      kind: "table",
+      title: "2 rows",
+      idLabel: "#",
+      columns: ["1", "2", "3"],
+      rows: [
+        { id: 1, cells: ["rent", "1200", ""] },
+        { id: 2, cells: ["food", "450", "weekly"] },
+      ],
+    });
+  });
+
+  it("stay text when they hold deeper structure, or aren't rows at all", () => {
+    expect(renderValue([[1, [2, 3]]]).kind).toBe("scalar");
+    expect(renderValue([[1], 2]).kind).toBe("scalar");
+    expect(renderValue([[], []]).kind).toBe("scalar");
+    expect(renderValue([1, 2, 3]).kind).toBe("scalar");
+    expect(renderValue([[{ $kw: "a" }, null]]).kind).toBe("table");
+  });
+});
