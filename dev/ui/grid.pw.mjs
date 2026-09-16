@@ -7,6 +7,12 @@ import { expect, test } from "@playwright/test";
 
 test.describe.configure({ mode: "serial" });
 
+/**
+ * The key a binding means by "Mod" — ⌘ on macOS, Ctrl everywhere else, which is what the keybindings
+ * file resolves it to. The grid's own shortcuts take either, but a binding only fires for its own.
+ */
+const MOD = process.platform === "darwin" ? "Meta" : "Control";
+
 const SHEET = "Budget.eesheet";
 
 /** Every cell the grid is drawing, in the order it drew them. */
@@ -104,7 +110,7 @@ test("a copied formula reads where it lands, and undo puts it back", async ({ pa
   await expect.poll(() => shown(page)).toContain("0");
 
   await page.locator(".sheet-scroller").focus();
-  await page.keyboard.press("Meta+z");
+  await page.keyboard.press(`${MOD}+z`);
   await expect(page.locator(".sheet-formula")).toHaveValue("");
 });
 
@@ -150,7 +156,7 @@ test("a sheet reopens with its values, and search finds a cell in it", async ({ 
   await expect.poll(() => shown(page)).toContain("1450");
 
   // the search modal is a keybinding away, and a hit in a sheet lands on the cell
-  await page.keyboard.press("Meta+Shift+f");
+  await page.keyboard.press(`${MOD}+Shift+f`);
   await page.locator(".search-panel .qo-input").fill("food");
   await expect(page.locator(".search-loc").first()).toHaveText(`${SHEET}:A2`);
   await page.locator(".search-row").first().click();
