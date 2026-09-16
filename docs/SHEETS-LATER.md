@@ -24,17 +24,19 @@ Struck through when it lands, with the branch that did it.
 
 **In the grid**
 
-- Formats stop at bold, italic, alignment, number/currency/percent and decimals: no colours, borders,
-  wrapped text, row heights, or auto-fit (double-clicking a column edge resets it rather than fitting
-  it to what's there). Dates have no format of their own.
+- ~~Formats stop at bold, italic, alignment, number/currency/percent and decimals.~~ Landed on
+  `feat/sheet-formats`: colours (with readable ink chosen for a fill that has no text colour),
+  borders (all, or only the outside of the selection), wrapped text, row heights, and a date format.
+  Still missing: auto-fit (double-clicking an edge resets it rather than fitting it to what's there),
+  and a row that grows by itself to fit wrapped text.
 - No frozen headers, no sort or filter, no named ranges, no cell comments, no data validation, no
   conditional formatting.
 - Writing a formula is bare: no completion of function names, no clicking a cell to insert its
   reference, no highlighting of the cells a formula reads, no syntax colouring in the formula bar
   (`lisphl` from the snippets panel is the thing to reuse).
-- ~~Entry conventions are literal.~~ Landed on `feat/sheet-entry` (engine): `50%`, `$1,200`,
-  `1.200,50` and `1 200,50` are read as numbers and ask for the format they were wearing. Dates are
-  still text — there is no date value or format yet.
+- ~~Entry conventions are literal.~~ Landed on `feat/sheet-entry` and `feat/sheet-formats` (engine):
+  `50%`, `$1,200`, `1.200,50` and `1 200,50` are read as numbers, `2026-09-16` as a date, each asking
+  for the format it was wearing. Other date spellings stay text, deliberately.
 - Undo covers typing and formatting only — not column widths, not inserting or deleting rows and
   columns (which clears the history, because every position it remembers has moved) — and never
   survives a restart.
@@ -44,7 +46,9 @@ Struck through when it lands, with the branch that did it.
 - ~~Search skips `.eesheet`.~~ Landed on `feat/sheet-search`: search reads a sheet as its values, a
   row per line, and a hit names the cell — clicking it opens the sheet with that cell selected. Tags
   and backlinks still skip sheets, and search sees values rather than formulas.
-- A sheet can't be printed or exported to PDF — the button is hidden on a sheet tab.
+- ~~A sheet can't be printed or exported to PDF.~~ Landed on `feat/sheet-formats`: **PDF** prints the
+  sheet as a table of what it shows, formatting and all. No page setup — no repeated header row, no
+  landscape, no fitting to the page width.
 - A `[[Budget]]` link opens a sheet, but a sheet shows no backlinks bar of its own.
 
 **Deeper in the engine**

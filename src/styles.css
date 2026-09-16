@@ -500,3 +500,6 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-s
   font: 11px var(--mono); padding: 0 4px; }
 .sheet-handle { background: var(--accent); border: 1px solid var(--bg); box-sizing: content-box; }
 .sheet-fillpreview { border: 1px dashed var(--accent); pointer-events: none; }
+.sheet-cell.wrap { white-space: pre-wrap; line-height: 1.35; padding-top: 2px; }
+.sheet-colour { width: 26px; height: 22px; padding: 0; border: 1px solid var(--border); border-radius: 4px;
+  background: var(--bg); cursor: pointer; }

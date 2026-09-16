@@ -8,7 +8,7 @@ import { marked } from "marked";
 import { createEngineClient, observeEvals } from "./engine/client";
 import { dictGet } from "./engine/types";
 import { createSheetClient } from "./engine/sheet";
-import { fromCSV, importedValue, isSheetPath, SHEET_EXT, toCSV, toTSV, valueRows } from "./core/sheet";
+import { fromCSV, importedValue, isSheetPath, SHEET_EXT, toCSV, toTableHtml, toTSV, valueRows } from "./core/sheet";
 import { createSheetView, type SheetView } from "./ui/sheet";
 import { createWorkspaceClient, inTauri, type ExternalFile, type FileNode } from "./engine/workspace";
 import { createEditor, type ThemeName } from "./ui/editor";
@@ -349,7 +349,6 @@ function main(): void {
     editorHost.style.display = sheet || previewing ? "none" : "";
     previewHost.style.display = !sheet && previewing ? "" : "none";
     previewBtn.style.display = sheet ? "none" : "";
-    pdfBtn.style.display = sheet ? "none" : "";
     if (sheet) {
       sheetHost.replaceChildren(sheet.el);
       void sheet.refreshIfChanged();
@@ -895,8 +894,23 @@ function main(): void {
     previewBtn.textContent = previewing ? "edit" : "preview";
   }
   previewBtn.addEventListener("click", togglePreview);
+  /** A sheet prints as a table of what it shows, each cell keeping its formatting. */
+  async function exportSheetPdf(path: string): Promise<void> {
+    try {
+      const data = await sheets.open(path);
+      const title = basename(path).replace(/\.eesheet$/i, "");
+      exportPdf(title, `<h1>${title}</h1>` + toTableHtml(data.cells, data.widths), (m) => toast(m));
+    } catch (e) {
+      toast(`Could not print: ${String(e instanceof Error ? e.message : e)}`);
+    }
+  }
+
   function exportCurrentPdf(): void {
-    if (tabs[activeIdx]?.sheet) return;
+    const sheet = tabs[activeIdx]?.sheet ? tabs[activeIdx] : undefined;
+    if (sheet) {
+      void exportSheetPdf(sheet.path);
+      return;
+    }
     const html = marked.parse(editor.getDoc()) as string;
     const title = currentPath ? basename(currentPath).replace(/\.[^./]+$/, "") : "untitled";
     exportPdf(title, html, (m) => toast(m));
