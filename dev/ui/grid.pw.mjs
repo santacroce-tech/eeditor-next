@@ -191,13 +191,16 @@ test("a date shows as the format asks, and a filled cell stays readable", async 
     input.value = "#ffe9a8";
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
-  await settled(page);
-  const cell = await page.$$eval(".sheet-cell", (els) => {
-    const e = els.find((c) => c.textContent.includes("Sep 16"));
-    return { bg: e?.style.background, fg: e?.style.color };
+  // poll rather than read once: the write is queued, and `settled` can run before it has begun
+  const painted = () =>
+    page.$$eval(".sheet-cell", (els) => {
+      const e = els.find((c) => c.textContent.includes("Sep 16"));
+      return { bg: e?.style.background ?? "", fg: e?.style.color ?? "" };
+    });
+  await expect.poll(painted).toEqual({
+    bg: "rgb(255, 233, 168)",
+    fg: "rgb(22, 24, 29)", // ink chosen to be legible on that fill
   });
-  expect(cell.bg).toBe("rgb(255, 233, 168)");
-  expect(cell.fg).toBe("rgb(22, 24, 29)"); // ink chosen to be legible on that fill
 });
 
 test("a row can be made taller, and the sheet prints as a table", async ({ page }) => {
