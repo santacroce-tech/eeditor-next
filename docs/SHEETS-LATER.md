@@ -13,7 +13,9 @@ Struck through when it lands, with the branch that did it.
   from anywhere else types the values, and the fill handle (or *Fill down* / *Fill right*) repeats a
   block. `sheet-copy`, `sheet-paste` and `sheet-fill` in the engine. Still missing around it:
   paste-special (values only, formats only) and ⌘D/⌘R, which the keybindings own.
-- **CSV import and export.** Today a sheet can only be read by EEditor.
+- ~~**CSV import and export.**~~ Landed on `feat/sheet-clipboard`: *Export as CSV* and *Import as
+  sheet* in the file tree's menu. Still missing around it: `.xlsx`, and a CSV opened straight into a
+  grid rather than imported as a copy.
 - **`Other!A1` in formulas**, with dependency tracking across files. Recognised and refused now;
   `(sheet-get …)` does the reading, untracked, refreshed by ↻.
 

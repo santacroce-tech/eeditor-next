@@ -231,18 +231,19 @@ export function display(cell: Cell | undefined, locale?: string): Shown {
 // ── the clipboard ───────────────────────────────────────────────────
 
 /**
- * Rows as a spreadsheet puts them on the clipboard: tab between cells, newline between rows, and a
- * cell holding a tab, a newline or a quote wrapped in quotes with its own quotes doubled. Numbers,
- * Excel and Google Sheets all read and write this.
+ * Rows as separated text: a cell holding the separator, a newline or a quote is wrapped in quotes
+ * with its own quotes doubled. Tabs are what a spreadsheet puts on the clipboard — Numbers, Excel and
+ * Google Sheets all read and write that — and commas are a CSV file.
  */
-export function toTSV(rows: string[][]): string {
+export function toDelimited(rows: string[][], sep: string): string {
+  const needsQuotes = new RegExp(`[${sep === "\t" ? "\\t" : sep}\n\r"]`);
   return rows
-    .map((row) => row.map((cell) => (/[\t\n\r"]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell)).join("\t"))
+    .map((row) => row.map((cell) => (needsQuotes.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell)).join(sep))
     .join("\n");
 }
 
 /** The same, read back. A trailing newline doesn't make an extra row. */
-export function fromTSV(text: string): string[][] {
+export function fromDelimited(text: string, sep: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = "";
@@ -255,7 +256,7 @@ export function fromTSV(text: string): string[][] {
       else quoted = false;
     } else if (c === '"' && cell === "") {
       quoted = true;
-    } else if (c === "\t") {
+    } else if (c === sep) {
       row.push(cell);
       cell = "";
     } else if (c === "\n" || c === "\r") {
@@ -273,6 +274,42 @@ export function fromTSV(text: string): string[][] {
     rows.push(row);
   }
   return rows;
+}
+
+export const toTSV = (rows: string[][]): string => toDelimited(rows, "\t");
+export const fromTSV = (text: string): string[][] => fromDelimited(text, "\t");
+export const toCSV = (rows: string[][]): string => toDelimited(rows, ",");
+export const fromCSV = (text: string): string[][] => fromDelimited(text, ",");
+
+/**
+ * A cell read from a file: a number where it reads as one, the text otherwise. Keeping text as text
+ * is what stops an imported `=cmd` from becoming a formula.
+ */
+export const importedValue = (text: string): string | number =>
+  looksNumeric(text.trim()) ? Number(text.trim()) : text;
+
+/** `12`, `-3.5`, `.5`, `1e3` — but not `inf`, `NaN` or `0x1F`, which `Number()` would take. */
+export function looksNumeric(s: string): boolean {
+  return /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(s) && Number.isFinite(Number(s));
+}
+
+/** A sheet's cells as rows of text for a file: values as they are, errors as their tag. */
+export function valueRows(cells: Iterable<Cell>, locale?: string): string[][] {
+  const grid = new Map<string, Cell>();
+  let rows = 0;
+  let cols = 0;
+  for (const c of cells) {
+    grid.set(`${c.row},${c.col}`, c);
+    rows = Math.max(rows, c.row + 1);
+    cols = Math.max(cols, c.col + 1);
+  }
+  return Array.from({ length: rows }, (_, r) =>
+    Array.from({ length: cols }, (_, c) => {
+      const cell = grid.get(`${r},${c}`);
+      if (!cell) return "";
+      return cell.error ? errorTag(cell.error) : formatValue(cell.value, null, locale);
+    }),
+  );
 }
 
 /** The area a block of `rows` fills when its top-left corner lands on `at`. */

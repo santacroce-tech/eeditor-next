@@ -8,7 +8,7 @@ import { marked } from "marked";
 import { createEngineClient, observeEvals } from "./engine/client";
 import { dictGet } from "./engine/types";
 import { createSheetClient } from "./engine/sheet";
-import { isSheetPath, SHEET_EXT } from "./core/sheet";
+import { fromCSV, importedValue, isSheetPath, SHEET_EXT, toCSV, valueRows } from "./core/sheet";
 import { createSheetView, type SheetView } from "./ui/sheet";
 import { createWorkspaceClient, inTauri, type ExternalFile, type FileNode } from "./engine/workspace";
 import { createEditor, type ThemeName } from "./ui/editor";
@@ -645,6 +645,49 @@ function main(): void {
     void refreshBacklinks();
   }
 
+  /** The files beside `path`, so a new name doesn't tread on one. */
+  const siblings = (path: string): string[] => {
+    const dir = parentDir(path);
+    return sidebar.files().filter((f) => parentDir(f.path) === dir).map((f) => f.name);
+  };
+
+  /**
+   * A sheet's values as a .csv beside it — what every other program can read. Values, not what the
+   * grid shows: a currency cell exports the number, without its symbol or thousands separators.
+   */
+  async function exportSheetCsv(path: string): Promise<void> {
+    try {
+      const data = await sheets.open(path);
+      const name = uniqueName(basename(path).replace(/\.eesheet$/i, "") + ".csv", siblings(path));
+      const target = joinPath(parentDir(path), name);
+      await ws.write(target, toCSV(valueRows(data.cells)));
+      await sidebar.refresh();
+      toast(`Exported ${name}`);
+    } catch (e) {
+      toast(`Could not export: ${String(e instanceof Error ? e.message : e)}`);
+    }
+  }
+
+  /**
+   * A .csv as a new sheet beside it. The cells arrive as values — a field that reads as a number
+   * becomes one, and everything else stays text, so a spreadsheet formula smuggled into a CSV is
+   * text here rather than something this machine runs.
+   */
+  async function importCsvAsSheet(path: string): Promise<void> {
+    try {
+      const rows = fromCSV(await ws.read(path)).map((row) => row.map(importedValue));
+      const name = uniqueName(basename(path).replace(/\.csv$/i, "") + SHEET_EXT, siblings(path));
+      const target = joinPath(parentDir(path), name);
+      await sheets.create(target);
+      if (rows.length) await sheets.put(target, "A1", rows);
+      await sidebar.refresh();
+      await openFile(target);
+      toast(`Imported into ${name}`);
+    } catch (e) {
+      toast(`Could not import: ${String(e instanceof Error ? e.message : e)}`);
+    }
+  }
+
   /**
    * Before a file or folder moves or goes: write any cell being typed into, and have the engine let go
    * of every sheet file under it — the open tabs' and any a note or the REPL touched.
@@ -694,6 +737,12 @@ function main(): void {
       // the root row is the workspace itself — worth locating, even though it can't be renamed
       ...locationItems(node.path),
     ];
+    if (isSheetPath(node.path)) {
+      items.push({ label: "Export as CSV", action: () => void exportSheetCsv(node.path) });
+    }
+    if (/\.csv$/i.test(node.path)) {
+      items.push({ label: "Import as sheet", action: () => void importCsvAsSheet(node.path) });
+    }
     if (node.path !== "") {
       // root itself can't be renamed/deleted
       items.push({ label: "Rename…", action: () => void renameNode(node) });

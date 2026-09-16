@@ -31,6 +31,8 @@ export interface SheetClient {
   paste(path: string, at: string, rows: string[][], from?: string): Promise<Changes>;
   /** Repeat `source` over `target`, each copy's references shifted by where it lands. */
   fill(path: string, source: string, target: string): Promise<Changes>;
+  /** Write values from a cell — text stays text, so an imported `=cmd` is not a formula. */
+  put(path: string, at: string, rows: (string | number)[][]): Promise<Changes>;
   /** Insert or delete rows (`at` numbered from 1) or columns (`at` a letter). The whole sheet comes back. */
   structure(path: string, op: "insert-rows" | "delete-rows" | "insert-cols" | "delete-cols", at: number | string, n: number): Promise<SheetData>;
 }
@@ -93,6 +95,12 @@ export function createSheetClient(engine: EngineClient): SheetClient {
       ),
     fill: (path, source, target) =>
       changes(path, `(sheet-fill ${lispString(path)} ${lispString(source)} ${lispString(target)})`),
+    put: (path, at, rows) => {
+      const literal = `'(${rows
+        .map((row) => `(${row.map((v) => (typeof v === "number" ? String(v) : lispString(v))).join(" ")})`)
+        .join(" ")})`;
+      return changes(path, `(sheet-put ${lispString(path)} ${lispString(at)} ${literal})`);
+    },
     structure: async (path, op, at, n) =>
       sheetOf(await ev(`(sheet-${op} ${lispString(path)} ${typeof at === "number" ? at : lispString(at)} ${n})`)),
   };

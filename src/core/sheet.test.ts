@@ -3,8 +3,12 @@ import {
   a1,
   blockArea,
   fillTarget,
+  fromCSV,
   fromTSV,
+  importedValue,
+  toCSV,
   toTSV,
+  valueRows,
   areaA1,
   cellOf,
   colIndex,
@@ -129,6 +133,35 @@ describe("the clipboard", () => {
   });
 });
 
+describe("CSV", () => {
+  it("writes and reads the same rules with commas", () => {
+    const rows = [["rent", "1200"], ["a,b", 'says "hi"'], ["two\nlines", ""]];
+    const csv = toCSV(rows);
+    expect(csv.split("\n")[0]).toBe("rent,1200");
+    expect(csv).toContain('"a,b"');
+    expect(fromCSV(csv)).toEqual(rows);
+    expect(fromCSV("a,b\r\nc,d\r\n")).toEqual([["a", "b"], ["c", "d"]]);
+  });
+
+  it("reads a field as a number only when it is one", () => {
+    expect(importedValue(" 1200 ")).toBe(1200);
+    expect(importedValue("-3.5")).toBe(-3.5);
+    expect(importedValue("1,200")).toBe("1,200");
+    expect(importedValue("=(delete-everything)")).toBe("=(delete-everything)");
+    expect(importedValue("NaN")).toBe("NaN");
+    expect(importedValue("")).toBe("");
+  });
+
+  it("exports values, not what the grid shows, and errors as their tag", () => {
+    const cells = [
+      cellOf([0, 0, "rent", "rent", null, null]),
+      cellOf([0, 1, "1200", 1200, null, { $dict: [["num", "currency"], ["dp", 2]] }]),
+      cellOf([1, 1, "=(x)", null, "Undefined symbol: x", null]),
+    ];
+    expect(valueRows(cells, "en-US")).toEqual([["rent", "1200"], ["", "#ERR"]]);
+  });
+});
+
 describe("fill", () => {
   it("grows the selection along whichever way the drag went further", () => {
     const source = { r0: 0, c0: 0, r1: 0, c1: 1 };
@@ -205,6 +238,8 @@ describe("sheet client", () => {
     expect(sent[7]).toContain(`'(("x")) nil)`);
     await client.fill("B", "C1", "C2:C9");
     expect(sent[8]).toContain('(sheet-fill "B" "C1" "C2:C9")');
+    await client.put("B", "A1", [["rent", 1200], ["=x", ""]]);
+    expect(sent[9]).toContain(`(sheet-put "B" "A1" '(("rent" 1200) ("=x" "")))`);
   });
 
   it("turns an engine error into a rejection", async () => {
