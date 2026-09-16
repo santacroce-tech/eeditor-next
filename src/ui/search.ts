@@ -11,7 +11,9 @@ export interface SearchModal {
 export function createSearch(
   getFiles: () => FileEntry[],
   readFile: (path: string) => Promise<string>,
-  onOpen: (path: string, line: number) => void,
+  onOpen: (path: string, line: number, cell?: string) => void,
+  /** Whether a path's content is a sheet's rows rather than a note's text. */
+  isSheet: (path: string) => boolean = () => false,
 ): SearchModal {
   const overlay = document.createElement("div");
   overlay.className = "qo-overlay";
@@ -42,7 +44,7 @@ export function createSearch(
       row.className = "search-row" + (i === selected ? " active" : "");
       const loc = document.createElement("div");
       loc.className = "search-loc";
-      loc.textContent = `${h.path}:${h.line}`;
+      loc.textContent = `${h.path}:${h.cell ?? h.line}`;
       const snippet = document.createElement("div");
       snippet.className = "search-snippet";
       snippet.textContent = h.text.trim();
@@ -56,7 +58,7 @@ export function createSearch(
     const h = hits[i];
     if (h) {
       close();
-      onOpen(h.path, h.line);
+      onOpen(h.path, h.line, h.cell);
     }
   }
 
@@ -71,7 +73,11 @@ export function createSearch(
     // load contents once, then re-render with the (possibly pre-filled) query
     const files = getFiles();
     cache = await Promise.all(
-      files.map((f) => readFile(f.path).then((content) => ({ path: f.path, content })).catch(() => ({ path: f.path, content: "" }))),
+      files.map((f) =>
+        readFile(f.path)
+          .then((content) => ({ path: f.path, content, sheet: isSheet(f.path) }))
+          .catch(() => ({ path: f.path, content: "" })),
+      ),
     );
     render();
   }

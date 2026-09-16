@@ -40,8 +40,9 @@ Struck through when it lands, with the branch that did it.
 
 **Sheets as first-class citizens of the app**
 
-- Search, tags and backlinks skip `.eesheet` entirely, so **nothing finds text inside a sheet**;
-  quick‑open matches the filename alone.
+- ~~Search skips `.eesheet`.~~ Landed on `feat/sheet-search`: search reads a sheet as its values, a
+  row per line, and a hit names the cell — clicking it opens the sheet with that cell selected. Tags
+  and backlinks still skip sheets, and search sees values rather than formulas.
 - A sheet can't be printed or exported to PDF — the button is hidden on a sheet tab.
 - A `[[Budget]]` link opens a sheet, but a sheet shows no backlinks bar of its own.
 
@@ -67,8 +68,11 @@ Struck through when it lands, with the branch that did it.
 
 **Process**
 
-- No automated UI test for the grid. The engine, the pure model and the engine contract are covered by
-  CI; everything about the grid was verified by hand in a browser.
+- ~~No automated UI test for the grid.~~ Landed on `feat/sheet-search`: `npm run test:ui` drives a
+  real browser against the dev bridge and a real engine (`dev/ui/grid.pw.mjs`, six tests — typing and
+  recalculation, a copied formula's references, a paste from another program, the fill handle, reload
+  and search, CSV out and back), and CI runs it in the job that already builds the engine. It doesn't
+  cover formats, row/column edits, or touch.
 - Untested on real hardware: the desktop app's open‑in‑place and copy‑in paths, Finder's "Open With",
   and all of iOS — including the long‑press menu.
 - The marketing pages (`site/index.html`, `tutorial.html`, `download.html`) still describe a notes

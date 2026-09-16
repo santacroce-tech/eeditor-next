@@ -118,6 +118,14 @@ describe("full-text search", () => {
     expect(searchFiles(files, "beta", true)).toEqual([]);
     expect(searchFiles(files, "")).toEqual([]);
   });
+
+  it("points at the cell when the file is a sheet", () => {
+    const sheet = [{ path: "Budget.eesheet", content: "rent\t1200\nfood\t450\ntotal\t1650", sheet: true }];
+    const [hit] = searchFiles(sheet, "450");
+    expect(hit).toMatchObject({ path: "Budget.eesheet", line: 2, cell: "B2", text: "food · 450" });
+    expect(searchFiles(sheet, "food")[0].cell).toBe("A2");
+    expect(searchFiles(sheet, "nothing")).toEqual([]);
+  });
 });
 
 describe("wiki-links", () => {

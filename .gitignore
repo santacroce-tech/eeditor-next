@@ -10,3 +10,8 @@ memory.md
 
 # the dev workspace's engine database (tables + agenda), written by the bridge
 workspace/.eeditor/eeditor.db*
+
+# the UI tests' workspace and their reports
+.ui-workspace/
+playwright-report/
+test-results/
