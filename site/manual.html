@@ -372,13 +372,21 @@
       bar spells out the error of the selected cell.
     </p>
 
+    <h3>Reading another sheet</h3>
+    <p>
+      <code>Rates!A1</code> reads a cell of a sheet sitting next to this one, and
+      <code>Rates!A1:A9</code> a range of it — <code>money/Q3!A1</code> for one in a folder. While
+      both sheets are open, changing the one being read updates the one reading it. A sheet that
+      wasn't open at the time catches up when you press <strong>↻</strong>.
+    </p>
+
     <h3>Opening a sheet runs nothing</h3>
     <p>
       Every cell keeps its last result, so a sheet opens showing the values it was saved with — no
       code runs because you opened a file, even one someone sent you. Formulas run when you change
       what they read, or when you press <strong>↻</strong>, which recalculates all of them. That is
-      also how to refresh a formula that reads the database, another sheet or the clock: those
-      aren't tracked.
+      also how to refresh a formula that reads the database or the clock, or one reading a sheet that
+      was closed when it changed: those aren't tracked.
     </p>
 
     <h3>Moving around and typing</h3>

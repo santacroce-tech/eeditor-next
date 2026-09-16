@@ -16,8 +16,11 @@ Struck through when it lands, with the branch that did it.
 - ~~**CSV import and export.**~~ Landed on `feat/sheet-clipboard`: *Export as CSV* and *Import as
   sheet* in the file tree's menu. Still missing around it: `.xlsx`, and a CSV opened straight into a
   grid rather than imported as a copy.
-- **`Other!A1` in formulas**, with dependency tracking across files. Recognised and refused now;
-  `(sheet-get …)` does the reading, untracked, refreshed by ↻.
+- ~~**`Other!A1` in formulas.**~~ Landed on `feat/sheet-clipboard`: a formula reads `Rates!A1` or
+  `Rates!A1:A9` from a sheet beside it, and writing that sheet redoes the open sheets that read it,
+  once each. Still missing around it: a sheet that was closed when its source changed only catches up
+  on ↻ (nothing runs on open, by design), and a circle across sheets isn't detected the way one
+  inside a sheet is.
 
 **In the grid**
 
