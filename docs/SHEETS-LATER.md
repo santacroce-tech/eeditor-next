@@ -32,8 +32,9 @@ Struck through when it lands, with the branch that did it.
 - Writing a formula is bare: no completion of function names, no clicking a cell to insert its
   reference, no highlighting of the cells a formula reads, no syntax colouring in the formula bar
   (`lisphl` from the snippets panel is the thing to reuse).
-- Entry conventions are literal: `50%`, `$1,200` and `16/09/2026` are stored as text, not as the
-  number or date they look like.
+- ~~Entry conventions are literal.~~ Landed on `feat/sheet-entry` (engine): `50%`, `$1,200`,
+  `1.200,50` and `1 200,50` are read as numbers and ask for the format they were wearing. Dates are
+  still text — there is no date value or format yet.
 - Undo covers typing and formatting only — not column widths, not inserting or deleting rows and
   columns (which clears the history, because every position it remembers has moved) — and never
   survives a restart.

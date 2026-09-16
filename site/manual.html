@@ -355,6 +355,14 @@
       <li><code>=(sum B1:B2)</code> — a formula: one EELisp expression after <code>=</code></li>
     </ul>
     <p>
+      A number written the way you'd write it is read as one, and takes the format it was wearing:
+      <code>50%</code> becomes 0.5 shown as a percentage, <code>$1,200</code> and
+      <code>R$ 1.200,50</code> become money, <code>1 200,50</code> becomes twelve hundred and a half.
+      Whichever of <code>.</code> or <code>,</code> comes last is the decimal point, and a lone comma
+      before three digits is separating thousands — <code>1,200</code> is a thousand two hundred,
+      <code>1,5</code> is one and a half. A format you set yourself is never overwritten.
+    </p>
+    <p>
       Inside a formula <code>B1</code> is that cell's value, and <code>B1:B9</code> is a list of the
       values in the range, with <code>nil</code> for the empty ones. <code>$B$1</code> works as well.
       Any function in scope can be called — a builtin, one from the snippets, or a

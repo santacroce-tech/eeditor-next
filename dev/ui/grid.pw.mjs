@@ -158,6 +158,20 @@ test("a sheet reopens with its values, and search finds a cell in it", async ({ 
   await expect(page.locator(".sheet-namebox")).toHaveValue("A2");
 });
 
+test("a number typed the way people write one arrives with its format", async ({ page }) => {
+  await openSheet(page);
+  await go(page, "D5");
+  await type(page, "50%");
+  await go(page, "D6");
+  await type(page, "$1,200");
+  const cells = await shown(page);
+  expect(cells).toContain("50%");
+  expect(cells.some((c) => c.includes("1,200"))).toBe(true); // the currency symbol follows the locale
+  // what was typed is what the cell keeps
+  await go(page, "D5");
+  await expect(page.locator(".sheet-formula")).toHaveValue("50%");
+});
+
 test("a sheet exports as CSV and imports back", async ({ page }) => {
   await page.goto("/");
   await page.locator(".tree-file", { hasText: SHEET }).click({ button: "right" });
