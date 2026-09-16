@@ -85,6 +85,15 @@ export const inArea = (a: Area, p: Pos): boolean => p.row >= a.r0 && p.row <= a.
 
 export interface Fmt {
   num?: "general" | "number" | "currency" | "percent";
+  /** How a date value is shown; the value itself stays the language's `2026-09-16`. */
+  date?: "iso" | "short" | "medium" | "long";
+  /** Text wraps inside the cell instead of being clipped. */
+  wrap?: boolean;
+  /** Background and text colour, as CSS. */
+  bg?: string;
+  fg?: string;
+  /** Which edges of the cell are drawn: any of `t`, `b`, `l`, `r`, or `all`. */
+  border?: string;
   /** Decimal places. */
   dp?: number;
   /** ISO currency code for `num: "currency"`; the locale's region picks one otherwise. */
@@ -134,6 +143,7 @@ export interface SheetData {
   version: number;
   cells: Cell[];
   widths: Map<number, number>;
+  heights: Map<number, number>;
 }
 
 function fmtOf(v: JsonValue | undefined): Fmt | null {
@@ -159,14 +169,16 @@ export function cellOf(row: JsonValue): Cell {
 /** `(sheet-open …)`'s dict → the sheet. */
 export function sheetOf(result: JsonValue): SheetData {
   const cells = dictGet(result, "cells");
-  const widths = dictGet(result, "widths");
+  const sizes = (key: string): Map<number, number> => {
+    const rows = dictGet(result, key);
+    return new Map((Array.isArray(rows) ? rows : []).map((r) => (Array.isArray(r) ? [Number(r[0]), Number(r[1])] : [0, 0])));
+  };
   return {
     path: String(dictGet(result, "path") ?? ""),
     version: Number(dictGet(result, "version") ?? 0),
     cells: Array.isArray(cells) ? cells.map(cellOf) : [],
-    widths: new Map(
-      (Array.isArray(widths) ? widths : []).map((w) => (Array.isArray(w) ? [Number(w[0]), Number(w[1])] : [0, 0])),
-    ),
+    widths: sizes("widths"),
+    heights: sizes("heights"),
   };
 }
 
@@ -179,8 +191,18 @@ export function errorTag(message: string): string {
   return "#ERR";
 }
 
+/** The language's own date — `2026-09-16`, with a time after it if there is one. */
+export const isoDate = (v: JsonValue): v is string =>
+  typeof v === "string" && /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?)?$/.test(v);
+
 export function formatValue(value: JsonValue, fmt: Fmt | null, locale?: string): string {
   if (value === null) return "";
+  if (fmt?.date && isoDate(value)) {
+    if (fmt.date === "iso") return value;
+    const at = new Date(value.replace(" ", "T"));
+    if (!Number.isNaN(at.getTime())) return new Intl.DateTimeFormat(locale, { dateStyle: fmt.date }).format(at);
+    return value;
+  }
   if (typeof value === "number") {
     const dp = fmt?.dp;
     const digits = dp === undefined ? {} : { minimumFractionDigits: dp, maximumFractionDigits: dp };
@@ -212,6 +234,23 @@ function currencyFor(locale?: string): string {
   return (region && byRegion[region]) || "USD";
 }
 
+/**
+ * Ink that can be read on `background` — near-black or near-white, by how light the fill is. A cell
+ * given a fill but no text colour would otherwise keep the theme's, which is invisible on a pale fill
+ * in the dark theme and on a dark one in the light theme.
+ */
+export function readableOn(background: string): string {
+  const hex = background.trim().replace(/^#/, "");
+  const full = hex.length === 3 ? [...hex].map((c) => c + c).join("") : hex;
+  if (!/^[0-9a-f]{6}$/i.test(full)) return "";
+  const channel = (i: number): number => {
+    const v = parseInt(full.slice(i * 2, i * 2 + 2), 16) / 255;
+    return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance = 0.2126 * channel(0) + 0.7152 * channel(1) + 0.0722 * channel(2);
+  return luminance > 0.42 ? "#16181d" : "#f7f8fa";
+}
+
 export interface Shown {
   text: string;
   align: "left" | "center" | "right";
@@ -224,7 +263,7 @@ export function display(cell: Cell | undefined, locale?: string): Shown {
   if (!cell) return { text: "", align: "left", error: false };
   if (cell.error) return { text: errorTag(cell.error), align: "left", title: cell.error, error: true };
   const text = formatValue(cell.value, cell.fmt, locale);
-  const natural = typeof cell.value === "number" ? "right" : "left";
+  const natural = typeof cell.value === "number" || (cell.fmt?.date && isoDate(cell.value)) ? "right" : "left";
   return { text, align: cell.fmt?.align ?? natural, error: false };
 }
 
@@ -338,6 +377,53 @@ export function fillTarget(source: Area, to: Pos): Area {
   return { ...source, c0: Math.min(source.c0, to.col), c1: Math.max(source.c1, to.col) };
 }
 
+/** For a printed sheet: the text a cell shows, with the styling it carries. */
+const escapeHtml = (text: string): string =>
+  text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+/**
+ * A sheet as a table to print: the values as they are shown, each cell keeping its own formatting.
+ * Empty trailing rows and columns are left out — a printed sheet should be the size of its contents.
+ */
+export function toTableHtml(cells: Iterable<Cell>, widths: Map<number, number>, locale?: string): string {
+  const grid = new Map<string, Cell>();
+  let lastRow = -1;
+  let lastCol = -1;
+  for (const c of cells) {
+    grid.set(`${c.row},${c.col}`, c);
+    lastRow = Math.max(lastRow, c.row);
+    lastCol = Math.max(lastCol, c.col);
+  }
+  if (lastRow < 0) return "<p>This sheet is empty.</p>";
+
+  const columns = Array.from({ length: lastCol + 1 }, (_, c) => {
+    const w = widths.get(c);
+    return `<col${w ? ` style="width:${Math.round(w)}px"` : ""}>`;
+  }).join("");
+
+  const body = Array.from({ length: lastRow + 1 }, (_, r) => {
+    const cellsHtml = Array.from({ length: lastCol + 1 }, (_, c) => {
+      const cell = grid.get(`${r},${c}`);
+      const seen = display(cell, locale);
+      const fmt = cell?.fmt;
+      const style = [
+        `text-align:${seen.align}`,
+        fmt?.bold ? "font-weight:600" : "",
+        fmt?.italic ? "font-style:italic" : "",
+        fmt?.wrap ? "white-space:pre-wrap" : "white-space:nowrap",
+        fmt?.fg ? `color:${fmt.fg}` : fmt?.bg ? `color:${readableOn(fmt.bg)}` : "",
+        fmt?.bg ? `background:${fmt.bg}` : "",
+      ]
+        .filter(Boolean)
+        .join(";");
+      return `<td style="${style}">${escapeHtml(seen.text)}</td>`;
+    }).join("");
+    return `<tr>${cellsHtml}</tr>`;
+  }).join("");
+
+  return `<table class="sheet"><colgroup>${columns}</colgroup><tbody>${body}</tbody></table>`;
+}
+
 // ── selection ───────────────────────────────────────────────────────
 
 /** Where a selection was started, and where it has been extended to (the active cell). */
@@ -362,59 +448,59 @@ export const selectCell = (p: Pos): Selection => ({ anchor: p, focus: p });
 
 export const ROW_HEIGHT = 24;
 export const DEFAULT_COL_WIDTH = 96;
-export const MIN_COL_WIDTH = 24;
-export const MAX_COL_WIDTH = 1000;
+export const MIN_SIZE = 16;
+export const MAX_SIZE = 1000;
 export const HEADER_HEIGHT = 24;
 
 /**
- * Where columns sit horizontally. Widths are mostly the default, so positions are computed from
- * the few columns that differ rather than from a table of every column.
+ * Where rows and columns sit along their axis. Most are the default size, so a position is computed
+ * from the few that differ rather than from a table of every one of them.
  */
-export class ColumnLayout {
+export class Lengths {
   private readonly custom: [number, number][];
 
-  constructor(widths: Map<number, number>, readonly defaultWidth = DEFAULT_COL_WIDTH) {
-    this.custom = [...widths.entries()].sort((a, b) => a[0] - b[0]);
+  constructor(sizes: Map<number, number>, readonly defaultSize: number) {
+    this.custom = [...sizes.entries()].sort((a, b) => a[0] - b[0]);
   }
 
-  width(col: number): number {
-    const hit = this.custom.find(([c]) => c === col);
-    return hit ? hit[1] : this.defaultWidth;
+  size(i: number): number {
+    const hit = this.custom.find(([at]) => at === i);
+    return hit ? hit[1] : this.defaultSize;
   }
 
-  /** The x of a column's left edge. */
-  left(col: number): number {
-    let x = col * this.defaultWidth;
-    for (const [c, w] of this.custom) {
-      if (c >= col) break;
-      x += w - this.defaultWidth;
+  /** Where `i` starts: the x of a column's left edge, the y of a row's top. */
+  start(i: number): number {
+    let offset = i * this.defaultSize;
+    for (const [at, size] of this.custom) {
+      if (at >= i) break;
+      offset += size - this.defaultSize;
     }
-    return x;
+    return offset;
   }
 
-  /** The column whose right edge is within `slop` of x — where a drag resizes it — or null. */
-  edgeAt(x: number, slop: number): number | null {
-    const col = this.at(x);
-    const left = this.left(col);
-    if (x - left <= slop && col > 0) return col - 1;
-    if (left + this.width(col) - x <= slop) return col;
+  /** Whose far edge is within `slop` of `offset` — where a drag resizes it — or null. */
+  edgeAt(offset: number, slop: number): number | null {
+    const i = this.at(offset);
+    const start = this.start(i);
+    if (offset - start <= slop && i > 0) return i - 1;
+    if (start + this.size(i) - offset <= slop) return i;
     return null;
   }
 
-  /** The column under x (clamped to 0 on the left). */
-  at(x: number): number {
-    if (x <= 0) return 0;
-    let col = 0;
+  /** Which row or column sits at `offset` (clamped to 0). */
+  at(offset: number): number {
+    if (offset <= 0) return 0;
+    let i = 0;
     let edge = 0;
-    for (const [c, w] of this.custom) {
-      const plainRun = (c - col) * this.defaultWidth;
-      if (x < edge + plainRun) return col + Math.floor((x - edge) / this.defaultWidth);
+    for (const [at, size] of this.custom) {
+      const plainRun = (at - i) * this.defaultSize;
+      if (offset < edge + plainRun) return i + Math.floor((offset - edge) / this.defaultSize);
       edge += plainRun;
-      if (x < edge + w) return c;
-      edge += w;
-      col = c + 1;
+      if (offset < edge + size) return at;
+      edge += size;
+      i = at + 1;
     }
-    return col + Math.floor((x - edge) / this.defaultWidth);
+    return i + Math.floor((offset - edge) / this.defaultSize);
   }
 }
 

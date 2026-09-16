@@ -13,8 +13,8 @@ import {
   a1,
   areaA1,
   blockArea,
-  ColumnLayout,
   colName,
+  DEFAULT_COL_WIDTH,
   decimalsShown,
   display,
   extent,
@@ -22,10 +22,12 @@ import {
   fromTSV,
   gutterWidth,
   HEADER_HEIGHT,
-  MAX_COL_WIDTH,
-  MIN_COL_WIDTH,
+  Lengths,
+  MAX_SIZE,
+  MIN_SIZE,
   moveSelection,
   parseArea,
+  readableOn,
   ROW_HEIGHT,
   selectCell,
   selectionArea,
@@ -70,7 +72,7 @@ type Edit =
   /** A block of inputs at `origin`, before and after. */
   | { kind: "input"; origin: Pos; before: string[][]; after: string[][] }
   /** A format merged into `area`; `before` is each cell's exact format, to put back. */
-  | { kind: "format"; area: Area; before: (Fmt | null)[][]; change: FmtChange | null };
+  | { kind: "format"; area: Area; before: (Fmt | null)[][]; change: FmtChange | null | (Fmt | null)[][] };
 
 /** Clearing or formatting more than this at once is refused — it would be a very long undo entry. */
 const MAX_BLOCK = 100_000;
@@ -137,8 +139,33 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
     o.value = value;
     o.textContent = label;
   }
+  for (const [value, label] of [["date", "Date"]]) {
+    const o = el("option", "", numSelect);
+    o.value = value;
+    o.textContent = label;
+  }
   const lessDp = tool(".0←", "Fewer decimal places");
   const moreDp = tool(".00→", "More decimal places");
+  gap();
+  const wrapBtn = tool("wrap", "Wrap the text inside the cell");
+  const borderSelect = el("select", "sheet-num sheet-borders", tools);
+  borderSelect.title = "Lines around the cells";
+  for (const [value, label] of [["", "No border"], ["all", "All borders"], ["outer", "Outside only"]]) {
+    const o = el("option", "", borderSelect);
+    o.value = value;
+    o.textContent = label;
+  }
+  const colour = (title: string, fallback: string): HTMLInputElement => {
+    const input = el("input", "sheet-colour", tools);
+    input.type = "color";
+    input.title = title;
+    input.value = fallback;
+    input.addEventListener("mousedown", (e) => e.stopPropagation());
+    return input;
+  };
+  const fgInput = colour("Text colour", "#000000");
+  const bgInput = colour("Fill colour", "#ffffff");
+  const clearColours = tool("×", "No colours");
   gap();
   const clearFmtBtn = tool("clear format", "Remove the formatting from the selection");
 
@@ -182,7 +209,9 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
   const cells = new Map<string, Cell>();
   let version = -1;
   let widths = new Map<number, number>();
-  let layout = new ColumnLayout(widths);
+  let heights = new Map<number, number>();
+  let cols = new Lengths(widths, DEFAULT_COL_WIDTH);
+  let rows = new Lengths(heights, ROW_HEIGHT);
   let size = { rows: 100, cols: 26 };
   let gutter = gutterWidth(size.rows);
   let sel: Selection = selectCell({ row: 0, col: 0 });
@@ -212,12 +241,14 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
     cells.clear();
     for (const c of data.cells) cells.set(key(c.row, c.col), c);
     version = data.version;
-    setWidths(data.widths);
+    setSizes(data.widths, data.heights);
   }
 
-  function setWidths(next: Map<number, number>): void {
-    widths = next;
-    layout = new ColumnLayout(widths);
+  function setSizes(nextWidths: Map<number, number>, nextHeights: Map<number, number>): void {
+    widths = nextWidths;
+    heights = nextHeights;
+    cols = new Lengths(widths, DEFAULT_COL_WIDTH);
+    rows = new Lengths(heights, ROW_HEIGHT);
     resize();
   }
 
@@ -237,8 +268,8 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
       sel.focus,
     );
     gutter = gutterWidth(size.rows);
-    sizer.style.width = `${gutter + layout.left(size.cols)}px`;
-    sizer.style.height = `${HEADER_HEIGHT + size.rows * ROW_HEIGHT}px`;
+    sizer.style.width = `${gutter + cols.start(size.cols)}px`;
+    sizer.style.height = `${HEADER_HEIGHT + rows.start(size.rows)}px`;
     schedule();
   }
 
@@ -293,8 +324,8 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
     });
   }
 
-  const xOf = (col: number): number => gutter + layout.left(col) - scroller.scrollLeft;
-  const yOf = (row: number): number => HEADER_HEIGHT + row * ROW_HEIGHT - scroller.scrollTop;
+  const xOf = (col: number): number => gutter + cols.start(col) - scroller.scrollLeft;
+  const yOf = (row: number): number => HEADER_HEIGHT + rows.start(row) - scroller.scrollTop;
 
   function place(e: HTMLElement, x: number, y: number, w: number, h: number): void {
     e.style.transform = `translate(${x}px, ${y}px)`;
@@ -307,10 +338,10 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
     const h = grid.clientHeight;
     const sx = scroller.scrollLeft;
     const sy = scroller.scrollTop;
-    const c0 = layout.at(sx);
-    const c1 = Math.min(size.cols - 1, layout.at(sx + w - gutter));
-    const r0 = Math.floor(sy / ROW_HEIGHT);
-    const r1 = Math.min(size.rows - 1, Math.ceil((sy + h - HEADER_HEIGHT) / ROW_HEIGHT));
+    const c0 = cols.at(sx);
+    const c1 = Math.min(size.cols - 1, cols.at(sx + w - gutter));
+    const r0 = rows.at(sy);
+    const r1 = Math.min(size.rows - 1, rows.at(sy + h - HEADER_HEIGHT));
     const area = selectionArea(sel);
 
     lines.replaceChildren();
@@ -320,7 +351,7 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
 
     for (let c = c0; c <= c1; c++) {
       const x = xOf(c);
-      const cw = layout.width(c);
+      const cw = cols.size(c);
       const v = el("div", "sheet-vline", lines);
       place(v, x + cw - 1, 0, 1, h);
       const head = el("div", "sheet-colname" + (c >= area.c0 && c <= area.c1 ? " on" : ""), colHead);
@@ -329,21 +360,34 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
     }
     for (let r = r0; r <= r1; r++) {
       const y = yOf(r);
+      const rh = rows.size(r);
       const line = el("div", "sheet-hline", lines);
-      place(line, 0, y + ROW_HEIGHT - 1, w, 1);
+      place(line, 0, y + rh - 1, w, 1);
       const head = el("div", "sheet-rowname" + (r >= area.r0 && r <= area.r1 ? " on" : ""), rowHead);
-      place(head, 0, y, gutter, ROW_HEIGHT);
+      place(head, 0, y, gutter, rh);
       head.textContent = String(r + 1);
     }
     for (const cell of cells.values()) {
       if (cell.row < r0 || cell.row > r1 || cell.col < c0 || cell.col > c1) continue;
       const shown = display(cell);
       if (!shown.text) continue;
-      const box = el("div", "sheet-cell" + (shown.error ? " error" : ""), cellsLayer);
-      place(box, xOf(cell.col), yOf(cell.row), layout.width(cell.col), ROW_HEIGHT);
+      const box = el("div", "sheet-cell" + (shown.error ? " error" : "") + (cell.fmt?.wrap ? " wrap" : ""), cellsLayer);
+      place(box, xOf(cell.col), yOf(cell.row), cols.size(cell.col), rows.size(cell.row));
       box.style.textAlign = shown.align;
       if (cell.fmt?.bold) box.style.fontWeight = "600";
       if (cell.fmt?.italic) box.style.fontStyle = "italic";
+      if (cell.fmt?.bg) box.style.background = cell.fmt.bg;
+      // a fill with no colour of its own gets ink that can be read on it
+      if (cell.fmt?.fg) box.style.color = cell.fmt.fg;
+      else if (cell.fmt?.bg) box.style.color = readableOn(cell.fmt.bg);
+      if (cell.fmt?.border) {
+        const edges = cell.fmt.border === "all" ? "tblr" : cell.fmt.border;
+        const line = "1px solid var(--fg)";
+        if (edges.includes("t")) box.style.borderTop = line;
+        if (edges.includes("b")) box.style.borderBottom = line;
+        if (edges.includes("l")) box.style.borderLeft = line;
+        if (edges.includes("r")) box.style.borderRight = line;
+      }
       box.textContent = shown.text;
     }
     place(colHead, 0, 0, w, HEADER_HEIGHT);
@@ -351,20 +395,20 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
     place(corner, 0, 0, gutter, HEADER_HEIGHT);
 
     const areaBox = (a: Area, box: HTMLElement): void => {
-      place(box, xOf(a.c0), yOf(a.r0), layout.left(a.c1 + 1) - layout.left(a.c0), (a.r1 - a.r0 + 1) * ROW_HEIGHT);
+      place(box, xOf(a.c0), yOf(a.r0), cols.start(a.c1 + 1) - cols.start(a.c0), rows.start(a.r1 + 1) - rows.start(a.r0));
     };
     areaBox(area, selBox);
     selBox.hidden = area.r0 === area.r1 && area.c0 === area.c1;
     areaBox(spanOf(sel.focus, sel.focus), activeBox);
-    const end = { x: xOf(area.c1) + layout.width(area.c1), y: yOf(area.r1) + ROW_HEIGHT };
+    const end = { x: xOf(area.c1) + cols.size(area.c1), y: yOf(area.r1) + rows.size(area.r1) };
     place(handle, end.x - 4, end.y - 4, 8, 8);
     handle.hidden = !!editing;
     if (filling) areaBox(filling.target, fillBox);
     fillBox.hidden = !filling;
     if (editing) {
       editor.style.transform = `translate(${xOf(editing.at.col)}px, ${yOf(editing.at.row)}px)`;
-      editor.style.minWidth = `${layout.width(editing.at.col)}px`;
-      editor.style.height = `${ROW_HEIGHT}px`;
+      editor.style.minWidth = `${cols.size(editing.at.col)}px`;
+      editor.style.height = `${rows.size(editing.at.row)}px`;
     }
   }
 
@@ -383,7 +427,11 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
     boldBtn.classList.toggle("on", !!fmt?.bold);
     italicBtn.classList.toggle("on", !!fmt?.italic);
     for (const [a, b] of alignBtns) b.classList.toggle("on", fmt?.align === a);
-    numSelect.value = fmt?.num ?? "general";
+    numSelect.value = fmt?.date ? "date" : (fmt?.num ?? "general");
+    wrapBtn.classList.toggle("on", !!fmt?.wrap);
+    borderSelect.value = fmt?.border === "all" ? "all" : fmt?.border ? "outer" : "";
+    if (fmt?.fg) fgInput.value = fmt.fg;
+    if (fmt?.bg) bgInput.value = fmt.bg;
   }
 
   // ── selection and scrolling ──
@@ -399,18 +447,21 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
   }
 
   function scrollIntoView(p: Pos, vertical = true, horizontal = true): void {
-    const left = layout.left(p.col);
-    const right = left + layout.width(p.col);
-    const top = p.row * ROW_HEIGHT;
+    const left = cols.start(p.col);
+    const right = left + cols.size(p.col);
+    const top = rows.start(p.row);
+    const bottom = top + rows.size(p.row);
     const viewW = scroller.clientWidth - gutter;
     const viewH = scroller.clientHeight - HEADER_HEIGHT;
     if (horizontal && left < scroller.scrollLeft) scroller.scrollLeft = left;
     else if (horizontal && right > scroller.scrollLeft + viewW) scroller.scrollLeft = right - viewW;
     if (vertical && top < scroller.scrollTop) scroller.scrollTop = top;
-    else if (vertical && top + ROW_HEIGHT > scroller.scrollTop + viewH) scroller.scrollTop = top + ROW_HEIGHT - viewH;
+    else if (vertical && bottom > scroller.scrollTop + viewH) scroller.scrollTop = bottom - viewH;
   }
 
-  type Hit = { kind: "cell" | "col" | "row" | "corner"; pos: Pos; /** a column edge under the pointer */ edge: number | null };
+  /** A column's right edge or a row's bottom edge, under the pointer in its own header. */
+  type Edge = { axis: "col" | "row"; index: number };
+  type Hit = { kind: "cell" | "col" | "row" | "corner"; pos: Pos; edge: Edge | null };
 
   /** The cell or header under a point in the scroller's box; null over a scrollbar. */
   function hit(clientX: number, clientY: number): Hit | null {
@@ -419,13 +470,17 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
     const y = clientY - r.top;
     if (x < 0 || y < 0 || x > scroller.clientWidth || y > scroller.clientHeight) return null;
     const contentX = x - gutter + scroller.scrollLeft;
-    const pos = {
-      row: Math.max(0, Math.floor((y - HEADER_HEIGHT + scroller.scrollTop) / ROW_HEIGHT)),
-      col: layout.at(contentX),
-    };
+    const contentY = y - HEADER_HEIGHT + scroller.scrollTop;
+    const pos = { row: Math.max(0, rows.at(contentY)), col: cols.at(contentX) };
     if (y < HEADER_HEIGHT && x < gutter) return { kind: "corner", pos, edge: null };
-    if (y < HEADER_HEIGHT) return { kind: "col", pos, edge: layout.edgeAt(contentX, EDGE_SLOP) };
-    if (x < gutter) return { kind: "row", pos, edge: null };
+    if (y < HEADER_HEIGHT) {
+      const index = cols.edgeAt(contentX, EDGE_SLOP);
+      return { kind: "col", pos, edge: index === null ? null : { axis: "col", index } };
+    }
+    if (x < gutter) {
+      const index = rows.edgeAt(contentY, EDGE_SLOP);
+      return { kind: "row", pos, edge: index === null ? null : { axis: "row", index } };
+    }
     return { kind: "cell", pos, edge: null };
   }
 
@@ -494,9 +549,19 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
   function formatSelection(change: FmtChange | null): void {
     const area = selectionArea(sel);
     const before = snapshot(area, (p) => cellAt(p)?.fmt ?? null, "format");
-    if (!before) return;
+    if (before) applyFormat(area, before, change);
+  }
+
+  /** Set every cell's format in the area exactly — for a format that differs from cell to cell. */
+  function applyFormatBlock(area: Area, block: (Fmt | null)[][]): void {
+    const before = snapshot(area, (p) => cellAt(p)?.fmt ?? null, "format");
+    if (before) applyFormat(area, before, block);
+  }
+
+  function applyFormat(area: Area, before: (Fmt | null)[][], change: FmtChange | null | (Fmt | null)[][]): void {
     void enqueue(async () => {
-      apply(await client.format(path, areaA1(area), change));
+      const corner = a1({ row: area.r0, col: area.c0 });
+      apply(await client.format(path, Array.isArray(change) ? corner : areaA1(area), change));
       remember({ kind: "format", area, before, change });
     });
   }
@@ -516,7 +581,8 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
       const { area } = edit;
       void enqueue(async () => {
         const origin = a1({ row: area.r0, col: area.c0 });
-        apply(await (isUndo ? client.format(path, origin, edit.before) : client.format(path, areaA1(area), edit.change)));
+        const target = Array.isArray(edit.change) ? origin : areaA1(area);
+        apply(await (isUndo ? client.format(path, origin, edit.before) : client.format(path, target, edit.change)));
       });
       select({ anchor: { row: area.r0, col: area.c0 }, focus: { row: area.r1, col: area.c1 } });
     }
@@ -599,8 +665,8 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
 
   /** What a held mouse button is sweeping across: cells, or whole rows or columns from their headers. */
   let dragging: "cell" | "row" | "col" | false = false;
-  /** A column edge being dragged. */
-  let resizing: { col: number; startX: number; startWidth: number } | null = null;
+  /** A column's or row's edge being dragged. */
+  let resizing: { edge: Edge; from: number; size: number } | null = null;
   let touch: { x: number; y: number; timer: ReturnType<typeof setTimeout>; pressed: boolean } | null = null;
 
   scroller.addEventListener("pointerdown", (e) => {
@@ -630,8 +696,8 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
       scroller.setPointerCapture(e.pointerId);
       return;
     }
-    if (h.edge !== null) {
-      resizing = { col: h.edge, startX: e.clientX, startWidth: layout.width(h.edge) };
+    if (h.edge) {
+      resizing = { edge: h.edge, from: along(h.edge.axis, e), size: sizeOf(h.edge) };
       scroller.setPointerCapture(e.pointerId);
       return;
     }
@@ -653,8 +719,8 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
       return;
     }
     if (resizing) {
-      const width = Math.round(Math.max(MIN_COL_WIDTH, Math.min(MAX_COL_WIDTH, resizing.startWidth + e.clientX - resizing.startX)));
-      setWidths(new Map(widths).set(resizing.col, width));
+      const moved = along(resizing.edge.axis, e) - resizing.from;
+      applySize(resizing.edge, Math.round(Math.max(MIN_SIZE, Math.min(MAX_SIZE, resizing.size + moved))));
       return;
     }
     if (dragging) {
@@ -667,10 +733,13 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
       return;
     }
     if (e.pointerType === "mouse") {
+      const edge = hit(e.clientX, e.clientY)?.edge;
       scroller.style.cursor = onHandle(e.clientX, e.clientY)
         ? "crosshair"
-        : hit(e.clientX, e.clientY)?.edge != null
-          ? "col-resize"
+        : edge
+          ? edge.axis === "col"
+            ? "col-resize"
+            : "row-resize"
           : "";
     }
   });
@@ -686,9 +755,9 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
       }
     }
     if (resizing) {
-      const { col } = resizing;
+      const { edge } = resizing;
       resizing = null;
-      saveWidth(col, widths.get(col) ?? null);
+      saveSize(edge, sizeOf(edge));
     }
     if (touch) {
       clearTimeout(touch.timer);
@@ -704,25 +773,38 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
   function onHandle(clientX: number, clientY: number): boolean {
     const r = scroller.getBoundingClientRect();
     const area = selectionArea(sel);
-    const x = r.left + xOf(area.c1) + layout.width(area.c1);
-    const y = r.top + yOf(area.r1) + ROW_HEIGHT;
+    const x = r.left + xOf(area.c1) + cols.size(area.c1);
+    const y = r.top + yOf(area.r1) + rows.size(area.r1);
     return Math.abs(clientX - x) <= 5 && Math.abs(clientY - y) <= 5;
   }
 
-  function saveWidth(col: number, width: number | null): void {
+  /** Which way a drag on this axis counts. */
+  const along = (axis: Edge["axis"], e: PointerEvent): number => (axis === "col" ? e.clientX : e.clientY);
+  const sizeOf = (edge: Edge): number => (edge.axis === "col" ? cols : rows).size(edge.index);
+
+  /** Resize on screen, before the engine hears about it. */
+  function applySize(edge: Edge, size: number | null): void {
+    const next = new Map(edge.axis === "col" ? widths : heights);
+    if (size === null) next.delete(edge.index);
+    else next.set(edge.index, size);
+    if (edge.axis === "col") setSizes(next, heights);
+    else setSizes(widths, next);
+  }
+
+  function saveSize(edge: Edge, size: number | null): void {
     void enqueue(async () => {
-      version = await client.colWidth(path, colName(col), width);
+      version =
+        edge.axis === "col"
+          ? await client.colWidth(path, colName(edge.index), size)
+          : await client.rowHeight(path, edge.index + 1, size);
     });
   }
 
   scroller.addEventListener("dblclick", (e) => {
     const h = hit(e.clientX, e.clientY);
-    if (h?.edge != null) {
-      // back to the default width
-      const next = new Map(widths);
-      next.delete(h.edge);
-      setWidths(next);
-      saveWidth(h.edge, null);
+    if (h?.edge) {
+      applySize(h.edge, null); // back to the default size
+      saveSize(h.edge, null);
       return;
     }
     if (h?.kind !== "cell") return;
@@ -945,8 +1027,36 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
     btn.addEventListener("click", () => formatSelection({ align: activeFmt()?.align === align ? null : align }));
   }
   numSelect.addEventListener("change", () => {
-    const num = numSelect.value as NonNullable<Fmt["num"]>;
-    formatSelection({ num: num === "general" ? null : num });
+    const chosen = numSelect.value;
+    // a date and a number format are the same slot to a person, so choosing one clears the other
+    if (chosen === "date") formatSelection({ date: "medium", num: null });
+    else formatSelection({ num: chosen === "general" ? null : (chosen as NonNullable<Fmt["num"]>), date: null });
+    scroller.focus({ preventScroll: true });
+  });
+  wrapBtn.addEventListener("click", () => formatSelection({ wrap: activeFmt()?.wrap ? null : true }));
+  fgInput.addEventListener("input", () => formatSelection({ fg: fgInput.value }));
+  bgInput.addEventListener("input", () => formatSelection({ bg: bgInput.value }));
+  clearColours.addEventListener("click", () => formatSelection({ fg: null, bg: null }));
+  borderSelect.addEventListener("change", () => {
+    const area = selectionArea(sel);
+    if (borderSelect.value === "") formatSelection({ border: null });
+    else if (borderSelect.value === "all") formatSelection({ border: "all" });
+    else {
+      // "outside only" is a different format per cell, so it goes as a block — built from what each
+      // cell already has, since a block replaces rather than merges.
+      const block = snapshot(area, (p) => {
+        const edges =
+          (p.row === area.r0 ? "t" : "") +
+          (p.row === area.r1 ? "b" : "") +
+          (p.col === area.c0 ? "l" : "") +
+          (p.col === area.c1 ? "r" : "");
+        const fmt: Fmt = { ...(cellAt(p)?.fmt ?? {}) };
+        if (edges) fmt.border = edges;
+        else delete fmt.border;
+        return Object.keys(fmt).length ? fmt : null;
+      }, "format");
+      if (block) applyFormatBlock(area, block);
+    }
     scroller.focus({ preventScroll: true });
   });
   const stepDecimals = (by: number): void => {

@@ -24,6 +24,8 @@ export interface SheetClient {
   format(path: string, area: string, fmt: FmtChange | null | (Fmt | null)[][]): Promise<Changes>;
   /** A column's width, or null for the default. Returns the sheet's version afterwards. */
   colWidth(path: string, col: string, width: number | null): Promise<number>;
+  /** A row's height (the row numbered from 1), or null for the default. */
+  rowHeight(path: string, row: number, height: number | null): Promise<number>;
   recalc(path: string): Promise<Changes>;
   /** What was typed into an area, as rows — the other half of `paste`. */
   copy(path: string, area: string): Promise<string[][]>;
@@ -79,6 +81,11 @@ export function createSheetClient(engine: EngineClient): SheetClient {
     colWidth: async (path, col, width) => {
       const w = width === null ? "nil" : String(Math.round(width));
       const result = await ev(`(list (sheet-col-width ${lispString(path)} ${lispString(col)} ${w}) (sheet-version ${lispString(path)}))`);
+      return Number(Array.isArray(result) ? result[1] : 0);
+    },
+    rowHeight: async (path, row, height) => {
+      const h = height === null ? "nil" : String(Math.round(height));
+      const result = await ev(`(list (sheet-row-height ${lispString(path)} ${row} ${h}) (sheet-version ${lispString(path)}))`);
       return Number(Array.isArray(result) ? result[1] : 0);
     },
     recalc: (path) => changes(path, `(sheet-recalc ${lispString(path)})`),

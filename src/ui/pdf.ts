@@ -25,6 +25,10 @@ const PRINT_CSS = `
   table { border-collapse: collapse; }
   th, td { border: 1px solid #ccc; padding: 4px 10px; }
   h1, h2, h3 { page-break-after: avoid; }
+  /* a printed sheet: as wide as its contents, and readable rather than pretty */
+  table.sheet { width: 100%; font-size: 10pt; }
+  table.sheet td { padding: 2px 6px; vertical-align: top; }
+  table.sheet tr { page-break-inside: avoid; }
 `;
 
 function escapeHtml(s: string): string {

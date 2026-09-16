@@ -363,6 +363,12 @@
       <code>1,5</code> is one and a half. A format you set yourself is never overwritten.
     </p>
     <p>
+      <code>2026-09-16</code> is a date — the spelling EELisp itself uses, so it sorts properly and
+      <code>date-add</code> and <code>date-diff</code> work on it. Other spellings stay text:
+      <code>16/09/2026</code> and <code>09/16/2026</code> are the same ten characters in two
+      languages, and a sheet guessing which half is the month would be worse than leaving it alone.
+    </p>
+    <p>
       Inside a formula <code>B1</code> is that cell's value, and <code>B1:B9</code> is a list of the
       values in the range, with <code>nil</code> for the empty ones. <code>$B$1</code> works as well.
       Any function in scope can be called — a builtin, one from the snippets, or a
@@ -428,6 +434,13 @@
       right-click menu when the selection covers more than one row or column.
     </p>
 
+    <h3>Printing</h3>
+    <p>
+      <strong>PDF</strong> in the header prints the sheet as a table — the values as they are shown,
+      each cell keeping its formatting — through the usual print dialog, where you choose
+      <em>Save as PDF</em>.
+    </p>
+
     <h3>CSV in and out</h3>
     <p>
       Right-click a sheet in the file tree for <strong>Export as CSV</strong>: it writes the values
@@ -440,11 +453,16 @@
 
     <h3>Formats, columns and rows</h3>
     <p>
-      The toolbar sets bold, italic, alignment, a number format — number, currency, percent — and
-      decimal places for the selection, and undo takes it back. Drag the edge of a column header to
-      resize a column; double-click the edge to reset it. Right-click a row or column header, or
-      long-press on a touch screen, to insert or delete rows and columns. Formulas follow their cells
-      when rows and columns move, and a formula that read a deleted cell shows
+      The toolbar sets bold, italic, alignment, a number or date format, decimal places, wrapped text,
+      lines around the cells, and the text and fill colours — all for the selection, and undo takes
+      any of it back. A cell you fill but don't give a colour of its own gets ink that can be read on
+      that fill.
+    </p>
+    <p>
+      Drag the edge of a column header to resize the column, or a row header's edge to change the
+      row's height; double-click an edge to put it back to the default. Right-click a row or column
+      header, or long-press on a touch screen, to insert or delete rows and columns. Formulas follow
+      their cells when rows and columns move, and a formula that read a deleted cell shows
       <strong>#REF!</strong>. Inserting and deleting can't be undone.
     </p>
 

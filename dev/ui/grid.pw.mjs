@@ -178,6 +178,59 @@ test("a number typed the way people write one arrives with its format", async ({
   await expect(page.locator(".sheet-formula")).toHaveValue("50%");
 });
 
+test("a date shows as the format asks, and a filled cell stays readable", async ({ page }) => {
+  await openSheet(page);
+  await go(page, "F1");
+  await type(page, "2026-09-16");
+  await go(page, "F1");
+  await expect(page.locator(".sheet-formula")).toHaveValue("2026-09-16"); // what was typed is kept
+  await page.locator('select[title="Number format"]').selectOption("date");
+  await expect.poll(() => shown(page)).toContain("Sep 16, 2026");
+
+  await page.locator('input[title="Fill colour"]').evaluate((input) => {
+    input.value = "#ffe9a8";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  // poll rather than read once: the write is queued, and `settled` can run before it has begun
+  const painted = () =>
+    page.$$eval(".sheet-cell", (els) => {
+      const e = els.find((c) => c.textContent.includes("Sep 16"));
+      return { bg: e?.style.background ?? "", fg: e?.style.color ?? "" };
+    });
+  await expect.poll(painted).toEqual({
+    bg: "rgb(255, 233, 168)",
+    fg: "rgb(22, 24, 29)", // ink chosen to be legible on that fill
+  });
+});
+
+test("a row can be made taller, and the sheet prints as a table", async ({ page }) => {
+  await openSheet(page);
+  const box = await page.locator(".sheet-scroller").boundingBox();
+  const gutter = await page.$eval(".sheet-rowname", (e) => parseFloat(e.style.width));
+  const edge = box.y + 24 + 2 * 24; // row 2's bottom edge
+  await page.mouse.move(box.x + gutter / 2, edge);
+  await expect.poll(() => page.locator(".sheet-scroller").evaluate((e) => e.style.cursor)).toBe("row-resize");
+  await page.mouse.down();
+  await page.mouse.move(box.x + gutter / 2, edge + 30);
+  await page.mouse.up();
+  await settled(page);
+  await expect.poll(() => page.$$eval(".sheet-rowname", (els) => els[1].style.height)).toBe("54px");
+
+  // printing opens a hidden document; check what it was handed rather than the print dialog
+  await page.evaluate(() => {
+    window.print = () => {};
+  });
+  await page.locator(".head-btn", { hasText: "PDF" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const frame = [...document.querySelectorAll("iframe")].pop();
+        return frame?.contentDocument?.querySelectorAll("table.sheet tr").length ?? 0;
+      }),
+    )
+    .toBeGreaterThan(1);
+});
+
 test("a sheet exports as CSV and imports back", async ({ page }) => {
   await page.goto("/");
   await page.locator(".tree-file", { hasText: SHEET }).click({ button: "right" });
