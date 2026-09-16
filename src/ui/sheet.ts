@@ -51,6 +51,8 @@ export interface SheetView {
   commit(): Promise<void>;
   /** Reload when the sheet changed elsewhere: a note, the REPL, another window. */
   refreshIfChanged(): Promise<void>;
+  /** Select a cell or an area — "B3", "A1:C9" — and scroll to it. */
+  goto(ref: string): void;
   focus(): void;
   destroy(): void;
 }
@@ -973,6 +975,12 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
       } catch {
         /* the next write will say what's wrong */
       }
+    },
+    goto(ref: string) {
+      const area = parseArea(ref);
+      if (!area) return;
+      select({ anchor: { row: area.r0, col: area.c0 }, focus: { row: area.r1, col: area.c1 } });
+      scroller.focus({ preventScroll: true });
     },
     focus: () => scroller.focus({ preventScroll: true }),
     destroy() {

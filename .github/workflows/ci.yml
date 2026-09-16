@@ -78,6 +78,15 @@ jobs:
           EELISP_BIN: ${{ github.workspace }}/eelisp-rs/target/release/eelisp
         run: npm run smoke
 
+      # The grid only exists in a browser: scrolling, the clipboard and a drag have no unit test.
+      - name: The grid, in a browser
+        working-directory: eeditor-next
+        env:
+          EELISP_BIN: ${{ github.workspace }}/eelisp-rs/target/release/eelisp
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:ui
+
       - name: Compile the Tauri shell
         working-directory: eeditor-next
         run: cargo check --manifest-path src-tauri/Cargo.toml --all-targets

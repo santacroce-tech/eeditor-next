@@ -8,7 +8,7 @@ import { marked } from "marked";
 import { createEngineClient, observeEvals } from "./engine/client";
 import { dictGet } from "./engine/types";
 import { createSheetClient } from "./engine/sheet";
-import { fromCSV, importedValue, isSheetPath, SHEET_EXT, toCSV, valueRows } from "./core/sheet";
+import { fromCSV, importedValue, isSheetPath, SHEET_EXT, toCSV, toTSV, valueRows } from "./core/sheet";
 import { createSheetView, type SheetView } from "./ui/sheet";
 import { createWorkspaceClient, inTauri, type ExternalFile, type FileNode } from "./engine/workspace";
 import { createEditor, type ThemeName } from "./ui/editor";
@@ -757,10 +757,16 @@ function main(): void {
   newBtn.addEventListener("click", () => void newFile(""));
   newFolderBtn.addEventListener("click", () => void newFolder(""));
   const quickOpen = createQuickOpen(() => sidebar.files(), (p) => void openFile(p));
+  // Search reads a sheet as its values — a row per line — so a match points at a cell.
   const search = createSearch(
-    textFiles,
-    (p) => ws.read(p),
-    (p, line) => void openFile(p).then(() => editor.gotoLine(line)),
+    () => sidebar.files(),
+    async (p) => (isSheetPath(p) ? toTSV(valueRows((await sheets.open(p)).cells)) : ws.read(p)),
+    (p, line, cell) =>
+      void openFile(p).then(() => {
+        if (cell) activeSheet()?.goto(cell);
+        else editor.gotoLine(line);
+      }),
+    isSheetPath,
   );
   // clicking a tag opens full-text search filtered to that tag
   const tags = createTagsPanel(tagsBody, ws, textFiles, (tag) => search.open("#" + tag));
