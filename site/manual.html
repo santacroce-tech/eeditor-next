@@ -391,10 +391,25 @@
       <tr><td><kbd>⌫</kbd></td><td>Clear the selection</td></tr>
       <tr><td><kbd>⌘Z</kbd> · <kbd>⇧⌘Z</kbd></td><td>Undo · redo typing and formatting</td></tr>
       <tr><td><kbd>⌘A</kbd></td><td>Select everything</td></tr>
+      <tr><td><kbd>⌘C</kbd> · <kbd>⌘X</kbd> · <kbd>⌘V</kbd></td><td>Copy, cut, paste</td></tr>
     </table></div>
     <p>
       The box left of the formula bar names the selection; type <code>C3</code> or
       <code>A1:B9</code> there to jump.
+    </p>
+
+    <h3>Copying and filling</h3>
+    <p>
+      Copying puts the values on the clipboard, tab-separated, so they paste into Numbers, Excel or a
+      note as a table. Pasting back into a sheet is different: it types the <em>formulas</em>, and
+      moves their references by however far they travelled — copy <code>=(sum B1:B2)</code> one column
+      right and it adds up column C. A <code>$</code> pins a row or column so it stays where it is.
+    </p>
+    <p>
+      The small square at the bottom-right corner of the selection is the fill handle: drag it down or
+      across to repeat the selection, each copy's references moving with it — how a column of totals
+      gets written once. <strong>Fill down</strong> and <strong>Fill right</strong> are in the
+      right-click menu when the selection covers more than one row or column.
     </p>
 
     <h3>Formats, columns and rows</h3>

@@ -12,11 +12,14 @@ import type { SheetClient, Changes } from "../engine/sheet";
 import {
   a1,
   areaA1,
+  blockArea,
   ColumnLayout,
   colName,
   decimalsShown,
   display,
   extent,
+  fillTarget,
+  fromTSV,
   gutterWidth,
   HEADER_HEIGHT,
   MAX_COL_WIDTH,
@@ -27,6 +30,9 @@ import {
   selectCell,
   selectionArea,
   spanOf,
+  toTSV,
+  MAX_COLS,
+  MAX_ROWS,
   type Area,
   type Cell,
   type Fmt,
@@ -154,10 +160,14 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
   const lines = el("div", "sheet-lines", stage);
   const cellsLayer = el("div", "sheet-cells", stage);
   const selBox = el("div", "sheet-sel", stage);
+  const fillBox = el("div", "sheet-fillpreview", stage);
+  fillBox.hidden = true;
   const activeBox = el("div", "sheet-active", stage);
   const colHead = el("div", "sheet-colhead", stage);
   const rowHead = el("div", "sheet-rowhead", stage);
   const corner = el("div", "sheet-corner", stage);
+  // the small square at the selection's bottom-right corner: drag it to fill
+  const handle = el("div", "sheet-handle", stage);
   const scroller = el("div", "sheet-scroller", grid);
   scroller.tabIndex = 0;
   const sizer = el("div", "sheet-sizer", scroller);
@@ -181,6 +191,11 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
   let editing: { at: Pos; mode: "enter" | "edit" } | null = null;
   const undo: Edit[] = [];
   const redo: Edit[] = [];
+  /** What ⌘C put on the clipboard, so a paste back into a sheet can move formulas rather than
+   *  retype the values it is showing. Recognised by the text itself matching. */
+  let clip: { tsv: string; rows: string[][]; origin: Pos } | null = null;
+  /** A fill being dragged from the handle: where it started, and where it would reach. */
+  let filling: { source: Area; target: Area } | null = null;
   /** Writes run one at a time, in the order they were made. */
   let queue: Promise<void> = Promise.resolve();
   let pending = 0;
@@ -339,6 +354,11 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
     areaBox(area, selBox);
     selBox.hidden = area.r0 === area.r1 && area.c0 === area.c1;
     areaBox(spanOf(sel.focus, sel.focus), activeBox);
+    const end = { x: xOf(area.c1) + layout.width(area.c1), y: yOf(area.r1) + ROW_HEIGHT };
+    place(handle, end.x - 4, end.y - 4, 8, 8);
+    handle.hidden = !!editing;
+    if (filling) areaBox(filling.target, fillBox);
+    fillBox.hidden = !filling;
     if (editing) {
       editor.style.transform = `translate(${xOf(editing.at.col)}px, ${yOf(editing.at.row)}px)`;
       editor.style.minWidth = `${layout.width(editing.at.col)}px`;
@@ -557,6 +577,12 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
       { label: "Clear contents", action: clearContents },
       { label: "Clear format", action: () => formatSelection(null) },
     ];
+    if (nRows > 1) {
+      cellItems.unshift({ label: "Fill down", action: () => fill({ ...area, r1: area.r0 }, area) });
+    }
+    if (nCols > 1) {
+      cellItems.unshift({ label: "Fill right", action: () => fill({ ...area, c1: area.c0 }, area) });
+    }
     if (h.kind === "col") return colItems;
     if (h.kind === "row") return rowItems;
     if (h.kind === "corner") return cellItems;
@@ -596,6 +622,12 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
     if (e.button !== 0) return; // the context menu has its own event
     e.preventDefault();
     scroller.focus({ preventScroll: true });
+    if (onHandle(e.clientX, e.clientY)) {
+      const source = selectionArea(sel);
+      filling = { source, target: source };
+      scroller.setPointerCapture(e.pointerId);
+      return;
+    }
     if (h.edge !== null) {
       resizing = { col: h.edge, startX: e.clientX, startWidth: layout.width(h.edge) };
       scroller.setPointerCapture(e.pointerId);
@@ -610,6 +642,14 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
 
   scroller.addEventListener("pointermove", (e) => {
     if (touch && Math.hypot(e.clientX - touch.x, e.clientY - touch.y) >= 8) clearTimeout(touch.timer);
+    if (filling) {
+      const h = hit(e.clientX, e.clientY);
+      if (h) {
+        filling.target = fillTarget(filling.source, h.pos);
+        schedule();
+      }
+      return;
+    }
     if (resizing) {
       const width = Math.round(Math.max(MIN_COL_WIDTH, Math.min(MAX_COL_WIDTH, resizing.startWidth + e.clientX - resizing.startX)));
       setWidths(new Map(widths).set(resizing.col, width));
@@ -624,11 +664,25 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
       else pick({ kind: dragging, pos: h.pos }, true);
       return;
     }
-    if (e.pointerType === "mouse") scroller.style.cursor = hit(e.clientX, e.clientY)?.edge != null ? "col-resize" : "";
+    if (e.pointerType === "mouse") {
+      scroller.style.cursor = onHandle(e.clientX, e.clientY)
+        ? "crosshair"
+        : hit(e.clientX, e.clientY)?.edge != null
+          ? "col-resize"
+          : "";
+    }
   });
 
   scroller.addEventListener("pointerup", (e) => {
     dragging = false;
+    if (filling) {
+      const { source, target } = filling;
+      filling = null;
+      schedule();
+      if (target.r0 !== source.r0 || target.r1 !== source.r1 || target.c0 !== source.c0 || target.c1 !== source.c1) {
+        fill(source, target);
+      }
+    }
     if (resizing) {
       const { col } = resizing;
       resizing = null;
@@ -643,6 +697,15 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
       touch = null;
     }
   });
+
+  /** Is the pointer on the fill handle? */
+  function onHandle(clientX: number, clientY: number): boolean {
+    const r = scroller.getBoundingClientRect();
+    const area = selectionArea(sel);
+    const x = r.left + xOf(area.c1) + layout.width(area.c1);
+    const y = r.top + yOf(area.r1) + ROW_HEIGHT;
+    return Math.abs(clientX - x) <= 5 && Math.abs(clientY - y) <= 5;
+  }
 
   function saveWidth(col: number, width: number | null): void {
     void enqueue(async () => {
@@ -696,6 +759,73 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
         select(extend ? { anchor: sel.anchor, focus: h.pos } : selectCell(h.pos));
     }
   }
+
+  /** ⌘C / ⌘X: the values as TSV for anyone else, the inputs kept here for a paste back into a sheet. */
+  function putOnClipboard(e: ClipboardEvent, cut: boolean): void {
+    const area = selectionArea(sel);
+    const inputs = snapshot(area, inputAt, "copy");
+    const shown = snapshot(area, (p) => display(cellAt(p)).text, "copy");
+    if (!inputs || !shown) return;
+    const tsv = toTSV(shown);
+    e.clipboardData?.setData("text/plain", tsv);
+    e.preventDefault();
+    clip = { tsv, rows: inputs, origin: { row: area.r0, col: area.c0 } };
+    if (cut) clearContents();
+  }
+
+  /** Type a block at `at`. `from` — where it was copied here — moves the formulas with it. */
+  function pasteBlock(at: Pos, rows: string[][], from?: string): void {
+    if (rows.length === 0) return;
+    const area = blockArea(at, rows);
+    if (area.r1 >= MAX_ROWS || area.c1 >= MAX_COLS) {
+      opts.onError(`that block doesn't fit at ${a1(at)}`);
+      return;
+    }
+    const before = snapshot(area, inputAt, "paste");
+    if (!before) return;
+    void enqueue(async () => {
+      apply(await client.paste(path, a1(at), rows, from));
+      remember({ kind: "input", origin: at, before, after: snapshot(area, inputAt, "paste") ?? [] });
+      select({ anchor: at, focus: { row: area.r1, col: area.c1 } });
+    });
+  }
+
+  /** Repeat the source block over the target area, formulas moving with each copy. */
+  function fill(source: Area, target: Area): void {
+    const before = snapshot(target, inputAt, "fill");
+    if (!before) return;
+    const origin = { row: target.r0, col: target.c0 };
+    void enqueue(async () => {
+      apply(await client.fill(path, areaA1(source), areaA1(target)));
+      remember({ kind: "input", origin, before, after: snapshot(target, inputAt, "fill") ?? [] });
+      select({ anchor: origin, focus: { row: target.r1, col: target.c1 } });
+    });
+  }
+
+  // On the document, not the grid: with focus on something that isn't editable, a browser sends the
+  // paste to the body, so a listener on the grid would never hear it. Each view answers only while
+  // it holds focus, and drops its listeners when it goes.
+  const clipboardOwner = (): boolean => document.activeElement === scroller && !editing;
+  const onCopy = (e: ClipboardEvent): void => {
+    if (clipboardOwner()) putOnClipboard(e, false);
+  };
+  const onCut = (e: ClipboardEvent): void => {
+    if (clipboardOwner()) putOnClipboard(e, true);
+  };
+  const onPaste = (e: ClipboardEvent): void => {
+    if (!clipboardOwner()) return;
+    const text = e.clipboardData?.getData("text/plain") ?? "";
+    if (!text) return;
+    e.preventDefault();
+    const area = selectionArea(sel);
+    const at = { row: area.r0, col: area.c0 };
+    // The same text we put there means these cells came from a sheet: paste what was typed, moved.
+    const mine = clip && clip.tsv === text ? clip : null;
+    pasteBlock(at, mine ? mine.rows : fromTSV(text), mine ? a1(mine.origin) : undefined);
+  };
+  document.addEventListener("copy", onCopy);
+  document.addEventListener("cut", onCut);
+  document.addEventListener("paste", onPaste);
 
   scroller.addEventListener("keydown", (e) => {
     if (editing) return;
@@ -846,6 +976,9 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
     },
     focus: () => scroller.focus({ preventScroll: true }),
     destroy() {
+      document.removeEventListener("copy", onCopy);
+      document.removeEventListener("cut", onCut);
+      document.removeEventListener("paste", onPaste);
       observer.disconnect();
       if (frame) cancelAnimationFrame(frame);
       root.remove();

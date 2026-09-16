@@ -8,10 +8,11 @@ Struck through when it lands, with the branch that did it.
 
 **The three that get noticed first**
 
-- **Copy, paste and fill.** The grid has no clipboard handling at all — ⌘C does nothing. Paste wants
-  TSV, so a sheet and Numbers/Excel can trade cells; fill wants the reference scanner from milestone
-  1, which is what shifts `A1` → `A2`. The engine side of a paste already exists: `sheet-set` types a
-  block in one recalculation.
+- ~~**Copy, paste and fill.**~~ Landed on `feat/sheet-clipboard`: ⌘C/⌘X put the values on the
+  clipboard as TSV, a paste back into a sheet types the formulas with their references moved, a paste
+  from anywhere else types the values, and the fill handle (or *Fill down* / *Fill right*) repeats a
+  block. `sheet-copy`, `sheet-paste` and `sheet-fill` in the engine. Still missing around it:
+  paste-special (values only, formats only) and ⌘D/⌘R, which the keybindings own.
 - **CSV import and export.** Today a sheet can only be read by EEditor.
 - **`Other!A1` in formulas**, with dependency tracking across files. Recognised and refused now;
   `(sheet-get …)` does the reading, untracked, refreshed by ↻.

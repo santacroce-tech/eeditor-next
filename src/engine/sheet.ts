@@ -25,6 +25,12 @@ export interface SheetClient {
   /** A column's width, or null for the default. Returns the sheet's version afterwards. */
   colWidth(path: string, col: string, width: number | null): Promise<number>;
   recalc(path: string): Promise<Changes>;
+  /** What was typed into an area, as rows — the other half of `paste`. */
+  copy(path: string, area: string): Promise<string[][]>;
+  /** Type rows at a cell. `from` — where they were copied — moves each formula by the distance travelled. */
+  paste(path: string, at: string, rows: string[][], from?: string): Promise<Changes>;
+  /** Repeat `source` over `target`, each copy's references shifted by where it lands. */
+  fill(path: string, source: string, target: string): Promise<Changes>;
   /** Insert or delete rows (`at` numbered from 1) or columns (`at` a letter). The whole sheet comes back. */
   structure(path: string, op: "insert-rows" | "delete-rows" | "insert-cols" | "delete-cols", at: number | string, n: number): Promise<SheetData>;
 }
@@ -74,6 +80,19 @@ export function createSheetClient(engine: EngineClient): SheetClient {
       return Number(Array.isArray(result) ? result[1] : 0);
     },
     recalc: (path) => changes(path, `(sheet-recalc ${lispString(path)})`),
+    copy: async (path, area) => {
+      const rows = await ev(`(sheet-copy ${lispString(path)} ${lispString(area)})`);
+      return (Array.isArray(rows) ? rows : []).map((row) =>
+        (Array.isArray(row) ? row : []).map((cell) => (typeof cell === "string" ? cell : "")),
+      );
+    },
+    paste: (path, at, rows, from) =>
+      changes(
+        path,
+        `(sheet-paste ${lispString(path)} ${lispString(at)} ${rowsLiteral(rows)} ${from ? lispString(from) : "nil"})`,
+      ),
+    fill: (path, source, target) =>
+      changes(path, `(sheet-fill ${lispString(path)} ${lispString(source)} ${lispString(target)})`),
     structure: async (path, op, at, n) =>
       sheetOf(await ev(`(sheet-${op} ${lispString(path)} ${typeof at === "number" ? at : lispString(at)} ${n})`)),
   };

@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
   a1,
+  blockArea,
+  fillTarget,
+  fromTSV,
+  toTSV,
   areaA1,
   cellOf,
   colIndex,
@@ -103,6 +107,38 @@ describe("decimal places", () => {
   });
 });
 
+describe("the clipboard", () => {
+  it("writes and reads what a spreadsheet puts on the clipboard", () => {
+    const rows = [["rent", "1200"], ["a\tb", "says \"hi\""], ["two\nlines", ""]];
+    const tsv = toTSV(rows);
+    expect(tsv.split("\n")[0]).toBe("rent\t1200");
+    expect(tsv).toContain('"a\tb"');
+    expect(tsv).toContain('"says ""hi"""');
+    expect(fromTSV(tsv)).toEqual(rows);
+  });
+
+  it("reads what other programs send", () => {
+    expect(fromTSV("a\tb\nc\td")).toEqual([["a", "b"], ["c", "d"]]);
+    expect(fromTSV("a\tb\r\nc\td\r\n")).toEqual([["a", "b"], ["c", "d"]]); // CRLF, trailing newline
+    expect(fromTSV("one")).toEqual([["one"]]);
+    expect(fromTSV("")).toEqual([]);
+  });
+
+  it("knows the area a pasted block covers", () => {
+    expect(blockArea({ row: 2, col: 1 }, [["a", "b"], ["c", "d"], ["e", "f"]])).toEqual({ r0: 2, c0: 1, r1: 4, c1: 2 });
+  });
+});
+
+describe("fill", () => {
+  it("grows the selection along whichever way the drag went further", () => {
+    const source = { r0: 0, c0: 0, r1: 0, c1: 1 };
+    expect(fillTarget(source, { row: 5, col: 1 })).toEqual({ r0: 0, c0: 0, r1: 5, c1: 1 });
+    expect(fillTarget(source, { row: 1, col: 6 })).toEqual({ r0: 0, c0: 0, r1: 0, c1: 6 });
+    expect(fillTarget(source, { row: 0, col: 1 })).toEqual(source); // a drag back inside changes nothing
+    expect(fillTarget({ r0: 3, c0: 3, r1: 3, c1: 3 }, { row: 0, col: 3 })).toEqual({ r0: 0, c0: 3, r1: 3, c1: 3 }); // upwards
+  });
+});
+
 describe("selection", () => {
   it("moves, extends, and stops at the edge", () => {
     const s = selectCell({ row: 0, col: 0 });
@@ -163,6 +199,12 @@ describe("sheet client", () => {
     expect(sent[4]).toContain(`"A1" '(({:bold true} nil)))`);
     await client.format("B", "A1", { align: null });
     expect(sent[5]).toContain('{:align nil}');
+    await client.paste("B", "C5", [["=(sum A1:A2)"]], "A3");
+    expect(sent[6]).toContain(`(sheet-paste "B" "C5" '(("=(sum A1:A2)")) "A3")`);
+    await client.paste("B", "C5", [["x"]]);
+    expect(sent[7]).toContain(`'(("x")) nil)`);
+    await client.fill("B", "C1", "C2:C9");
+    expect(sent[8]).toContain('(sheet-fill "B" "C1" "C2:C9")');
   });
 
   it("turns an engine error into a rejection", async () => {
