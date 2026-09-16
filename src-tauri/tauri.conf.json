@@ -72,6 +72,19 @@
           "identifier": "com.eeditor.app.lisp",
           "conformsTo": ["public.plain-text", "public.source-code"]
         }
+      },
+      {
+        "ext": ["eesheet"],
+        "name": "EEditor Sheet",
+        "description": "EEditor sheet",
+        "role": "Editor",
+        "rank": "Owner",
+        "mimeType": "application/vnd.eeditor.sheet",
+        "contentTypes": ["com.eeditor.app.sheet"],
+        "exportedType": {
+          "identifier": "com.eeditor.app.sheet",
+          "conformsTo": ["public.data", "public.database"]
+        }
       }
     ],
     "icon": [

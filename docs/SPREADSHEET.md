@@ -32,6 +32,8 @@ a grid without it is hostile and it is cheap: **undo/redo of cell edits**. Not i
 
 ## Milestone 0 — the engine database persists
 
+*Done — eelisp-rs#3, eeditor-next#7.*
+
 **eelisp-rs**
 - `Interpreter::try_with_database(path) -> Result<Self, LispError>`. `with_database` currently
   `expect`s, so an unopenable file panics the engine thread and every later eval answers
@@ -68,6 +70,10 @@ two processes.
 
 ## Milestone 1 — the sheet engine (eelisp-rs)
 
+*Done on `feat/sheets`: `src/sheet_ref.rs` (addressing, the text rewrite), `src/sheet.rs` (store,
+graph, plan), `src/sheet_builtins.rs` (surface and the recalculation loop), 27 tests in
+`tests/sheet.rs`.*
+
 New `src/sheet.rs` (file format, addressing, dependency graph, recalculation) and
 `src/sheet_builtins.rs` (the EELisp surface), registered in `Interpreter::with_database` beside the
 db/agenda builtins. A sheet's connection is **its own** — `open-agenda`/`use-agenda` swap the shared
@@ -88,7 +94,7 @@ CREATE TABLE cells (
   fmt   TEXT,                         -- {"num":"currency","dp":2,"bold":true,"align":"right"}
   PRIMARY KEY (row, col)
 ) WITHOUT ROWID;
-CREATE TABLE cols (col INTEGER PRIMARY KEY, width REAL NOT NULL);
+CREATE TABLE widths (col INTEGER PRIMARY KEY, width REAL NOT NULL);
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- version, created
 ```
 
@@ -111,10 +117,15 @@ CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- version, cre
 
 - On open, parse every formula once; keep `precedents` per cell, a `dependents` index for single
   references and a list of `(range, cell)` pairs for ranges (a scan is fine at v1 sizes).
-- On a write: update that cell's edges → BFS the transitive dependents → Kahn topological order over
-  that subgraph. Whatever keeps an in‑degree is on a cycle → `#CYCLE` on each. Recompute in order,
-  write changed `value`/`error` rows in **one transaction**, bump `version`, return the changed cells.
-- A formula whose input has an error does not run: it gets `#REF C3: <that error>`.
+- On a write: update that cell's edges → collect the transitive dependents → Tarjan's strongly
+  connected components over that subgraph, iteratively (a 5000-deep chain of running totals must not
+  touch the stack). A component of more than one cell, or a cell that reads itself, is a cycle:
+  *circular reference between A1, B1* on each (`#CYCLE` in the grid). Recompute in order, write the
+  cells whose `value`/`error` changed in **one transaction**, bump `version`, return them.
+- The registry of open sheets is never borrowed while a formula runs, so a formula may call
+  `(sheet-get …)`. It may not change a sheet: the write builtins refuse during a recalculation.
+- A formula whose input has an error does not run: it gets `C3 has an error — <that error>`, naming
+  the cell where it started rather than every cell in between.
 - `sum`, `avg` new (flatten lists, skip `nil` and text); `min`/`max` taught to flatten lists —
   backward compatible, numbers still work. Neither name exists in the builtins, prelude or snippets.
 - Formulas that read the database or other sheets aren't tracked; ↻ refreshes them. (Documented.)
@@ -134,12 +145,12 @@ paths resolve against `(current-dir)`, and `.eesheet` is added when missing.
 | Builtin | Returns |
 |---|---|
 | `(sheet-new path)` | the path; error if it exists |
-| `(sheet-open path)` | `{:path :version :cells ((row col input value error fmt) …) :cols ((col width) …)}` — lists, not dicts, to keep a large sheet's JSON small. Runs no formulas. |
+| `(sheet-open path)` | `{:path :version :cells ((row col input value error fmt) …) :widths ((col width) …)}` — lists, not dicts, to keep a large sheet's JSON small. Runs no formulas. |
 | `(sheet-close path)` | nil — required before a rename or delete (Windows can't rename an open file; on macOS a deleted sheet keeps writing to an unlinked inode, and a renamed one puts its journal under the old name) |
-| `(sheet-set path "B2" input)` | changed cells, same row shape |
+| `(sheet-set path "B2" input)` | changed cells, same row shape. **Typed input**: `"=(sum …)"` is a formula, `"1200"` a number. Given a list of rows it types a block from that corner in one recalculation — what a paste is. |
 | `(sheet-get path "C3")` | the value |
 | `(sheet-rows path "A1:C5")` | list of rows (2‑D, which is what a note wants) |
-| `(sheet-put path "A1" data)` | changed cells — a list of lists writes a block; a result set writes a header row + records |
+| `(sheet-put path "A1" data)` | changed cells. **Values**: text that would read as a number or formula stays text. A list of lists writes a block; a result set writes a header row + records |
 | `(sheet-recalc path)` | changed cells |
 | `(sheet-format path "A1:B3" {:num "currency" :dp 2})` | changed cells |
 | `(sheet-col-width path "B" 120)` | nil |
@@ -158,36 +169,47 @@ sheets alone.
 
 ## Milestone 2 — the grid (eeditor-next)
 
+*Done on `feat/sheets`.*
+
 - **`src/core/sheet.ts`** (pure, unit‑tested): `A1` ⇄ `(row, col)`, column letters, range parsing,
   input classification, `formatValue(value, fmt)` via `Intl.NumberFormat`, the selection/navigation
   reducer, viewport math (visible rows/cols from scroll offsets and prefix sums of widths).
-- **`src/engine/sheet.ts`**: typed wrapper over `evalSrc`. Its own `lispString()` escaper — the lexer
-  understands `\n \t \r \\ \"` and nothing else, whereas `JSON.stringify` emits `\uXXXX` for other
-  control characters, which would arrive in a cell as a literal backslash.
-- **`src/ui/sheet.ts`**: a virtualised DOM grid (only visible cells exist; fine on iOS touch, keeps
-  text selectable and accessible), sticky row/column headers, a formula bar (name box + raw input),
-  in‑cell editing.
-  - Keys: arrows · Tab/⇧Tab · Enter/⇧Enter · typing or F2 edits · Escape cancels · Delete clears ·
-    ⇧+arrows / drag extend · Home/End · Page Up/Down · ⌘Z / ⇧⌘Z undo/redo.
-  - Undo is a per‑view stack of `(ref, previous input)` replayed through `sheet-set`; session‑only.
-  - Errors show `#ERR` / `#CYCLE` / `#REF!` with the message as a tooltip.
+- **`src/engine/sheet.ts`**: typed wrapper over `evalSrc`, escaping with the `lispString` the
+  keybindings already use (it covers exactly the escapes the lexer reads). A write asks for the
+  version in the same round trip — `(list (sheet-set …) (sheet-version …))` — so the grid knows its
+  own writes from someone else's.
+- **`src/ui/sheet.ts`**: two layers in one box. A stage draws only what is in view — occupied cells,
+  grid lines, headers, the selection — from the scroll offsets; a transparent scroller on top owns
+  native scrolling and every click, turned into a cell by arithmetic. A formula bar (name box + raw
+  input), an in‑cell editor, and a status line with the full error of the active cell.
+  - Keys: arrows · Tab/⇧Tab · Enter or F2 edits (and, editing, commits and moves down) · typing
+    starts an edit whose arrows commit and move · Escape cancels · Delete clears · ⇧+arrows / drag
+    extend · Home · Page Up/Down · ⌘A · ⌘Z / ⇧⌘Z undo/redo.
+  - Undo is a per‑view stack of blocks `(origin, before, after)` replayed through `sheet-set`;
+    session‑only. Writes go through a queue, one at a time — async Tauri commands could otherwise
+    reach the engine out of order.
+  - Errors show `#ERR` / `#CYCLE` / `#REF!`.
   - ↻ in the header runs `sheet-recalc`.
 - **`main.ts`**
-  - `Tab` gains `kind: "text" | "sheet"`; `openFile` routes `.eesheet` before `ws.read` (which
+  - `Tab` gains `sheet: true`; `openFile` routes `.eesheet` before `ws.read` (which
     refuses NUL bytes). The editor pane swaps CodeMirror for the grid; preview, PDF and run‑block
     are hidden for sheets.
   - Nothing to autosave — writes are immediate. `saveTab`/`saveAllDirty` on a sheet commit the
     cell being edited (the only unsaved state it can have), so quit/tab‑switch/blur lose nothing.
+    **A sheet tab never reaches `ws.write`**, and a keybinding that types into the hidden text editor
+    while a sheet is showing changes nothing — otherwise a stray autosave could write text over a
+    SQLite file.
   - Rename/delete: `sheet-close` first, retarget the tab after a rename.
-  - **New sheet…** in the files header and folder context menu (`uniqueName` → `sheet-new` →
-    open), plus a `new-sheet` command for keybindings.
-  - Search, tags, backlinks and `[[` completion skip `.eesheet`; quick‑open lists sheets; a
+  - **New sheet…** in the folder context menu, a name ending `.eesheet` in **＋**, and a
+    `new-sheet` command for keybindings.
+  - Search, tags and backlinks skip `.eesheet`; quick‑open and `[[` completion list sheets, and a
     `[[Budget]]` link opens the sheet through the same `openFile`.
+  - A sheet refreshes when its tab or the window comes back to the front, if its version moved.
 - **Tree**: hide SQLite sidecars (`*-journal`, `*-wal`, `*-shm`) in `children_of` and in
   `dev/bridge.mjs` — a journal appears next to the sheet for the length of every write.
 
-**Tests**: vitest for `core/sheet.ts` and the escaper; three new smoke checks (new → set → reopen
-shows the value) against a temp dir. **UI verified with Playwright** against the dev bridge (per
+**Tests**: vitest for `core/sheet.ts` and the client; three new smoke checks (new → set → a new
+process opens the stored value) against a temp dir. **UI verified with Playwright** against the dev bridge (per
 `memory.md`, never `screencapture`): type values and a formula, watch dependents update, reload and
 see stored values, rename a sheet.
 
@@ -195,16 +217,30 @@ see stored values, rename a sheet.
 
 ## Milestone 3 — formats, widths, rows and columns
 
+*Done on `feat/sheets`.*
+
 - Toolbar: bold, italic, alignment, number format (general / number / currency / percent), decimals
-  ±. Applies to the selection via `sheet-format`.
-- Drag a column header's edge → `sheet-col-width` on release.
-- Header context menu: insert/delete rows or columns → reload from the returned payload.
-- Undo covers formats too (`(ref, previous fmt)`); row/column structure changes are not undoable in
-  v1 — say so in the menu item's confirm.
+  ±, clear format. It shows the active cell's format and applies to the selection via
+  `sheet-format`. "More decimals" starts from what's on screen — a currency's minor unit, a
+  percent's two places — not from the stored `dp`, which is usually absent.
+- Drag a column header's edge → `sheet-col-width` on release; double-click the edge for the default.
+- Right-click (long press on touch, or the context-menu key) on a column header, a row header or a
+  cell: insert rows/columns before or after, delete them, clear contents or format. The menu acts on
+  the selection; a header outside a whole-row/column selection selects its row or column first.
+  Dragging across headers selects several. Selecting a whole row never scrolls off to its end.
+- Undo covers formats: an entry keeps each cell's exact format, and `sheet-format` gained a block
+  form — rows of formats, set rather than merged — to put back formats that differed cell by cell.
+  Inserting or deleting rows and columns is not undoable and clears the undo history (every position
+  in it has moved); deleting asks first and says so.
 
 ---
 
 ## Milestone 4 — EELisp and notes
+
+*Done on `feat/sheets`. The refresh hook is `observeEvals` in `engine/client.ts`, wrapped around the
+engine handed to the REPL, snippets and keybindings — the grid's own client talks to the engine
+directly, so its writes never set off a check. Rows of plain values render as a table (`#` and
+numbered columns); the manual gained a Sheets chapter, the EELisp reference a Sheets section.*
 
 - From the REPL, a ```eelisp block or a keybinding: `(sheet-get "Budget" "C3")`,
   `(sheet-rows "Budget" "A1:C5")`, `(sheet-set …)`, and `(sheet-put "Report" "A1" (query contacts
@@ -218,10 +254,18 @@ see stored values, rename a sheet.
 
 ## Milestone 5 — the OS knows what a `.eesheet` is
 
-`exportedType` `com.eeditor.app.eesheet` (conforms to `public.data`), `rank: Owner`, the same
-declaration in `Info.ios.plist`, pinned by `dev/associations.test.mjs`. Dragged in from outside, a
-sheet takes the existing *copy in / open in place* path; in place works because the engine opens
-absolute paths.
+*Done on `feat/sheets`.*
+
+`exportedType` `com.eeditor.app.sheet`, conforming to `public.data` and `public.database` — never to
+text, or every text editor would offer to open (and save over) a SQLite file — `rank: Owner`, the
+same declaration in `Info.ios.plist`, pinned by `dev/associations.test.mjs`. Dragged in or handed
+over by "Open With", a sheet takes the existing *copy in / open in place* question: `external_open`
+no longer reads it as text, in place opens a ↗ sheet tab the engine reads by absolute path, and copy
+in copies the file's bytes after the engine lets go of it. A browser drop, which only sees text,
+refuses a sheet.
+
+Second line of defence: `fs_write`, `external_write` and the bridge's `/fs/write` refuse any
+`.eesheet` — whatever goes wrong upstream, nothing saves a note's text over a sheet.
 
 ---
 
@@ -238,8 +282,6 @@ absolute paths.
 
 ## Later
 
-Copy/paste as TSV and fill with relative references (the reference scanner from milestone 1 is
-what shifts `A1` → `A2`) · CSV import/export · `Other!A1` in formulas with cross‑file dependency
-tracking · several sheets per file · a per‑sheet script of helper `defn`s stored in `meta` ·
-formula‑bar syntax colouring with `lisphl` · dates · sort/filter · result sets spilling into a range ·
-a live two‑way binding between a range and a `deftable` · charts.
+Everything a sheet still can't do — from copy/paste to charts — is its own list:
+[`SHEETS-LATER.md`](SHEETS-LATER.md). The three at the top of it, in the order they are being built:
+copy/paste with fill, CSV import and export, and `Other!A1` references across sheets.

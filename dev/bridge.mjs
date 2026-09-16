@@ -53,7 +53,8 @@ async function buildTree(absDir, relDir, depth, walk) {
   // A symlink is not a directory as far as the dirent is concerned — resolve it once, here.
   const items = [];
   for (const e of entries) {
-    if (e.name.startsWith(".")) continue;
+    // dotfiles, and SQLite's journal/WAL companions (mirrors is_sqlite_sidecar)
+    if (e.name.startsWith(".") || /-(journal|wal|shm)$/.test(e.name)) continue;
     const abs = path.join(absDir, e.name);
     let isDir = e.isDirectory();
     if (e.isSymbolicLink()) isDir = await stat(abs).then((st) => st.isDirectory(), () => false);
@@ -108,6 +109,8 @@ const routes = {
   "/fs/abspath": async ({ path: rel }) => JSON.stringify({ path: safe(rel) }),
   "/fs/write": async ({ path: rel, content }) => {
     const abs = safe(rel);
+    // mirrors refuse_sheet: a sheet's cells are written by the engine, never saved as text
+    if (/\.eesheet$/i.test(abs)) throw new Error(`${rel} is a sheet — its cells are written by the engine, not saved as text`);
     await mkdir(path.dirname(abs), { recursive: true });
     await writeFile(abs, String(content ?? ""), "utf8");
     return JSON.stringify({ ok: true });

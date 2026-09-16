@@ -33,6 +33,22 @@ class HttpEngine implements EngineClient {
   }
 }
 
+/**
+ * The same engine, calling `after` once each evaluation has answered — how an open sheet learns that
+ * the REPL, a snippet or a keybinding may have just changed it.
+ */
+export function observeEvals(engine: EngineClient, after: () => void): EngineClient {
+  return {
+    async evalSrc(src: string): Promise<Envelope> {
+      try {
+        return await engine.evalSrc(src);
+      } finally {
+        after();
+      }
+    },
+  };
+}
+
 function inTauri(): boolean {
   const w = globalThis as Record<string, unknown>;
   return typeof window !== "undefined" && ("__TAURI_INTERNALS__" in w || "__TAURI__" in w);

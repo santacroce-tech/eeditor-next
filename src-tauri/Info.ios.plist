@@ -33,8 +33,22 @@
 				<string>com.eeditor.app.lisp</string>
 			</array>
 		</dict>
+		<!-- Sheets are EEditor's own format, so for these it is the owner. -->
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>EEditor Sheet</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.eeditor.app.sheet</string>
+			</array>
+		</dict>
 	</array>
-	<!-- .eelisp / .lisp have no system UTI, so declare one each that conforms to plain text. Keep
+	<!-- .eelisp / .lisp have no system UTI, so declare one each that conforms to plain text; .eesheet
+	     is a SQLite database, so it conforms to data, never to text. Keep
 	     these identifiers and their extensions identical to bundle.fileAssociations in
 	     tauri.conf.json — a file that opens on the desktop should open on the phone too. -->
 	<key>UTExportedTypeDeclarations</key>
@@ -76,6 +90,26 @@
 				<key>public.filename-extension</key>
 				<array>
 					<string>lisp</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.eeditor.app.sheet</string>
+			<key>UTTypeDescription</key>
+			<string>EEditor sheet</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+				<string>public.database</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.mime-type</key>
+				<string>application/vnd.eeditor.sheet</string>
+				<key>public.filename-extension</key>
+				<array>
+					<string>eesheet</string>
 				</array>
 			</dict>
 		</dict>

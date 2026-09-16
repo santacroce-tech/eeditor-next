@@ -93,7 +93,7 @@
 ;; which at launch has no note to point at yet (*file* is "").
 
 ;; ── built-in commands ──────────────────────────────────────────────────────
-;; save · quick-open · search · daily-note · new-file · new-folder · open-keys · reload-keys
+;; save · quick-open · search · daily-note · new-file · new-sheet · new-folder · open-keys · reload-keys
 ;; toggle-repl · focus-repl · toggle-preview · toggle-theme · export-pdf · snippets · calendar
 ;; agenda-setup · agenda-refresh · close-tab · next-tab · prev-tab · focus-editor
 ;; open-file           pick a file from anywhere; asks whether to copy it in or edit it in place

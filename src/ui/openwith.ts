@@ -15,6 +15,7 @@
 import type { ExternalFile, WorkspaceClient } from "../engine/workspace";
 import { choiceModal, toast } from "./dialogs";
 import { uniqueName } from "../core/uniquename";
+import { isSheetPath } from "../core/sheet";
 
 export interface OpenWithDeps {
   ws: WorkspaceClient;
@@ -135,6 +136,12 @@ export function createOpenWith(deps: OpenWithDeps): OpenWith {
     const taken = new Set(deps.rootNames());
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
+      // Only its text reaches a browser drop, and a sheet is a database: copying it as text would
+      // write a broken file. The desktop app opens one by path.
+      if (isSheetPath(f.name)) {
+        toast(`${f.name} is a sheet — open it in the desktop app, or put it in the workspace folder`);
+        continue;
+      }
       const res = await choiceModal(
         `Open “${f.name}”`,
         "A file dropped in the browser can only be copied into your workspace — the browser doesn't reveal its location on disk, so there is nothing to edit in place.",
@@ -158,6 +165,7 @@ export function createOpenWith(deps: OpenWithDeps): OpenWith {
       if (res.all) {
         // apply "copy in" to the remainder without asking again
         for (const rest of files.slice(i + 1)) {
+          if (isSheetPath(rest.name)) continue;
           const n = uniqueName(rest.name, taken);
           taken.add(n);
           await ws

@@ -189,6 +189,27 @@ const BINARY_EXT: &[&str] = &[
     "exe", "dll", "so", "dylib", "o", "a", "bin", "class", "jar", "wasm", "pyc", "db", "sqlite", "sqlite3",
 ];
 
+/// SQLite's companions to a database: a rollback journal that exists for the length of each write
+/// to a sheet, and the WAL pair a database in WAL mode keeps. Not documents — and a journal that
+/// flickers into the tree while a cell saves looks like a stray file.
+fn is_sqlite_sidecar(name: &str) -> bool {
+    ["-journal", "-wal", "-shm"].iter().any(|s| name.ends_with(s))
+}
+
+/// A sheet: a SQLite file the engine opens by path. Never read or written here as text.
+fn is_sheet(p: &Path) -> bool {
+    p.extension().and_then(|x| x.to_str()).is_some_and(|x| x.eq_ignore_ascii_case("eesheet"))
+}
+
+/// The text-saving commands refuse a sheet: whatever went wrong upstream, writing a note's text over a
+/// SQLite file would destroy it, and the engine is the only thing that writes one.
+fn refuse_sheet(p: &Path) -> Result<(), String> {
+    if is_sheet(p) {
+        return Err(format!("{} is a sheet — its cells are written by the engine, not saved as text", p.display()));
+    }
+    Ok(())
+}
+
 fn is_binary_ext(p: &Path) -> bool {
     p.extension()
         .and_then(|x| x.to_str())
@@ -279,7 +300,7 @@ fn children_of(dir: &Path, rel: &str, depth: usize, walk: &mut TreeWalk) -> Vec<
     let mut items: Vec<(PathBuf, String, bool)> = Vec::new();
     for e in read.flatten() {
         let name = e.file_name().to_string_lossy().to_string();
-        if name.starts_with('.') {
+        if name.starts_with('.') || is_sqlite_sidecar(&name) {
             continue;
         }
         let path = e.path();
@@ -352,6 +373,7 @@ fn fs_read(ws: tauri::State<'_, Workspace>, path: String) -> Result<String, Stri
 #[tauri::command(async)]
 fn fs_write(ws: tauri::State<'_, Workspace>, path: String, content: String) -> Result<(), String> {
     let p = resolve(&ws.0.lock().unwrap(), &path)?;
+    refuse_sheet(&p)?;
     if let Some(parent) = p.parent() {
         let _ = fs::create_dir_all(parent);
     }
@@ -459,7 +481,8 @@ fn external_open(
     if !p.is_file() {
         return Err(format!("{} is not a file", p.display()));
     }
-    let content = read_text(&p)?;
+    // A sheet has no text to hand over: the frontend opens it through the engine, by this path.
+    let content = if is_sheet(&p) { String::new() } else { read_text(&p)? };
     let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "untitled".into());
 
     // Already ours? Then it is not "external" at all — hand back the relative path.
@@ -483,6 +506,7 @@ fn external_read(ext: tauri::State<'_, ExternalFiles>, path: String) -> Result<S
 #[tauri::command(async)]
 fn external_write(ext: tauri::State<'_, ExternalFiles>, path: String, content: String) -> Result<(), String> {
     let p = granted(&ext, &path)?;
+    refuse_sheet(&p)?;
     fs::write(p, content).map_err(|e| e.to_string())
 }
 
@@ -953,6 +977,21 @@ mod tests {
         // a sibling file is still refused
         let other = t.file("other.md", "x");
         assert!(check_granted(&set, other.to_str().unwrap()).is_err());
+    }
+
+    #[test]
+    fn nothing_saves_text_over_a_sheet() {
+        assert!(refuse_sheet(Path::new("/w/Budget.eesheet")).is_err());
+        assert!(refuse_sheet(Path::new("/w/Budget.EESHEET")).is_err());
+        assert!(refuse_sheet(Path::new("/w/budget.md")).is_ok());
+        assert!(refuse_sheet(Path::new("/w/eesheet")).is_ok()); // a name, not the extension
+    }
+
+    #[test]
+    fn sqlite_journals_are_not_listed() {
+        assert!(is_sqlite_sidecar("Budget.eesheet-journal"));
+        assert!(is_sqlite_sidecar("eeditor.db-wal") && is_sqlite_sidecar("eeditor.db-shm"));
+        assert!(!is_sqlite_sidecar("journal.md"));
     }
 
     #[test]

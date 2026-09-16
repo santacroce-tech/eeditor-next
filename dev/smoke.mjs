@@ -2,7 +2,7 @@
 // asserts the envelope shape the TS client depends on. Run: `npm run smoke` (or `node dev/smoke.mjs`).
 
 import { spawn } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -82,6 +82,22 @@ check("--db keeps the agenda across processes", (await second.ev("(item-count)")
 const info = await second.ev("(database-info)");
 check("(database-info) names the file", info.result?.$dict?.some(([k, v]) => k === "path" && v === db) === true);
 await second.close();
+
+// sheets: a formula recalculates, and a new process reads the stored value without running it
+const ws = path.join(dir, "ws");
+await mkdir(ws);
+const sheet1 = serve(["--workspace", ws]);
+await sheet1.ev('(sheet-new "Budget")');
+check("sheet-new on an existing name is an error, not an overwrite", (await sheet1.ev('(sheet-new "Budget")')).ok === false);
+await sheet1.ev('(sheet-set "Budget" "A1" \'(("1200") ("450") ("=(sum A1:A2)")))');
+const changed = await sheet1.ev('(sheet-set "Budget" "A1" "1000")');
+check("sheet-set returns the changed cells as rows", changed.ok && changed.result.some((r) => r[0] === 2 && r[3] === 1450));
+await sheet1.close();
+const sheet2 = serve(["--workspace", ws]);
+const opened = await sheet2.ev('(sheet-open "Budget")');
+const cells = opened.result?.$dict?.find(([k]) => k === "cells")?.[1] ?? [];
+check("sheet-open → a $dict whose cells carry stored values", cells.some((r) => r[2] === "=(sum A1:A2)" && r[3] === 1450));
+await sheet2.close();
 await rm(dir, { recursive: true, force: true });
 
 console.log(`\n${pass}/${total} passed`);
