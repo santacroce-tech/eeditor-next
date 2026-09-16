@@ -1,0 +1,60 @@
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - generic [ref=e7]: files
+        - generic [ref=e8]:
+          - button "＋" [ref=e9] [cursor=pointer]
+          - button "＋dir" [ref=e10] [cursor=pointer]
+          - button "file…" [ref=e11] [cursor=pointer]
+          - button "folder…" [ref=e12] [cursor=pointer]
+      - generic [ref=e15]:
+        - generic [ref=e16]:
+          - generic [ref=e17]: ▾
+          - text: ws7
+        - generic [ref=e18]:
+          - generic [ref=e19]: Budget.eesheet
+          - generic [ref=e20]: welcome.md
+    - generic [ref=e21]:
+      - generic [ref=e22]: tags
+      - generic [ref=e24]: (no tags)
+    - generic [ref=e27]:
+      - generic [ref=e28]:
+        - generic [ref=e29]: agenda
+        - generic [ref=e30]:
+          - button "⚙" [ref=e31] [cursor=pointer]
+          - button "📅" [ref=e32] [cursor=pointer]
+      - generic [ref=e34]:
+        - textbox "add — e.g. \"call Bob tomorrow !!\"" [ref=e36]
+        - generic [ref=e37]: (no items)
+  - generic [ref=e39]:
+    - generic [ref=e40]:
+      - generic "welcome.md" [ref=e41]
+      - generic [ref=e42]:
+        - button "☀ light" [ref=e43] [cursor=pointer]
+        - button "preview" [ref=e44] [cursor=pointer]
+        - button "PDF" [ref=e45] [cursor=pointer]
+        - button "⌘" [ref=e46] [cursor=pointer]
+        - button "λ ›" [pressed] [ref=e47] [cursor=pointer]
+    - generic [ref=e48]:
+      - generic [ref=e50] [cursor=pointer]:
+        - generic "welcome.md" [ref=e51]
+        - button "×" [ref=e52]
+      - generic [ref=e55]:
+        - generic [ref=e57]:
+          - generic [ref=e58]: "1"
+          - generic [ref=e59]: "2"
+        - textbox [ref=e62]:
+          - generic [ref=e63]: "# notes"
+  - generic [ref=e65]:
+    - generic [ref=e66]:
+      - generic [ref=e67]: eelisp
+      - generic [ref=e68]:
+        - button "snippets" [ref=e69] [cursor=pointer]
+        - button "✕" [ref=e70] [cursor=pointer]
+    - generic [ref=e72]:
+      - generic [ref=e73]: "; keybindings: .eeditor/keybindings.eelisp not read (Error: ENOENT: no such file or directory, open '/private/tmp/claude-501/-Users-rob-projects-eeditor-next/7b561f90-8b2b-4337-961d-f7a443a11b4d/scratchpad/ws7/.eeditor/keybindings.eelisp') — using the built-in defaults"
+      - generic [ref=e75]:
+        - generic [ref=e76]: λ
+        - textbox "(+ 1 2) · (functions \"str\") — ⌘/Ctrl+Enter to run" [ref=e77]:
+          - /placeholder: (+ 1 2)  ·  (functions "str")  —  ⌘/Ctrl+Enter to run

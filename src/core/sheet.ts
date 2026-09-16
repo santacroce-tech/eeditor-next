@@ -228,6 +228,116 @@ export function display(cell: Cell | undefined, locale?: string): Shown {
   return { text, align: cell.fmt?.align ?? natural, error: false };
 }
 
+// ── the clipboard ───────────────────────────────────────────────────
+
+/**
+ * Rows as separated text: a cell holding the separator, a newline or a quote is wrapped in quotes
+ * with its own quotes doubled. Tabs are what a spreadsheet puts on the clipboard — Numbers, Excel and
+ * Google Sheets all read and write that — and commas are a CSV file.
+ */
+export function toDelimited(rows: string[][], sep: string): string {
+  const needsQuotes = new RegExp(`[${sep === "\t" ? "\\t" : sep}\n\r"]`);
+  return rows
+    .map((row) => row.map((cell) => (needsQuotes.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell)).join(sep))
+    .join("\n");
+}
+
+/** The same, read back. A trailing newline doesn't make an extra row. */
+export function fromDelimited(text: string, sep: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c !== '"') cell += c;
+      else if (text[i + 1] === '"') (cell += '"'), i++;
+      else quoted = false;
+    } else if (c === '"' && cell === "") {
+      quoted = true;
+    } else if (c === sep) {
+      row.push(cell);
+      cell = "";
+    } else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+    } else {
+      cell += c;
+    }
+  }
+  if (cell !== "" || row.length > 0) {
+    row.push(cell);
+    rows.push(row);
+  }
+  return rows;
+}
+
+export const toTSV = (rows: string[][]): string => toDelimited(rows, "\t");
+export const fromTSV = (text: string): string[][] => fromDelimited(text, "\t");
+export const toCSV = (rows: string[][]): string => toDelimited(rows, ",");
+export const fromCSV = (text: string): string[][] => fromDelimited(text, ",");
+
+/**
+ * A cell read from a file: a number where it reads as one, the text otherwise. Keeping text as text
+ * is what stops an imported `=cmd` from becoming a formula.
+ */
+export const importedValue = (text: string): string | number =>
+  looksNumeric(text.trim()) ? Number(text.trim()) : text;
+
+/** `12`, `-3.5`, `.5`, `1e3` — but not `inf`, `NaN` or `0x1F`, which `Number()` would take. */
+export function looksNumeric(s: string): boolean {
+  return /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(s) && Number.isFinite(Number(s));
+}
+
+/** A sheet's cells as rows of text for a file: values as they are, errors as their tag. */
+export function valueRows(cells: Iterable<Cell>, locale?: string): string[][] {
+  const grid = new Map<string, Cell>();
+  let rows = 0;
+  let cols = 0;
+  for (const c of cells) {
+    grid.set(`${c.row},${c.col}`, c);
+    rows = Math.max(rows, c.row + 1);
+    cols = Math.max(cols, c.col + 1);
+  }
+  return Array.from({ length: rows }, (_, r) =>
+    Array.from({ length: cols }, (_, c) => {
+      const cell = grid.get(`${r},${c}`);
+      if (!cell) return "";
+      return cell.error ? errorTag(cell.error) : formatValue(cell.value, null, locale);
+    }),
+  );
+}
+
+/** The area a block of `rows` fills when its top-left corner lands on `at`. */
+export const blockArea = (at: Pos, rows: string[][]): Area => ({
+  r0: at.row,
+  c0: at.col,
+  r1: at.row + Math.max(1, rows.length) - 1,
+  c1: at.col + Math.max(1, ...rows.map((r) => r.length)) - 1,
+});
+
+/**
+ * Where a fill drag lands: a drag out of the selection grows it along whichever axis moved further,
+ * the way a fill handle behaves. Dragging back inside leaves the selection as it is.
+ */
+export function fillTarget(source: Area, to: Pos): Area {
+  const down = Math.max(0, to.row - source.r1);
+  const up = Math.max(0, source.r0 - to.row);
+  const right = Math.max(0, to.col - source.c1);
+  const left = Math.max(0, source.c0 - to.col);
+  const vertical = Math.max(down, up);
+  const horizontal = Math.max(right, left);
+  if (vertical === 0 && horizontal === 0) return source;
+  if (vertical >= horizontal) {
+    return { ...source, r0: Math.min(source.r0, to.row), r1: Math.max(source.r1, to.row) };
+  }
+  return { ...source, c0: Math.min(source.c0, to.col), c1: Math.max(source.c1, to.col) };
+}
+
 // ── selection ───────────────────────────────────────────────────────
 
 /** Where a selection was started, and where it has been extended to (the active cell). */

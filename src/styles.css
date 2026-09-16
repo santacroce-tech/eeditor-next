@@ -498,3 +498,5 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-s
 .sheet-tool-gap { width: 6px; }
 .sheet-num { height: 22px; background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 4px;
   font: 11px var(--mono); padding: 0 4px; }
+.sheet-handle { background: var(--accent); border: 1px solid var(--bg); box-sizing: content-box; }
+.sheet-fillpreview { border: 1px dashed var(--accent); pointer-events: none; }

@@ -372,13 +372,21 @@
       bar spells out the error of the selected cell.
     </p>
 
+    <h3>Reading another sheet</h3>
+    <p>
+      <code>Rates!A1</code> reads a cell of a sheet sitting next to this one, and
+      <code>Rates!A1:A9</code> a range of it — <code>money/Q3!A1</code> for one in a folder. While
+      both sheets are open, changing the one being read updates the one reading it. A sheet that
+      wasn't open at the time catches up when you press <strong>↻</strong>.
+    </p>
+
     <h3>Opening a sheet runs nothing</h3>
     <p>
       Every cell keeps its last result, so a sheet opens showing the values it was saved with — no
       code runs because you opened a file, even one someone sent you. Formulas run when you change
       what they read, or when you press <strong>↻</strong>, which recalculates all of them. That is
-      also how to refresh a formula that reads the database, another sheet or the clock: those
-      aren't tracked.
+      also how to refresh a formula that reads the database or the clock, or one reading a sheet that
+      was closed when it changed: those aren't tracked.
     </p>
 
     <h3>Moving around and typing</h3>
@@ -391,10 +399,35 @@
       <tr><td><kbd>⌫</kbd></td><td>Clear the selection</td></tr>
       <tr><td><kbd>⌘Z</kbd> · <kbd>⇧⌘Z</kbd></td><td>Undo · redo typing and formatting</td></tr>
       <tr><td><kbd>⌘A</kbd></td><td>Select everything</td></tr>
+      <tr><td><kbd>⌘C</kbd> · <kbd>⌘X</kbd> · <kbd>⌘V</kbd></td><td>Copy, cut, paste</td></tr>
     </table></div>
     <p>
       The box left of the formula bar names the selection; type <code>C3</code> or
       <code>A1:B9</code> there to jump.
+    </p>
+
+    <h3>Copying and filling</h3>
+    <p>
+      Copying puts the values on the clipboard, tab-separated, so they paste into Numbers, Excel or a
+      note as a table. Pasting back into a sheet is different: it types the <em>formulas</em>, and
+      moves their references by however far they travelled — copy <code>=(sum B1:B2)</code> one column
+      right and it adds up column C. A <code>$</code> pins a row or column so it stays where it is.
+    </p>
+    <p>
+      The small square at the bottom-right corner of the selection is the fill handle: drag it down or
+      across to repeat the selection, each copy's references moving with it — how a column of totals
+      gets written once. <strong>Fill down</strong> and <strong>Fill right</strong> are in the
+      right-click menu when the selection covers more than one row or column.
+    </p>
+
+    <h3>CSV in and out</h3>
+    <p>
+      Right-click a sheet in the file tree for <strong>Export as CSV</strong>: it writes the values
+      beside it — the numbers themselves, without the currency symbols or thousands separators the
+      grid shows, and each formula as what it worked out to. Right-click a <code>.csv</code> for
+      <strong>Import as sheet</strong>, which makes a sheet next to it. A field that reads as a number
+      becomes one and everything else stays text, so a formula smuggled into a CSV arrives as text
+      rather than as something your machine runs.
     </p>
 
     <h3>Formats, columns and rows</h3>
