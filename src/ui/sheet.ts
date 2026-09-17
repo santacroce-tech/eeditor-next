@@ -44,6 +44,7 @@ import {
   type SheetData,
 } from "../core/sheet";
 import { confirmModal, showContextMenu, type MenuItem } from "./dialogs";
+import { openHelp, SHEET_HELP } from "./help";
 
 export interface SheetView {
   readonly el: HTMLElement;
@@ -168,6 +169,8 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
   const clearColours = tool("×", "No colours");
   gap();
   const clearFmtBtn = tool("clear format", "Remove the formatting from the selection");
+  gap();
+  const helpBtn = tool("?", "What you can write in a cell", "sheet-help");
 
   const bar = el("div", "sheet-bar", root);
   const nameBox = el("input", "sheet-namebox", bar);
@@ -1016,6 +1019,12 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
 
   recalcBtn.addEventListener("click", () => {
     void enqueue(async () => apply(await client.recalc(path)));
+  });
+
+  // the cheatsheet, a button away from the cell the question was asked in: picking a formula types it
+  // into the selected cell rather than writing it, so Escape still leaves the cell alone
+  helpBtn.addEventListener("click", () => {
+    openHelp(SHEET_HELP, (code) => startEdit(code, "edit"));
   });
 
   // ── toolbar ──

@@ -244,6 +244,31 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-s
 .dlg-check { display: flex; align-items: center; gap: 6px; margin-top: 12px;
   font-size: 12px; color: var(--muted); cursor: pointer; }
 
+/* ── the cheatsheets (? beside the formula bar, ? in the REPL head) ── */
+.help-overlay { align-items: flex-start; padding-top: 7vh; }
+.help-panel:focus { outline: none; }
+.help-panel { width: 660px; max-width: 92vw; max-height: 80vh; display: flex; flex-direction: column;
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.5); padding: 14px 16px 12px; }
+.help-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.help-title { font-size: 15px; font-weight: 600; color: var(--fg); }
+.help-subtitle { margin: 6px 0 4px; font-size: 12px; line-height: 1.6; color: var(--muted); }
+.help-body { flex: 1 1 auto; overflow: auto; margin: 0 -6px; padding: 0 6px; }
+.help-heading { margin: 14px 0 6px; font: 600 11px system-ui, sans-serif; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--muted); }
+.help-heading:first-child { margin-top: 6px; }
+.help-note { margin: 0 0 6px; padding: 0 8px; font-size: 12px; line-height: 1.6; color: var(--muted); }
+.help-row { display: grid; grid-template-columns: minmax(0, 17em) 1fr; gap: 12px; align-items: baseline;
+  width: 100%; text-align: left; background: none; border: none; border-radius: 6px;
+  padding: 5px 8px; color: var(--fg); font: inherit; cursor: pointer; }
+button.help-row:hover { background: var(--bg); }
+button.help-row:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.help-row code { font: 12px var(--mono); color: var(--accent); white-space: pre-wrap; word-break: break-word; }
+.help-means { font-size: 12px; line-height: 1.5; color: var(--muted); }
+.help-foot { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--border);
+  font-size: 11px; line-height: 1.5; color: var(--muted); }
+.help-foot:empty { display: none; }
+
 /* ── drag & drop: files dragged over the window ── */
 .drop-overlay { position: fixed; inset: 0; z-index: 80; display: none;
   align-items: center; justify-content: center; background: rgba(0,0,0,.45);
@@ -388,6 +413,9 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-s
 
   /* modals full-bleed on phones */
   .qo-panel, .search-panel, .cal-panel { width: 92vw; }
+  .help-panel { width: 92vw; max-height: 86vh; }
+  /* the meaning under the formula rather than beside it */
+  .help-row { grid-template-columns: 1fr; gap: 2px; }
   .qo-overlay { padding-top: max(8vh, env(safe-area-inset-top)); }
 
   /* ── touch + readability ── */
