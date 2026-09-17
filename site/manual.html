@@ -369,10 +369,9 @@
       languages, and a sheet guessing which half is the month would be worse than leaving it alone.
     </p>
     <p>
-      Inside a formula <code>B1</code> is that cell's value, and <code>B1:B9</code> is a list of the
-      values in the range, with <code>nil</code> for the empty ones. <code>$B$1</code> works as well.
-      Any function in scope can be called — a builtin, one from the snippets, or a
-      <code>defn</code> from one of your notes — and a formula can read the database.
+      A formula can call anything in scope — a builtin, something from the snippets, a
+      <code>defn</code> you wrote in a note — and can read the database. Cells are named the way the
+      next section describes.
     </p>
 <pre><code>=(sum B1:B9)
 =(/ B10 12)
@@ -384,6 +383,51 @@
       <strong>#CYCLE</strong>, a formula that failed shows <strong>#ERR</strong>, and one that reads
       a failed cell fails too, naming the cell where the trouble started. The line under the formula
       bar spells out the error of the selected cell.
+    </p>
+
+    <h3>Referring to cells</h3>
+    <div class="table-wrap"><table>
+      <tr><th>You write</th><th>It means</th></tr>
+      <tr><td><code>B1</code></td><td>what is in B1</td></tr>
+      <tr><td><code>B1:B9</code></td><td>those nine cells as a list — what <code>sum</code> and its friends take</td></tr>
+      <tr><td><code>$B$1</code></td><td>B1, pinned: copy the formula somewhere else and it still reads B1</td></tr>
+      <tr><td><code>B$1</code> · <code>$B1</code></td><td>only the row pinned · only the column pinned</td></tr>
+      <tr><td><code>Rates!A1</code></td><td>A1 in the sheet called Rates, sitting beside this one</td></tr>
+    </table></div>
+    <p>
+      References are written in capitals: <code>B1</code> is a cell, <code>b1</code> is an ordinary name.
+      An empty cell reads as <code>nil</code>, and <code>sum</code>, <code>avg</code>, <code>min</code>
+      and <code>max</code> pass over blanks and text rather than complaining about them. A cell whose
+      formula pointed at something you deleted shows <strong>#REF!</strong>.
+    </p>
+
+    <h3>Formulas worth knowing</h3>
+    <p>Every one of these was run in a sheet before it was written down.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Formula</th><th>Gives</th></tr>
+      <tr><td><code>=(sum B1:B9)</code></td><td>the total</td></tr>
+      <tr><td><code>=(avg B1:B9)</code> · <code>=(min B1:B9)</code> · <code>=(max B1:B9)</code></td><td>the mean, the smallest, the largest</td></tr>
+      <tr><td><code>=(length B1:B9)</code></td><td>how many cells the range covers</td></tr>
+      <tr><td><code>=(round (/ E1 3) 2)</code></td><td>a third of E1, to two decimals</td></tr>
+      <tr><td><code>=(/ B1 $E$1)</code></td><td>B1's share of the total in E1 — pinned, so it survives being filled down</td></tr>
+      <tr><td><code>=(if (&gt; E1 1500) "over" "ok")</code></td><td>one answer or the other</td></tr>
+      <tr><td><code>=(str A1 ": " B1)</code></td><td><em>rent: 1200</em> — text stuck together</td></tr>
+      <tr><td><code>=(str-join ", " A1:A3)</code></td><td><em>rent, food, travel</em></td></tr>
+      <tr><td><code>=(sum (map (fn (x) (* x 1.1)) B1:B3))</code></td><td>ten per cent on each, then the total</td></tr>
+      <tr><td><code>=(sum (filter (fn (x) (&gt; x 400)) B1:B3))</code></td><td>only the ones over 400</td></tr>
+      <tr><td><code>=(date-add C1 1 :months)</code></td><td>a month after the date in C1</td></tr>
+      <tr><td><code>=(date-diff C3 C1)</code></td><td>the days between two dates</td></tr>
+      <tr><td><code>=(date-format C1 "EEEE")</code></td><td><em>Monday</em> — and <code>"dd/MM/yyyy"</code> for the date written that way</td></tr>
+      <tr><td><code>=(date-format (today) "yyyy-MM-dd")</code></td><td>today. <code>(today)</code> on its own is an instant — a number — so it needs dressing</td></tr>
+      <tr><td><code>=(count-records contacts)</code></td><td>rows in a table, and <code>:where "city = ?" :params '("Lisbon")</code> narrows it</td></tr>
+      <tr><td><code>=Rates!A1</code> · <code>=(sheet-get "Rates" "A1")</code></td><td>a cell of another sheet, named or worked out as it runs</td></tr>
+    </table></div>
+    <p>
+      There is no separate list of "spreadsheet functions": a cell can call anything the language
+      knows, including the functions you write in your own notes. In the REPL,
+      <code>(functions "date-")</code> lists what is in scope and <code>(source sum)</code> shows how
+      one was written — the
+      <a href="https://eelisp.app/reference.html">EELisp reference</a> has them all.
     </p>
 
     <h3>Reading another sheet</h3>
