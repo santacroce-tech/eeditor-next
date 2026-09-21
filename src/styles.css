@@ -133,6 +133,14 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-s
 .markdown-body ul, .markdown-body ol { padding-left: 1.4em; }
 .markdown-body table { border-collapse: collapse; }
 .markdown-body th, .markdown-body td { border: 1px solid var(--border); padding: 4px 10px; }
+.markdown-body img { max-width: 100%; }
+/* a ```mermaid block, drawn */
+.markdown-body .mermaid-diagram { margin: 0 0 1em; text-align: center; overflow-x: auto; }
+.markdown-body .mermaid-diagram svg { max-width: 100%; height: auto; }
+.markdown-body .mermaid-error { font: 12px var(--mono); color: var(--err); margin: 0 0 4px; white-space: pre-wrap; }
+/* an image the note links to that can't be shown */
+.markdown-body .md-missing { display: inline-block; font-size: .9em; color: var(--muted);
+  border: 1px dashed var(--border); border-radius: 4px; padding: 2px 8px; }
 
 /* ── quick-open palette ── */
 .qo-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex;

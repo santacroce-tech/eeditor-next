@@ -95,6 +95,7 @@ src/
     search.ts    full-text search: line matches + 3-line context (SearchService)
     keybindings.ts  parse .eeditor/keybindings.eelisp → bindings; key-spec ↔ KeyboardEvent matching
     sheet.ts     sheets: A1 addressing, decoding cells, number formats, selection, column layout
+    mdmedia.ts   images in notes: assets/ beside the note, link ⇄ workspace path, safe file names
     core.test.ts / engine/render.test.ts  — 27 vitest cases
   ui/
     editor.ts    CodeMirror 6 editor; switchable theme (one-dark / solarized-light); ⌘⇧⏎ runs the ```eelisp block
@@ -108,6 +109,8 @@ src/
     results.ts   RenderModel → DOM (table + form widgets)
     keybindings.ts  runs a binding: built-in command, or lisp on the engine → editor commands
     sheet.ts     a .eesheet tab: virtualised grid, formula bar, toolbar, row/column menus, undo
+    markdown.ts  Markdown → preview/PDF: workspace images (read as bytes) + ```mermaid → SVG (lazy-loaded)
+    images.ts    add an image to a note — paste, drop, or the image… button → assets/ + a Markdown link
   keybindings/
     prelude.eelisp   the ed-* command constructors loaded into the engine
     default.eelisp   the shipped shortcut table (also the docs) — copied in on first edit

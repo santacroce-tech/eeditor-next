@@ -442,6 +442,135 @@ fn import_file(ws: tauri::State<'_, Workspace>, src: String) -> Result<String, S
     Ok(dest.file_name().unwrap().to_string_lossy().to_string())
 }
 
+// ── images in notes ────────────────────────────────────────────────────────────────────────────
+//
+// A note's images live in the workspace (an `assets/` folder beside it) and are linked from its
+// Markdown. The webview can't load a workspace path, so the preview and the PDF read an image's
+// bytes through `fs_read_image`; pasting, dropping or picking one stores it with `fs_save_asset` /
+// `fs_import_asset`. Only images go through here — these are not a way to put arbitrary binaries
+// into the workspace, nor to read the database next to them.
+
+/// What a note can show, and all EEditor will store beside one (mirrors IMAGE_EXTS in core/mdmedia.ts).
+const IMAGE_EXT: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "avif", "ico"];
+
+fn is_image(p: &Path) -> bool {
+    p.extension()
+        .and_then(|x| x.to_str())
+        .is_some_and(|x| IMAGE_EXT.contains(&x.to_lowercase().as_str()))
+}
+
+/// A workspace-relative folder, normalized: plain names only. `..` is refused outright rather than
+/// resolved — `resolve` can only canonicalize what exists, and this folder may not exist yet.
+fn clean_rel_dir(dir: &str) -> Result<String, String> {
+    use std::path::Component;
+    let mut parts = Vec::new();
+    for c in Path::new(dir).components() {
+        match c {
+            Component::Normal(s) => parts.push(s.to_string_lossy().to_string()),
+            Component::CurDir => {}
+            _ => return Err("path escapes workspace".into()),
+        }
+    }
+    Ok(parts.join("/"))
+}
+
+/// The name an image is asked to be stored under: one plain file name, not hidden, with an image
+/// extension. The frontend already makes names like this; this is the check that doesn't trust it.
+fn check_asset_name(name: &str) -> Result<(), String> {
+    use std::path::Component;
+    let p = Path::new(name);
+    let mut comps = p.components();
+    let single = matches!((comps.next(), comps.next()), (Some(Component::Normal(_)), None));
+    if !single || name.starts_with('.') || name.contains('\\') {
+        return Err(format!("{name:?} is not a file name"));
+    }
+    if !is_image(p) {
+        return Err(format!("{name} is not an image"));
+    }
+    Ok(())
+}
+
+/// Create `name` in `dir` — or `stem-1.ext`, `stem-2.ext`… when it is taken. `create_new` makes the
+/// check and the claim one step, so two images arriving together can't be written to one name,
+/// and an image already there is never overwritten.
+fn create_unique(dir: &Path, name: &str) -> Result<(fs::File, String), String> {
+    let (stem, ext) = match name.rfind('.') {
+        Some(i) => (&name[..i], &name[i..]),
+        None => (name, ""),
+    };
+    for i in 0..10_000 {
+        let cand = if i == 0 { name.to_string() } else { format!("{stem}-{i}{ext}") };
+        match fs::OpenOptions::new().write(true).create_new(true).open(dir.join(&cand)) {
+            Ok(f) => return Ok((f, cand)),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(format!("{}: {}", dir.join(&cand).display(), e)),
+        }
+    }
+    Err(format!("no free name for {name} in {}", dir.display()))
+}
+
+/// Store `bytes` as a new image in the workspace folder `dir` (created if needed). Returns the
+/// workspace-relative path it landed at, which is what the note links to.
+fn save_asset(root: &Path, dir: &str, name: &str, bytes: &[u8]) -> Result<String, String> {
+    use std::io::Write;
+    let dir = clean_rel_dir(dir)?;
+    check_asset_name(name)?;
+    let d = resolve(root, &dir)?;
+    fs::create_dir_all(&d).map_err(|e| access_message(&d, &e))?;
+    let (mut f, stored) = create_unique(&d, name)?;
+    if let Err(e) = f.write_all(bytes) {
+        let _ = fs::remove_file(d.join(&stored)); // not half an image
+        return Err(e.to_string());
+    }
+    Ok(if dir.is_empty() { stored } else { format!("{dir}/{stored}") })
+}
+
+/// The bytes of an image in the workspace, handed over raw (an `ArrayBuffer` on the other side).
+#[tauri::command(async)]
+fn fs_read_image(ws: tauri::State<'_, Workspace>, path: String) -> Result<tauri::ipc::Response, String> {
+    let p = resolve(&ws.0.lock().unwrap(), &path)?;
+    if !is_image(&p) {
+        return Err(format!("{path} is not an image"));
+    }
+    let bytes = fs::read(&p).map_err(|e| access_message(&p, &e))?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+/// A pasted or dropped image's bytes → a new file in the workspace. The body is the raw bytes (no
+/// base64 detour); where they go comes in the `dir` and `name` headers, percent-encoded because a
+/// header is ASCII and a name need not be.
+#[tauri::command(async)]
+fn fs_save_asset(ws: tauri::State<'_, Workspace>, request: tauri::ipc::Request<'_>) -> Result<String, String> {
+    let header = |key: &str| -> Result<String, String> {
+        let v = request.headers().get(key).ok_or_else(|| format!("missing {key}"))?;
+        let v = v.to_str().map_err(|e| e.to_string())?;
+        percent_encoding::percent_decode_str(v).decode_utf8().map(|s| s.into_owned()).map_err(|e| e.to_string())
+    };
+    let bytes: Vec<u8> = match request.body() {
+        tauri::ipc::InvokeBody::Raw(b) => b.clone(),
+        // Where the IPC falls back to postMessage, the bytes arrive as a JSON array.
+        tauri::ipc::InvokeBody::Json(Value::Array(a)) => a
+            .iter()
+            .map(|v| v.as_u64().and_then(|n| u8::try_from(n).ok()))
+            .collect::<Option<_>>()
+            .ok_or("the image's bytes are malformed")?,
+        _ => return Err("expected the image's bytes".into()),
+    };
+    let root = ws.0.lock().unwrap().clone();
+    save_asset(&root, &header("dir")?, &header("name")?, &bytes)
+}
+
+/// An image file from anywhere — dropped on the editor, or chosen in the picker — copied into the
+/// workspace folder `dir` as `name`. Like `import_file`, the user picking the file is the consent.
+#[tauri::command(async)]
+fn fs_import_asset(ws: tauri::State<'_, Workspace>, src: String, dir: String, name: String) -> Result<String, String> {
+    check_asset_name(&name)?;
+    let src_path = PathBuf::from(&src);
+    let bytes = fs::read(&src_path).map_err(|e| access_message(&src_path, &e))?;
+    let root = ws.0.lock().unwrap().clone();
+    save_asset(&root, &dir, &name, &bytes)
+}
+
 // ── files outside the workspace ────────────────────────────────────────────────────────────────
 //
 // Dropped on the window, or handed over by "Open With". The user decides per file whether to copy it
@@ -851,6 +980,9 @@ pub fn run() {
             fs_rename,
             fs_delete,
             import_file,
+            fs_read_image,
+            fs_save_asset,
+            fs_import_asset,
             external_open,
             external_read,
             external_write,
@@ -1052,6 +1184,39 @@ mod tests {
         // listed as the folder it is, but not descended into a second time
         assert_eq!(back["isDir"], true);
         assert_eq!(back["children"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn an_image_lands_in_its_folder_under_a_name_nothing_else_has() {
+        let t = Tmp::new("asset");
+        let root = t.0.join("ws");
+        fs::create_dir_all(&root).unwrap();
+
+        // the folder is created on the way
+        assert_eq!(save_asset(&root, "notes/assets", "a.png", b"one").unwrap(), "notes/assets/a.png");
+        // a second image with the same name is kept beside the first, never over it
+        assert_eq!(save_asset(&root, "notes/assets", "a.png", b"two").unwrap(), "notes/assets/a-1.png");
+        assert_eq!(fs::read(root.join("notes/assets/a.png")).unwrap(), b"one");
+        assert_eq!(fs::read(root.join("notes/assets/a-1.png")).unwrap(), b"two");
+        // the workspace root is a folder too, and "./" is just noise
+        assert_eq!(save_asset(&root, "", "b.jpg", b"x").unwrap(), "b.jpg");
+        assert_eq!(save_asset(&root, "./assets/", "c.gif", b"x").unwrap(), "assets/c.gif");
+    }
+
+    #[test]
+    fn only_images_and_only_inside_the_workspace() {
+        let t = Tmp::new("asset-refuse");
+        let root = t.0.join("ws");
+        fs::create_dir_all(&root).unwrap();
+
+        for dir in ["../elsewhere", "assets/../../elsewhere", "/tmp"] {
+            assert!(save_asset(&root, dir, "a.png", b"x").is_err(), "{dir}");
+        }
+        for name in ["../a.png", "sub/a.png", ".hidden.png", "a.md", "Budget.eesheet", "eeditor.db", "a"] {
+            assert!(save_asset(&root, "assets", name, b"x").is_err(), "{name}");
+        }
+        assert!(!t.0.join("elsewhere").exists());
+        assert!(is_image(Path::new("x/A.PNG")) && is_image(Path::new("d.svg")) && !is_image(Path::new("d.md")));
     }
 
     #[test]

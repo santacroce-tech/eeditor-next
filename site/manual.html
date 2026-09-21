@@ -136,7 +136,8 @@
     <p>
       Markdown is the default, not the limit — any text file opens: source code, a csv, a log, a
       config file, a file with no extension at all. Only binary formats (images, PDFs, archives) are
-      left out of the file tree.
+      left out of the file tree — which is why a note's <code>assets</code> folder looks empty there,
+      even though its images are in it.
     </p>
     <h3>Tab</h3>
     <p>
@@ -148,7 +149,38 @@
     <h3>Preview</h3>
     <p>
       <kbd>⌘E</kbd> (or the <strong>preview</strong> button) swaps the editor for rendered Markdown.
-      Wiki links become clickable there. Press it again to go back.
+      Wiki links become clickable there, images show, and diagrams are drawn. Press it again to go back.
+    </p>
+    <h3>Images</h3>
+    <p>
+      Paste an image (a screenshot, <em>Copy Image</em> in a browser), drop an image file on the
+      editor, or use the <strong>image…</strong> button. The image is copied into an
+      <code>assets</code> folder beside the note and a link to it goes in where the caret — or the
+      drop — was:
+    </p>
+<pre><code>![sales by region](assets/sales-by-region.png)</code></pre>
+    <p>
+      The editor shows the link; the preview and the PDF show the picture. The link is relative to
+      the note, so it means the same thing to any other Markdown tool that opens the folder, and
+      you can write one by hand for an image that is already in the workspace. An image that isn't
+      where the link says is marked in place rather than silently left out. A name that is taken
+      gets a number (<code>chart-1.png</code>); nothing is overwritten. Images are stored in the
+      workspace, so a ↗ note opened in place has to be copied in before it can take one.
+    </p>
+    <h3>Diagrams</h3>
+    <p>
+      A fenced block marked <code>mermaid</code> is drawn as a diagram in the preview and in the PDF
+      — sequence diagrams, flowcharts, class, state and Gantt charts, anything
+      <a href="https://mermaid.js.org/">Mermaid</a> knows:
+    </p>
+<pre><code>```mermaid
+sequenceDiagram
+    Browser->>Server: GET /notes
+    Server-->>Browser: 200 OK
+```</code></pre>
+    <p>
+      The diagram follows the theme on screen and is always light on paper. If Mermaid can't read
+      the block, the preview shows its source with the line it stumbled on just above.
     </p>
     <h3>Themes</h3>
     <p>
@@ -158,7 +190,8 @@
     <h3>PDF export</h3>
     <p>
       <strong>PDF</strong> renders the current note and opens the system print dialog, where
-      <em>Save as PDF</em> produces a file. Headings, lists, tables and code blocks all come across.
+      <em>Save as PDF</em> produces a file. Headings, lists, tables, code blocks, images and diagrams
+      all come across.
     </p>
     <h3>Running code from a note</h3>
     <p>
@@ -687,6 +720,7 @@ zzalinhar — function
       <tr><td><code>toggle-preview</code></td><td>editor ⇄ rendered Markdown</td></tr>
       <tr><td><code>toggle-theme</code></td><td>light ⇄ dark</td></tr>
       <tr><td><code>export-pdf</code></td><td>print the current note to PDF</td></tr>
+      <tr><td><code>insert-image</code></td><td>pick images; each is copied into <code>assets/</code> beside the note and linked</td></tr>
       <tr><td><code>snippets</code></td><td>load the standard EELisp bundle</td></tr>
       <tr><td><code>calendar</code></td><td>open the month grid</td></tr>
       <tr><td><code>agenda-setup</code></td><td>categories and rules panel</td></tr>

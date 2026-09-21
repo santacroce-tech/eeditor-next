@@ -3,6 +3,8 @@
 //   • HTTP   — the dev bridge's /fs/* endpoints (Node fs, confined to a workspace root)
 // Paths are relative to the workspace root; the transport resolves them.
 
+import { IMAGE_EXTS } from "../core/mdmedia";
+
 export interface FileNode {
   name: string;
   path: string; // relative to workspace root ("" = root)
@@ -73,11 +75,37 @@ export interface WorkspaceClient {
   reveal(path: string): Promise<void>;
   /** Show a file opened in place — its path is already absolute. */
   revealExternal(path: string): Promise<void>;
+  /** The bytes of an image in the workspace — the webview can't load a workspace path itself. */
+  readImage(path: string): Promise<Uint8Array<ArrayBuffer>>;
+  /**
+   * Store an image in the workspace folder `dir` as `name` — or `name-1`, `name-2`… when that is
+   * taken; nothing is overwritten. Returns the workspace-relative path it was stored at.
+   */
+  saveAsset(dir: string, name: string, bytes: Uint8Array<ArrayBuffer>): Promise<string>;
+  /** The same, copying an image file from anywhere by its absolute path (a drop, the picker). */
+  importAsset(src: string, dir: string, name: string): Promise<string>;
+  /**
+   * The native picker, limited to images → absolute paths; [] if cancelled, null where there is no
+   * native picker (the browser, which falls back to an <input type=file>).
+   */
+  pickImages(): Promise<string[] | null>;
   /**
    * Let the app finish quitting. A quit is held back until the editor has flushed what is unsaved
    * (see the `app-exiting` event); this is the frontend saying "done, you may go".
    */
   exitApp(): Promise<void>;
+}
+
+/** The bridge answers a failure with {ok:false,error} — that message is the useful part. */
+async function errorText(res: Response, url: string): Promise<string> {
+  const detail = await res.text().catch(() => "");
+  let msg = "";
+  try {
+    msg = String((JSON.parse(detail) as { error?: unknown }).error ?? "");
+  } catch {
+    msg = detail;
+  }
+  return msg || `${url} → ${res.status}`;
 }
 
 async function post<T>(url: string, body: unknown): Promise<T> {
@@ -86,17 +114,7 @@ async function post<T>(url: string, body: unknown): Promise<T> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    // The bridge answers a failure with {ok:false,error} — that message is the useful part.
-    const detail = await res.text().catch(() => "");
-    let msg = "";
-    try {
-      msg = String((JSON.parse(detail) as { error?: unknown }).error ?? "");
-    } catch {
-      msg = detail;
-    }
-    throw new Error(msg || `${url} → ${res.status}`);
-  }
+  if (!res.ok) throw new Error(await errorText(res, url));
   return (await res.json()) as T;
 }
 
@@ -163,6 +181,27 @@ class HttpWorkspace implements WorkspaceClient {
   }
   async revealExternal(): Promise<void> {
     throw new Error("revealing files needs the desktop app");
+  }
+  async readImage(path: string): Promise<Uint8Array<ArrayBuffer>> {
+    const res = await fetch(`${this.base}/fs/read-image`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path }),
+    });
+    if (!res.ok) throw new Error(await errorText(res, "/fs/read-image"));
+    return new Uint8Array(await res.arrayBuffer());
+  }
+  async saveAsset(dir: string, name: string, bytes: Uint8Array<ArrayBuffer>): Promise<string> {
+    const q = new URLSearchParams({ dir, name });
+    const res = await fetch(`${this.base}/fs/save-asset?${q}`, { method: "POST", body: bytes });
+    if (!res.ok) throw new Error(await errorText(res, "/fs/save-asset"));
+    return ((await res.json()) as { path: string }).path;
+  }
+  async importAsset(): Promise<string> {
+    throw new Error("importing by path needs the desktop app");
+  }
+  async pickImages(): Promise<string[] | null> {
+    return null;
   }
   async exitApp(): Promise<void> {
     /* a browser tab closes itself */
@@ -247,6 +286,31 @@ class TauriWorkspace implements WorkspaceClient {
   async revealExternal(path: string): Promise<void> {
     const { invoke } = await import("@tauri-apps/api/core");
     await invoke("external_reveal", { path });
+  }
+  async readImage(path: string): Promise<Uint8Array<ArrayBuffer>> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return new Uint8Array(await invoke<ArrayBuffer>("fs_read_image", { path }));
+  }
+  async saveAsset(dir: string, name: string, bytes: Uint8Array<ArrayBuffer>): Promise<string> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    // The bytes go as the raw request body; a header is ASCII, so the names travel percent-encoded.
+    return invoke<string>("fs_save_asset", bytes, {
+      headers: { dir: encodeURIComponent(dir), name: encodeURIComponent(name) },
+    });
+  }
+  async importAsset(src: string, dir: string, name: string): Promise<string> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return invoke<string>("fs_import_asset", { src, dir, name });
+  }
+  async pickImages(): Promise<string[] | null> {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const picked = await open({
+      multiple: true,
+      directory: false,
+      filters: [{ name: "Images", extensions: [...IMAGE_EXTS] }],
+    });
+    if (picked === null) return [];
+    return Array.isArray(picked) ? picked : [picked];
   }
   async exitApp(): Promise<void> {
     const { invoke } = await import("@tauri-apps/api/core");

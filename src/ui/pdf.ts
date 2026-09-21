@@ -21,7 +21,11 @@ const PRINT_CSS = `
   a { color: #0645ad; text-decoration: none; }
   blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 12px; color: #555; }
   ul, ol { padding-left: 1.6em; }
-  img { max-width: 100%; }
+  img { max-width: 100%; page-break-inside: avoid; }
+  .mermaid-diagram { margin: 0 0 .8em; text-align: center; page-break-inside: avoid; }
+  .mermaid-diagram svg { max-width: 100%; height: auto; }
+  .mermaid-error { font: 9pt ui-monospace, Menlo, monospace; color: #b00; margin: 0 0 4px; white-space: pre-wrap; }
+  .md-missing { font-size: .9em; color: #777; border: 1px dashed #bbb; border-radius: 4px; padding: 2px 8px; }
   table { border-collapse: collapse; }
   th, td { border: 1px solid #ccc; padding: 4px 10px; }
   h1, h2, h3 { page-break-after: avoid; }

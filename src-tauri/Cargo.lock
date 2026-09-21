@@ -70,6 +70,7 @@ version = "2.1.0"
 dependencies = [
  "eelisp",
  "log",
+ "percent-encoding",
  "serde",
  "serde_json",
  "tauri",
