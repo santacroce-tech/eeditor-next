@@ -35,6 +35,8 @@ export interface EditorOptions {
   onWikiLink?: (name: string) => void;
   /** Candidate note names offered as autocompletions after typing `[[`. */
   wikiTargets?: () => string[];
+  /** A paste that is only images (a screenshot, "Copy Image") — the caller stores them and links them. */
+  onPasteImages?: (files: File[]) => void;
   theme?: ThemeName;
 }
 
@@ -129,6 +131,20 @@ export function createEditor(parent: HTMLElement, doc: string, opts: EditorOptio
     },
   });
 
+  // Pasting an image. Only when the clipboard has no text: Word and friends put a picture of the
+  // selection beside the text itself, and pasting text should paste the text.
+  const imagePaste = EditorView.domEventHandlers({
+    paste(event) {
+      const data = event.clipboardData;
+      if (!data || !opts.onPasteImages || data.getData("text/plain")) return false;
+      const files = Array.from(data.files).filter((f) => f.type.startsWith("image/"));
+      if (files.length === 0) return false;
+      event.preventDefault();
+      opts.onPasteImages(files);
+      return true;
+    },
+  });
+
   // Autocomplete note names after "[[".
   const wikiComplete = (ctx: CompletionContext): CompletionResult | null => {
     const before = ctx.matchBefore(/\[\[[^\]\n]*/);
@@ -148,6 +164,7 @@ export function createEditor(parent: HTMLElement, doc: string, opts: EditorOptio
     markdown(),
     EditorView.lineWrapping,
     wikiLinks,
+    imagePaste,
     themeCompartment.of(themeExt(opts.theme ?? "dark")),
     EditorView.updateListener.of((u) => {
       if (u.docChanged && opts.onChange) opts.onChange(u.state.doc.toString());

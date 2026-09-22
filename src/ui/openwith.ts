@@ -11,11 +11,15 @@
 // it where it lives? Copying makes it an ordinary note — it shows in the tree, it is searched and
 // indexed for backlinks. In place keeps a single source of truth on disk at the cost of a file the
 // tree can't show; those tabs are marked ↗ and saved through the granted-paths list in the backend.
+//
+// Images are the exception: dropped while a note is open, they are added *to the note* (stored in
+// its assets/ folder and linked where they were dropped) rather than opened — see ui/images.ts.
 
 import type { ExternalFile, WorkspaceClient } from "../engine/workspace";
 import { choiceModal, toast } from "./dialogs";
 import { uniqueName } from "../core/uniquename";
 import { isSheetPath } from "../core/sheet";
+import { isImagePath } from "../core/mdmedia";
 
 export interface OpenWithDeps {
   ws: WorkspaceClient;
@@ -29,6 +33,12 @@ export interface OpenWithDeps {
   refreshTree(): Promise<void>;
   /** Names already present at the workspace root (browser drop needs them to avoid clobbering). */
   rootNames(): string[];
+  /** Where dropped images go when a note is open. `x`/`y`: the drop point, in CSS pixels. */
+  images?: {
+    canInsert(): boolean;
+    dropPaths(paths: string[], x: number, y: number): void;
+    dropFiles(files: File[], x: number, y: number): void;
+  };
 }
 
 type Decision = "copy" | "place";
@@ -56,14 +66,22 @@ export function createOpenWith(deps: OpenWithDeps): OpenWith {
   badge.className = "drop-badge";
   overlay.appendChild(badge);
   document.body.appendChild(overlay);
-  const showOverlay = (n: number): void => {
+  const showOverlay = (n: number, images = false): void => {
     badge.innerHTML = "";
-    badge.appendChild(document.createTextNode(n === 1 ? "Drop to open" : `Drop ${n} files to open`));
+    const what = n === 1 ? (images ? "the image" : "") : ` ${n} ${images ? "images" : "files"}`;
+    badge.appendChild(document.createTextNode(images ? `Drop to add ${what.trim()} to the note` : `Drop${what} to open`));
     const s = document.createElement("small");
-    s.textContent = ws.canOpenExternal() ? "you'll choose: copy in, or edit in place" : "copies into your workspace";
+    s.textContent = images
+      ? "copied into assets/ beside it, and linked"
+      : ws.canOpenExternal()
+        ? "you'll choose: copy in, or edit in place"
+        : "copies into your workspace";
     badge.appendChild(s);
     overlay.classList.add("on");
   };
+  /** Whether a drop of these names goes into the note: all images, and a note to take them. */
+  const intoNote = (names: string[]): boolean =>
+    names.length > 0 && names.every(isImagePath) && !!deps.images?.canInsert();
   const hideOverlay = (): void => overlay.classList.remove("on");
 
   /**
@@ -205,11 +223,21 @@ export function createOpenWith(deps: OpenWithDeps): OpenWith {
       const { getCurrentWebview } = await import("@tauri-apps/api/webview");
       await getCurrentWebview().onDragDropEvent((e) => {
         const p = e.payload;
-        if (p.type === "enter" || p.type === "over") {
-          showOverlay("paths" in p ? p.paths.length : 1);
+        if (p.type === "enter") {
+          showOverlay(p.paths.length, intoNote(p.paths));
+        } else if (p.type === "over") {
+          overlay.classList.add("on"); // "over" carries no paths; keep what "enter" said
         } else if (p.type === "drop") {
           hideOverlay();
-          void openPaths(p.paths);
+          // Images go into the open note; anything else dropped with them is opened as usual.
+          const imgs = p.paths.filter(isImagePath);
+          let rest = p.paths;
+          if (imgs.length && deps.images?.canInsert()) {
+            const scale = window.devicePixelRatio || 1; // the drop point comes in physical pixels
+            deps.images.dropPaths(imgs, p.position.x / scale, p.position.y / scale);
+            rest = p.paths.filter((q) => !isImagePath(q));
+          }
+          if (rest.length) void openPaths(rest);
         } else {
           hideOverlay();
         }
@@ -232,12 +260,18 @@ export function createOpenWith(deps: OpenWithDeps): OpenWith {
     // otherwise paste the file into the buffer. Dragging *text* around the editor still carries
     // "text/plain" rather than "Files", so it passes straight through to CodeMirror untouched.
     const hasFiles = (e: DragEvent): boolean => Array.from(e.dataTransfer?.types ?? []).includes("Files");
+    // While dragging, only the MIME types are visible — the names come with the drop.
+    const allImages = (e: DragEvent): boolean => {
+      const items = Array.from(e.dataTransfer?.items ?? []).filter((i) => i.kind === "file");
+      return items.length > 0 && items.every((i) => i.type.startsWith("image/")) && !!deps.images?.canInsert();
+    };
+    const isImageFile = (f: File): boolean => f.type.startsWith("image/") || isImagePath(f.name);
     window.addEventListener(
       "dragover",
       (e) => {
         if (!hasFiles(e)) return;
         e.preventDefault();
-        showOverlay(e.dataTransfer?.items.length ?? 1);
+        showOverlay(e.dataTransfer?.items.length ?? 1, allImages(e));
       },
       true,
     );
@@ -251,7 +285,12 @@ export function createOpenWith(deps: OpenWithDeps): OpenWith {
         e.preventDefault();
         e.stopPropagation();
         hideOverlay();
-        const files = Array.from(e.dataTransfer?.files ?? []);
+        let files = Array.from(e.dataTransfer?.files ?? []);
+        const imgs = files.filter(isImageFile);
+        if (imgs.length && deps.images?.canInsert()) {
+          deps.images.dropFiles(imgs, e.clientX, e.clientY);
+          files = files.filter((f) => !isImageFile(f));
+        }
         if (files.length) void dropFiles(files);
       },
       true,

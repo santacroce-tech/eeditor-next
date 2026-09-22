@@ -98,3 +98,4 @@
 ;; agenda-setup · agenda-refresh · close-tab · next-tab · prev-tab · focus-editor
 ;; open-file           pick a file from anywhere; asks whether to copy it in or edit it in place
 ;; copy-into-workspace turn the current ↗ (outside) note into a copy in the workspace
+;; insert-image        pick images; each is copied into assets/ beside the note and linked at the caret

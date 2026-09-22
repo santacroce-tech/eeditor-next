@@ -4,7 +4,6 @@
 // exception is ⌘/Ctrl+Shift+Enter (run the ```eelisp block at the cursor), which lives in the
 // editor keymap because it acts on the block under the caret.
 
-import { marked } from "marked";
 import { createEngineClient, observeEvals } from "./engine/client";
 import { dictGet } from "./engine/types";
 import { createSheetClient } from "./engine/sheet";
@@ -24,6 +23,8 @@ import { createSnippets } from "./ui/snippets";
 import { createKeybindings, type CommandTable } from "./ui/keybindings";
 import { createOpenWith } from "./ui/openwith";
 import { exportPdf } from "./ui/pdf";
+import { dataUrl, parseMarkdown, renderMedia } from "./ui/markdown";
+import { createImages } from "./ui/images";
 import { promptModal, confirmModal, infoModal, showContextMenu, toast, type MenuItem } from "./ui/dialogs";
 import { resolveWikiLink } from "./core/fuzzy";
 import { backlinksTo } from "./core/backlinks";
@@ -161,6 +162,10 @@ function main(): void {
   pdfBtn.className = "head-btn";
   pdfBtn.textContent = "PDF";
   pdfBtn.title = "Export to PDF";
+  const imageBtn = document.createElement("button");
+  imageBtn.className = "head-btn";
+  imageBtn.textContent = "image…";
+  imageBtn.title = "Add an image — it is copied into assets/ beside this note and linked (you can also paste or drop one)";
   const keysBtn = document.createElement("button");
   keysBtn.className = "head-btn";
   keysBtn.textContent = "⌘";
@@ -173,7 +178,7 @@ function main(): void {
   copyInBtn.style.display = "none";
   const replBtn = document.createElement("button");
   replBtn.className = "head-btn repl-toggle";
-  headRight.append(copyInBtn, themeBtn, previewBtn, pdfBtn, keysBtn, replBtn);
+  headRight.append(copyInBtn, themeBtn, imageBtn, previewBtn, pdfBtn, keysBtn, replBtn);
   editorPane.head.append(nameEl, headRight);
 
   const tabBar = document.createElement("div");
@@ -265,6 +270,8 @@ function main(): void {
     nameEl.textContent = name + (dirty ? " •" : "");
     nameEl.title = ext ? `${ext.path} — outside the workspace, saved in place` : currentPath;
     copyInBtn.style.display = ext ? "" : "none";
+    // Images live in the workspace beside the note, so a sheet or a ↗ file has nowhere to put one.
+    imageBtn.style.display = images.canInsert() ? "" : "none";
   };
   function setEditorDoc(content: string): void {
     suppressChange = true;
@@ -437,6 +444,7 @@ function main(): void {
       scheduleSave();
     },
     onRunBlock: (code) => void repl.run(code),
+    onPasteImages: (files) => void images.addFiles(files),
     onWikiLink: (name) => openWikiLink(name),
     wikiTargets: () => sidebar.files().map((f) => f.name.replace(/\.[^./]+$/, "")),
   });
@@ -455,6 +463,7 @@ function main(): void {
     editor.setTheme(t);
     localStorage.setItem("theme", t);
     themeBtn.textContent = t === "dark" ? "☀ light" : "☾ dark";
+    if (previewing && !tabs[activeIdx]?.sheet) renderPreview(); // diagrams follow the theme
   };
   themeBtn.textContent = theme === "dark" ? "☀ light" : "☾ dark";
   themeBtn.addEventListener("click", () => applyTheme(theme === "dark" ? "light" : "dark"));
@@ -875,9 +884,37 @@ function main(): void {
     }
   }
 
+  // The preview's images are blob URLs made for this render; each render (and leaving the preview)
+  // lets go of the last one's. `previewGen` tells a render still loading that it has been replaced.
+  let previewGen = 0;
+  let previewUrls: string[] = [];
+  function clearPreviewMedia(): void {
+    previewGen++;
+    for (const u of previewUrls) URL.revokeObjectURL(u);
+    previewUrls = [];
+  }
+  /** The workspace note on screen, if it is one — its images resolve from its folder. */
+  const workspaceNote = (): string | null => {
+    const t = tabs[activeIdx];
+    return t && !t.sheet && !t.external ? t.path : null;
+  };
   function renderPreview(): void {
-    previewHost.innerHTML = marked.parse(editor.getDoc()) as string;
+    clearPreviewMedia();
+    const gen = previewGen;
+    const urls = previewUrls;
+    previewHost.replaceChildren(parseMarkdown(editor.getDoc()));
     linkifyWikiLinks(previewHost);
+    void renderMedia(previewHost, {
+      notePath: workspaceNote(),
+      readImage: (p) => ws.readImage(p),
+      imageUrl: (bytes, mime) => {
+        const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+        urls.push(url);
+        return url;
+      },
+      theme: theme === "dark" ? "dark" : "default",
+      stale: () => gen !== previewGen,
+    });
   }
   previewHost.addEventListener("click", (e) => {
     const a = (e.target as HTMLElement).closest<HTMLElement>(".wikilink");
@@ -889,6 +926,7 @@ function main(): void {
     if (tabs[activeIdx]?.sheet) return;
     previewing = !previewing;
     if (previewing) renderPreview();
+    else clearPreviewMedia();
     previewHost.style.display = previewing ? "" : "none";
     editorHost.style.display = previewing ? "none" : "";
     previewBtn.textContent = previewing ? "edit" : "preview";
@@ -905,17 +943,57 @@ function main(): void {
     }
   }
 
-  function exportCurrentPdf(): void {
+  /**
+   * A note prints with its images and diagrams in place. The page is its own document, so it gets
+   * data URLs rather than the preview's blob URLs, and diagrams are always drawn light — paper is.
+   */
+  async function exportCurrentPdf(): Promise<void> {
     const sheet = tabs[activeIdx]?.sheet ? tabs[activeIdx] : undefined;
     if (sheet) {
       void exportSheetPdf(sheet.path);
       return;
     }
-    const html = marked.parse(editor.getDoc()) as string;
+    const body = document.createElement("div");
+    body.append(parseMarkdown(editor.getDoc()));
+    try {
+      await renderMedia(body, {
+        notePath: workspaceNote(),
+        readImage: (p) => ws.readImage(p),
+        imageUrl: dataUrl,
+        theme: "default",
+      });
+    } catch (e) {
+      toast(`Some images or diagrams could not be drawn: ${String(e instanceof Error ? e.message : e)}`);
+    }
     const title = currentPath ? basename(currentPath).replace(/\.[^./]+$/, "") : "untitled";
-    exportPdf(title, html, (m) => toast(m));
+    exportPdf(title, body.innerHTML, (m) => toast(m));
   }
-  pdfBtn.addEventListener("click", exportCurrentPdf);
+  pdfBtn.addEventListener("click", () => void exportCurrentPdf());
+
+  // ── images in notes: pasted, dropped or picked → assets/ beside the note, linked from it ──
+  /** Put Markdown into the note: at `at`, or in place of the selection. */
+  function insertIntoNote(text: string, at?: number): void {
+    const view = editor.view;
+    const sel = view.state.selection.main;
+    const [from, to] = at === undefined ? [sel.from, sel.to] : [at, at];
+    view.dispatch({
+      changes: { from, to, insert: text },
+      selection: { anchor: from + text.length },
+      scrollIntoView: true,
+      userEvent: "input.paste",
+    });
+    if (previewing) renderPreview();
+    else view.focus();
+  }
+  const images = createImages({ ws, note: workspaceNote, insert: insertIntoNote, toast });
+  imageBtn.addEventListener("click", () => void images.pick());
+  /** Where in the note a drop at (x, y) lands — undefined (the caret) unless it is over the text. */
+  const dropOffset = (x: number, y: number): number | undefined => {
+    if (previewing) return undefined;
+    const r = editorHost.getBoundingClientRect();
+    if (x < r.left || x > r.right || y < r.top || y > r.bottom) return undefined;
+    return editor.view.posAtCoords({ x, y }) ?? undefined;
+  };
 
   // ── daily note (the `daily-note` command; ⌘/Ctrl+D by default) ──
   const pad2 = (n: number): string => String(n).padStart(2, "0");
@@ -986,7 +1064,8 @@ function main(): void {
     },
     "toggle-preview": togglePreview,
     "toggle-theme": () => applyTheme(theme === "dark" ? "light" : "dark"),
-    "export-pdf": exportCurrentPdf,
+    "export-pdf": () => void exportCurrentPdf(),
+    "insert-image": () => void images.pick(),
     snippets: () => snippets.open(),
     calendar: () => calendar.open(),
     "agenda-setup": () => agendaSetup.open(),
@@ -1097,6 +1176,11 @@ function main(): void {
       await tags.refresh();
     },
     rootNames: () => sidebar.files().filter((f) => !f.path.includes("/")).map((f) => f.name),
+    images: {
+      canInsert: () => images.canInsert(),
+      dropPaths: (paths, x, y) => void images.addPaths(paths, dropOffset(x, y)),
+      dropFiles: (files, x, y) => void images.addFiles(files, dropOffset(x, y)),
+    },
   });
   // Picking a file asks the same question as dropping one, instead of silently importing.
   openFileBtn.addEventListener("click", () => void openWith.pickAndOpen());
