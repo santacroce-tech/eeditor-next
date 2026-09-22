@@ -1,8 +1,8 @@
 // App shell: [ files + agenda sidebar | editor (+markdown preview) | REPL ], one shared engine.
 // The REPL pane hides/shows (λ in the editor header, or the `toggle-repl` command).
 // Keyboard shortcuts come from `.eeditor/keybindings.eelisp` — see ui/keybindings.ts. The one
-// exception is ⌘/Ctrl+Shift+Enter (run the ```eelisp block at the cursor), which lives in the
-// editor keymap because it acts on the block under the caret.
+// exception is ⌘/Ctrl+Shift+Enter (run the selection, or the ```eelisp block at the cursor), which
+// lives in the editor keymap because it acts on the selection.
 
 import { createEngineClient, observeEvals } from "./engine/client";
 import { dictGet } from "./engine/types";
@@ -234,6 +234,11 @@ function main(): void {
     }
     setReplVisible(!replVisible);
   }
+  // Bring the REPL into view — code run from the editor lands there, and is lost on a hidden pane.
+  function showRepl(): void {
+    if (narrow()) setMobileView("repl");
+    else if (!replVisible) setReplVisible(true);
+  }
   setReplVisible(replVisible);
   replBtn.addEventListener("click", toggleRepl);
   replHideBtn.addEventListener("click", () => (narrow() ? setMobileView("editor") : setReplVisible(false)));
@@ -443,7 +448,10 @@ function main(): void {
       }
       scheduleSave();
     },
-    onRunBlock: (code) => void repl.run(code),
+    onRunBlock: (code) => {
+      showRepl();
+      void repl.run(code);
+    },
     onPasteImages: (files) => void images.addFiles(files),
     onWikiLink: (name) => openWikiLink(name),
     wikiTargets: () => sidebar.files().map((f) => f.name.replace(/\.[^./]+$/, "")),
@@ -1054,8 +1062,7 @@ function main(): void {
     "reload-keys": () => void keys.reload(),
     "toggle-repl": toggleRepl,
     "focus-repl": () => {
-      if (narrow()) setMobileView("repl");
-      else if (!replVisible) setReplVisible(true);
+      showRepl();
       repl.focus();
     },
     "focus-editor": () => {

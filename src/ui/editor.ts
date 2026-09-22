@@ -1,6 +1,6 @@
 // CodeMirror 6 Markdown/code editor. Solves the biggest Apple-text-system coupling from the Swift
-// app (highlighting, undo, find) for free (ANALYSIS §7.2). Mod-Shift-Enter runs the ```eelisp
-// block under the cursor. The editor theme is switchable (dark / light) via a Compartment.
+// app (highlighting, undo, find) for free (ANALYSIS §7.2). Mod-Shift-Enter runs the selection as
+// EELisp, or the ```eelisp block under the cursor when nothing is selected. The editor theme is switchable (dark / light) via a Compartment.
 
 import { EditorView, keymap } from "@codemirror/view";
 import { EditorState, Compartment } from "@codemirror/state";
@@ -15,7 +15,7 @@ import {
   type CompletionResult,
 } from "@codemirror/autocomplete";
 
-import { eelispBlockAt } from "../core/blocks";
+import { codeToRun } from "../core/blocks";
 import { wikiLinkAt } from "../core/wikilink";
 
 export type ThemeName = "dark" | "light";
@@ -84,14 +84,15 @@ function moveFocusOut(view: EditorView, back: boolean): boolean {
 export function createEditor(parent: HTMLElement, doc: string, opts: EditorOptions = {}): Editor {
   const themeCompartment = new Compartment();
 
-  // Run the ```eelisp block under the caret. This one stays in the editor keymap because it acts on
-  // the caret's block; every other shortcut comes from the keybindings config (ui/keybindings.ts),
+  // Run the selection, or the ```eelisp block under the caret. This one stays in the editor keymap
+  // because it acts on the selection; every other shortcut comes from the keybindings config (ui/keybindings.ts),
   // which claims its keys ahead of CodeMirror in the capture phase.
   const appKeys = keymap.of([
     {
       key: "Mod-Shift-Enter",
       run: (view) => {
-        const code = eelispBlockAt(view.state.doc.toString(), view.state.selection.main.head);
+        const { from, to } = view.state.selection.main;
+        const code = codeToRun(view.state.doc.toString(), from, to);
         if (code != null && opts.onRunBlock) {
           opts.onRunBlock(code);
           return true;

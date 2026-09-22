@@ -1,5 +1,5 @@
-// Find the ```eelisp fenced code block containing a cursor offset — for in-editor block execution
-// (the EELispBlockService feature from the Swift app, ANALYSIS §5). Pure + testable.
+// Find the EELisp to run from the editor: the selection, or the ```eelisp fenced block containing
+// the cursor (the EELispBlockService feature from the Swift app, ANALYSIS §5). Pure + testable.
 
 const OPEN = /^```+\s*eelisp\s*$/i;
 const CLOSE = /^```+\s*$/;
@@ -31,4 +31,19 @@ export function eelispBlockAt(doc: string, cursor: number): string | null {
     i = closeLine + 1;
   }
   return null;
+}
+
+/**
+ * What ⌘⇧Enter runs: the selection if there is one, otherwise the ```eelisp block at the caret.
+ * A selection is taken as written, minus anything that is markdown rather than code — the fence
+ * lines when a whole block was selected, the backticks around `(inline code)`.
+ */
+export function codeToRun(doc: string, from: number, to: number): string | null {
+  const selected = doc.slice(Math.min(from, to), Math.max(from, to));
+  if (selected.trim() === "") return eelispBlockAt(doc, to);
+  const lines = selected.trim().split("\n");
+  if (/^```/.test(lines[0].trim())) lines.shift();
+  if (lines.length > 0 && CLOSE.test(lines[lines.length - 1].trim())) lines.pop();
+  const code = lines.join("\n").trim().replace(/^`([^`]+)`$/, "$1");
+  return code === "" ? null : code;
 }
