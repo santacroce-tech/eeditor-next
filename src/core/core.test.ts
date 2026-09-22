@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { fuzzyMatch, rankFiles, resolveWikiLink } from "./fuzzy";
 import { extractTags, tagCounts } from "./tags";
 import { monthGrid, countByDate } from "./calendar";
-import { eelispBlockAt } from "./blocks";
+import { codeToRun, eelispBlockAt } from "./blocks";
 import { searchFiles } from "./search";
 import { wikiLinkAt, wikiLinkTargets } from "./wikilink";
 import { backlinksTo } from "./backlinks";
@@ -98,6 +98,33 @@ describe("eelisp code blocks", () => {
   it("returns null outside a block", () => {
     expect(eelispBlockAt(doc, at("# Notes"))).toBeNull();
     expect(eelispBlockAt(doc, at("after"))).toBeNull();
+  });
+});
+
+describe("code to run from the editor", () => {
+  const doc = ["Total: `(+ 1 2)` here", "", "```eelisp", "(+ 1 2)", "(* 3 4)", "```", "", "(str \"a\" \"b\")"].join(
+    "\n",
+  );
+  const span = (needle: string): [number, number] => [doc.indexOf(needle), doc.indexOf(needle) + needle.length];
+
+  it("runs the selection, anywhere in the note", () => {
+    expect(codeToRun(doc, ...span('(str "a" "b")'))).toBe('(str "a" "b")');
+    expect(codeToRun(doc, ...span("(* 3 4)"))).toBe("(* 3 4)"); // one line of a block
+    const [from, to] = span('(str "a" "b")');
+    expect(codeToRun(doc, to, from)).toBe('(str "a" "b")'); // selected backwards
+  });
+
+  it("drops the markdown around a selection", () => {
+    expect(codeToRun(doc, ...span("`(+ 1 2)`"))).toBe("(+ 1 2)");
+    expect(codeToRun(doc, ...span("```eelisp\n(+ 1 2)\n(* 3 4)\n```"))).toBe("(+ 1 2)\n(* 3 4)");
+  });
+
+  it("falls back to the block at the caret without a selection", () => {
+    const caret = doc.indexOf("(* 3 4)");
+    expect(codeToRun(doc, caret, caret)).toBe("(+ 1 2)\n(* 3 4)");
+    expect(codeToRun(doc, 0, 0)).toBeNull();
+    const blank = doc.indexOf("\n\n(str");
+    expect(codeToRun(doc, blank, blank + 2)).toBeNull(); // only whitespace selected, outside a block
   });
 });
 
