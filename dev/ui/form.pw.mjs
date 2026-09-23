@@ -241,3 +241,38 @@ test("a sheet control shows a live grid over a .eesheet beside the form", async 
   await expect.poll(() => page.$$eval(".formrun-ctl[data-name=sht1] .sheet-cell", (els) => els.map((e) => e.textContent))).toEqual(["hello", "42"]);
   await page.locator(".formrun-stop").click();
 });
+
+test("the datagrid: pages, a filter box, sorting by a header; and the menu bar", async ({ page }) => {
+  await page.goto("/");
+  // six more contacts straight into the table, so the grid has more than a page
+  await page.locator(".repl-input").fill('(for-each n (range 1 7) (insert contacts {:name (str "Person " n) :age (* n 10)}))');
+  await page.locator(".repl-input").press(`${MOD}+Enter`);
+  await expect(page.locator(".repl-scrollback .repl-result").last()).toBeVisible();
+  await openContacts(page);
+  await page.locator(".form-modes .head-btn", { hasText: "run" }).click();
+  await page.waitForSelector(".formrun-host .formrun-canvas");
+  const grid = page.locator(".formrun-host .formrun-ctl[data-name=grdAll]");
+  await expect(grid.locator("tbody tr")).toHaveCount(5);
+  await expect(grid.locator(".formrun-pageno")).toHaveText("1 / 2");
+  await expect(grid.locator(".formrun-rowcount")).toHaveText("8 rows");
+  await grid.locator(".formrun-pagebtn", { hasText: "›" }).click();
+  await expect(grid.locator("tbody tr")).toHaveCount(3);
+  await expect(grid.locator(".formrun-pageno")).toHaveText("2 / 2");
+  // the filter narrows what is paged
+  await grid.locator(".formrun-filter").fill("person 3");
+  await expect(grid.locator("tbody tr")).toHaveCount(1);
+  await expect(grid.locator("tbody td").first()).toHaveText("Person 3");
+  await grid.locator(".formrun-filter").fill("");
+  // sort by age, then the other way
+  await grid.locator("th", { hasText: "age" }).click();
+  await expect(grid.locator("tbody tr").first().locator("td").nth(1)).toHaveText("10");
+  await grid.locator("th", { hasText: "age" }).click();
+  await expect(grid.locator("tbody tr").first().locator("td").nth(1)).toHaveText("85");
+  // the menu bar: an item runs its handler
+  await page.locator(".formrun-host .formrun-menu", { hasText: "Help" }).click();
+  await page.locator(".formrun-host .formrun-menuitem", { hasText: "About" }).click();
+  await expect(page.locator(".toast").last()).toContainText("an EEditor form");
+  await page.locator(".formrun-host .formrun-menu", { hasText: "Contacts" }).click();
+  await page.locator(".formrun-host .formrun-menuitem", { hasText: "Close" }).click();
+  await expect(page.locator(".form-modes .head-btn.active")).toHaveText("design");
+});

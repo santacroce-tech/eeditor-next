@@ -18,10 +18,12 @@ import {
   MIN_CONTROL,
   MIN_FORM,
   handlerName,
+  menuText,
   newControl,
   nextName,
   onOpenPage,
   openPages,
+  parseMenuText,
   readFormSpec,
   snap,
   validName,
@@ -97,10 +99,11 @@ export function createFormDesigner(opts: FormDesignerOptions): FormDesigner {
   stage.tabIndex = 0;
   const window_ = el("div", "fd-window");
   const titleBar = el("div", "fd-title");
+  const menuBar = el("div", "fd-menubar");
   const canvas = el("div", "fd-canvas");
   const formHandle = el("div", "fd-formhandle");
   formHandle.title = "Drag to resize the form";
-  window_.append(titleBar, canvas, formHandle);
+  window_.append(titleBar, menuBar, canvas, formHandle);
   stage.append(window_);
   const status = el("div", "fd-status");
   status.style.display = "none";
@@ -112,7 +115,7 @@ export function createFormDesigner(opts: FormDesignerOptions): FormDesigner {
   main.append(stage, status);
   root.append(toolbox, main, props);
 
-  let spec: FormSpec = { title: "", w: 480, h: 360, controls: [], extra: [] };
+  let spec: FormSpec = { title: "", w: 480, h: 360, menu: [], controls: [], extra: [] };
   /** Selected names, in the order they were picked. The last is the reference. */
   let selection: string[] = [];
   let tool: ControlType | "select" = "select";
@@ -251,6 +254,8 @@ export function createFormDesigner(opts: FormDesignerOptions): FormDesigner {
 
   function draw(): void {
     titleBar.textContent = spec.title || "Form";
+    menuBar.replaceChildren(...spec.menu.map((m) => el("span", "fd-menu", m.title)));
+    menuBar.style.display = spec.menu.length ? "" : "none";
     canvas.style.width = `${spec.w}px`;
     canvas.style.height = `${spec.h}px`;
     canvas.replaceChildren();
@@ -375,7 +380,16 @@ export function createFormDesigner(opts: FormDesignerOptions): FormDesigner {
       field("Height", numberInput(spec.h, (v) => ((spec.h = clamp(snap(v), MIN_FORM, MAX_FORM)), commit()))),
       el("div", "fd-props-sub", "Events"),
       eventRow("load", spec.onLoad ?? "", null, (fn) => ((spec.onLoad = fn || undefined), commit())),
+      el("div", "fd-props-sub", "Menu"),
     );
+    const menu = el("textarea", "fd-input fd-items fd-menutext");
+    menu.value = menuText(spec.menu);
+    menu.rows = Math.min(10, Math.max(3, menu.value.split("\n").length + 1));
+    menu.placeholder = "File\n  New = new-item\n  -\n  Quit = quit";
+    menu.title = "A title on its own line; its items indented as label = handler; - for a separator";
+    menu.addEventListener("change", () => ((spec.menu = parseMenuText(menu.value)), commit()));
+    menu.addEventListener("keydown", (e) => e.stopPropagation());
+    props.append(menu);
     const hint = el("div", "fd-hint");
     hint.textContent = spec.controls.length
       ? "Click a control to edit it; ⇧-click or drag a box to select several. Drag to move, pull a handle to resize, arrows nudge, Delete removes, ⌘D duplicates, ⌘C/⌘V copy and paste, double-click opens its handler."

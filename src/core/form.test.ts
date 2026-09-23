@@ -7,12 +7,14 @@ import {
   humanName,
   layoutRange,
   lispLiteral,
+  menuText,
   newControl,
   newFormSource,
   nextName,
   onOpenPage,
   openPages,
   parseFormSpec,
+  parseMenuText,
   printFormSpec,
   printSx,
   readAll,
@@ -143,6 +145,11 @@ describe("the layout", () => {
     expect(sheeted.controls[0].props).toEqual({ file: "Budget" });
     expect(sheeted.controls[1].props).toEqual({ pages: ["A"], value: "A" });
     expect(nextName("sheet", [])).toBe("sht1");
+    const [dg] = readAll('(form (grid g :sortable true :filter true :page-size 25 :at (0 0)) (sheet s :file "x" :toolbar false :at (0 0)))');
+    const dgs = parseFormSpec(dg) as FormSpec;
+    expect(dgs.controls[0].props).toEqual({ sortable: true, filter: true, "page-size": 25 });
+    expect(dgs.controls[1].props).toEqual({ file: "x", toolbar: false });
+    expect(printFormSpec(dgs)).toContain(":page-size 25");
     expect(readFormSpec(printFormSpec(spec))).toMatchObject({ spec });
     expect(nextName("radio", [])).toBe("opt1");
     expect(nextName("date", ["dtp1"])).toBe("dtp2");
@@ -174,6 +181,22 @@ describe("splicing the layout back", () => {
   it("starts a new file with a comment and an empty layout", () => {
     const src = newFormSource("Orders");
     expect(readFormSpec(src)).toMatchObject({ spec: { title: "Orders", controls: [] } });
+  });
+});
+
+describe("menus", () => {
+  it("reads :menu, prints it back, and round-trips through the text a person types", () => {
+    const [x] = readAll('(form "T" :size (1 1) :menu (("File" ("New" new-item) ("-") ("Quit" quit)) ("Help" ("About"))))');
+    const spec = parseFormSpec(x) as FormSpec;
+    expect(spec.menu).toEqual([
+      { title: "File", items: [{ label: "New", handler: "new-item" }, { label: "-" }, { label: "Quit", handler: "quit" }] },
+      { title: "Help", items: [{ label: "About", handler: undefined }] },
+    ]);
+    expect(printFormSpec(spec)).toContain(':menu (("File" ("New" new-item) ("-") ("Quit" quit)) ("Help" ("About")))');
+    const text = menuText(spec.menu);
+    expect(text).toBe("File\n  New = new-item\n  -\n  Quit = quit\nHelp\n  About");
+    expect(parseMenuText(text)).toEqual(spec.menu);
+    expect(parseMenuText("")).toEqual([]);
   });
 });
 

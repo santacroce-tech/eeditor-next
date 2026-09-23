@@ -405,7 +405,10 @@ export const CONTROLS: Record<ControlType, ControlDef> = {
     prefix: "sht",
     w: 400,
     h: 240,
-    props: [{ key: "file", kind: "text", label: "Sheet file", default: "" }],
+    props: [
+      { key: "file", kind: "text", label: "Sheet file", default: "" },
+      { key: "toolbar", kind: "bool", label: "Toolbar and formula bar", default: true },
+    ],
     events: [],
     initial: {},
   },
@@ -426,6 +429,9 @@ export const CONTROLS: Record<ControlType, ControlDef> = {
     props: [
       { key: "columns", kind: "items", label: "Columns", default: [] },
       { key: "editable", kind: "bool", label: "Editable cells", default: false },
+      { key: "sortable", kind: "bool", label: "Sort by header", default: false },
+      { key: "filter", kind: "bool", label: "Filter box", default: false },
+      { key: "page-size", kind: "number", label: "Rows per page", default: 0 },
     ],
     events: ["change", "dblclick", "edit"],
     initial: { columns: [] },
@@ -450,13 +456,81 @@ export interface Control {
   extra: [string, Sx][];
 }
 
+/** One entry of a menu: a label and the handler it runs, or a separator (label "-"). */
+export interface MenuItem {
+  label: string;
+  handler?: string;
+}
+export interface Menu {
+  title: string;
+  items: MenuItem[];
+}
+
 export interface FormSpec {
   title: string;
   w: number;
   h: number;
   onLoad?: string;
+  /** `:menu (("File" ("New" new-item) ("-") ("Quit" quit)) …)` — a menu bar under the title. */
+  menu: Menu[];
   controls: Control[];
   extra: [string, Sx][];
+}
+
+/** `:menu` as data ⇄ Menu[]. Anything malformed is skipped rather than refused. */
+export function parseMenu(x: Sx): Menu[] {
+  if (x.t !== "list") return [];
+  const out: Menu[] = [];
+  for (const m of x.v) {
+    if (m.t !== "list" || m.v.length === 0 || m.v[0].t !== "str") continue;
+    const items: MenuItem[] = [];
+    for (const it of m.v.slice(1)) {
+      if (it.t !== "list" || it.v.length === 0 || it.v[0].t !== "str") continue;
+      const handler = it.v[1] ? fnName(it.v[1]) : undefined;
+      items.push(it.v[0].v === "-" ? { label: "-" } : { label: it.v[0].v, handler });
+    }
+    out.push({ title: m.v[0].v, items });
+  }
+  return out;
+}
+
+export function menuSx(menu: Menu[]): Sx {
+  return list(...menu.map((m) => list(str(m.title), ...m.items.map((it) => (it.label === "-" ? list(str("-")) : list(str(it.label), ...(it.handler ? [sym(it.handler)] : [])))))));
+}
+
+/**
+ * The menu as a person types it in the properties panel — a title on its own line, its items
+ * indented as `label = handler`, `-` for a separator:
+ *
+ *   File
+ *     New = new-item
+ *     -
+ *     Quit = quit
+ */
+export function menuText(menu: Menu[]): string {
+  return menu.map((m) => [m.title, ...m.items.map((it) => (it.label === "-" ? "  -" : `  ${it.label}${it.handler ? " = " + it.handler : ""}`))].join("\n")).join("\n");
+}
+
+export function parseMenuText(text: string): Menu[] {
+  const out: Menu[] = [];
+  for (const raw of text.split("\n")) {
+    if (!raw.trim()) continue;
+    const indented = /^\s/.test(raw);
+    const line = raw.trim();
+    if (!indented || out.length === 0) {
+      out.push({ title: line, items: [] });
+      continue;
+    }
+    const menu = out[out.length - 1];
+    if (line === "-") {
+      menu.items.push({ label: "-" });
+      continue;
+    }
+    const eq = line.indexOf("=");
+    if (eq < 0) menu.items.push({ label: line });
+    else menu.items.push({ label: line.slice(0, eq).trim(), handler: line.slice(eq + 1).trim() || undefined });
+  }
+  return out;
 }
 
 export const DEFAULT_FORM_SIZE = { w: 480, h: 360 };
@@ -465,7 +539,7 @@ export const MIN_FORM = 120;
 export const MAX_FORM = 4000;
 
 export function emptyForm(title: string): FormSpec {
-  return { title, ...DEFAULT_FORM_SIZE, controls: [], extra: [] };
+  return { title, ...DEFAULT_FORM_SIZE, menu: [], controls: [], extra: [] };
 }
 
 /** What a new file holds: a comment saying whose the two halves are, then an empty layout. */
@@ -555,7 +629,7 @@ function parseControl(x: Sx): Control | string {
 /** Read a `(form …)` s-expression. Forgiving: unknown properties are kept, defaults filled in. */
 export function parseFormSpec(x: Sx): FormSpec | { error: string } {
   if (x.t !== "list" || x.v.length === 0 || x.v[0].t !== "sym" || x.v[0].v !== "form") return { error: "not a (form …)" };
-  const spec: FormSpec = { title: "", ...DEFAULT_FORM_SIZE, controls: [], extra: [] };
+  const spec: FormSpec = { title: "", ...DEFAULT_FORM_SIZE, menu: [], controls: [], extra: [] };
   let from = 1;
   if (x.v[1]?.t === "str") {
     spec.title = x.v[1].v;
@@ -567,6 +641,7 @@ export function parseFormSpec(x: Sx): FormSpec | { error: string } {
     if (size) [spec.w, spec.h] = size;
     else if (k === "title" && v.t === "str") spec.title = v.v;
     else if (k === "on-load" && fnName(v) !== undefined) spec.onLoad = fnName(v);
+    else if (k === "menu") spec.menu = parseMenu(v);
     else spec.extra.push([k, v]);
   }
   for (const item of rest) {
@@ -621,6 +696,7 @@ function controlSx(c: Control): Sx {
 export function printFormSpec(spec: FormSpec): string {
   const head: Sx[] = [sym("form"), str(spec.title), kw("size"), list(num(spec.w), num(spec.h))];
   if (spec.onLoad) head.push(kw("on-load"), sym(spec.onLoad));
+  if (spec.menu.length) head.push(kw("menu"), menuSx(spec.menu));
   for (const [k, v] of spec.extra) head.push(kw(k), v);
   const lines = [printSx(list(...head)).slice(0, -1), ...spec.controls.map((c) => "  " + printSx(controlSx(c)))];
   return lines.join("\n") + ")";

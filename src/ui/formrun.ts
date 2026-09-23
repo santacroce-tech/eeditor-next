@@ -115,8 +115,60 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
   stop.title = opts.windowed ? "Close the form" : "Stop the form and go back to the designer";
   stop.addEventListener("click", () => opts.onClose());
   buttons.append(stop);
+  const menuBar = el("div", "formrun-menubar");
   const canvas = el("div", "formrun-canvas");
-  window_.append(title, canvas);
+  window_.append(title, menuBar, canvas);
+
+  /** The menu bar: a button per menu, a dropdown of its items; one open at a time, closed by a click elsewhere or Escape. */
+  function drawMenu(spec: FormSpec): void {
+    menuBar.replaceChildren();
+    menuBar.style.display = spec.menu.length ? "" : "none";
+    let openList: HTMLElement | null = null;
+    const closeMenu = () => {
+      openList?.remove();
+      openList = null;
+      document.removeEventListener("pointerdown", onOutside, true);
+      document.removeEventListener("keydown", onEscape, true);
+      for (const b of menuBar.querySelectorAll(".formrun-menu")) b.classList.remove("open");
+    };
+    const onOutside = (e: Event) => {
+      if (!(e.target as HTMLElement).closest(".formrun-menulist, .formrun-menu")) closeMenu();
+    };
+    const onEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeMenu();
+    };
+    for (const m of spec.menu) {
+      const b = el("button", "formrun-menu", m.title);
+      b.type = "button";
+      b.addEventListener("click", () => {
+        const wasOpen = b.classList.contains("open");
+        closeMenu();
+        if (wasOpen) return;
+        b.classList.add("open");
+        const list = el("div", "formrun-menulist");
+        for (const it of m.items) {
+          if (it.label === "-") {
+            list.append(el("div", "formrun-menusep"));
+            continue;
+          }
+          const item = el("button", "formrun-menuitem", it.label);
+          item.type = "button";
+          if (!it.handler) item.disabled = true;
+          item.addEventListener("click", () => {
+            closeMenu();
+            void fire(it.handler);
+          });
+          list.append(item);
+        }
+        list.style.left = `${b.offsetLeft}px`;
+        menuBar.append(list);
+        openList = list;
+        document.addEventListener("pointerdown", onOutside, true);
+        document.addEventListener("keydown", onEscape, true);
+      });
+      menuBar.append(b);
+    }
+  }
   stage.append(window_);
   root.append(stage);
 
@@ -127,7 +179,7 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
     for (const s of sheets) s.destroy();
     sheets = [];
   };
-  let current: FormSpec = { title: "", w: 0, h: 0, controls: [], extra: [] };
+  let current: FormSpec = { title: "", w: 0, h: 0, menu: [], controls: [], extra: [] };
   /** Which page each tabs control has open. */
   const openPage = new Map<string, string>();
   /** Show the controls on open pages, hide the rest — `:visible false` still wins. */
@@ -415,6 +467,7 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
           box.append(view.el);
           void view.load().catch((e) => opts.onError(`${c.name}: ${e instanceof Error ? e.message : String(e)}`));
         };
+        if (p.toolbar === false) box.classList.add("plain");
         show();
         out = {
           spec: c,
@@ -566,6 +619,37 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
         let rows: Row[] = [];
         let selected: Row | null = null;
         const editable = p.editable === true;
+        // A datagrid: sort by a header, a filter box, pages — over the rows it was given.
+        const sortable = p.sortable === true;
+        const pageSize = Math.max(0, Math.floor(Number(p["page-size"]) || 0));
+        let sortCol: string | null = null;
+        let sortDir: 1 | -1 = 1;
+        let filterText = "";
+        let pageIndex = 0;
+        const filterBox = el("input", "formrun-filter");
+        filterBox.placeholder = "filter…";
+        filterBox.addEventListener("input", () => {
+          filterText = filterBox.value.trim().toLowerCase();
+          pageIndex = 0;
+          draw();
+        });
+        filterBox.addEventListener("keydown", (e) => e.stopPropagation());
+        const pager = el("div", "formrun-pager");
+        /** The rows as they read now: filtered, then sorted. */
+        const shown = (): Row[] => {
+          let out = rows;
+          if (filterText) out = out.filter((r) => Object.entries(r).some(([k, v]) => k !== "id" && asText(v as JsonValue).toLowerCase().includes(filterText)));
+          if (sortCol) {
+            const col = sortCol;
+            out = [...out].sort((a, b) => {
+              const x = a[col];
+              const y = b[col];
+              const cmp = typeof x === "number" && typeof y === "number" ? x - y : asText(x as JsonValue).localeCompare(asText(y as JsonValue), undefined, { numeric: true });
+              return cmp * sortDir;
+            });
+          }
+          return out;
+        };
         /** Double-click on a cell of an :editable grid: type into it; Enter or leaving keeps it, Escape doesn't. */
         const editCell = (td: HTMLElement, r: Row, col: string) => {
           const was = r[col];
@@ -599,10 +683,38 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
           const cols = columns.length ? columns : rows.length ? Object.keys(rows[0]).filter((k) => k !== "id") : [];
           const thead = el("thead");
           const htr = el("tr");
-          for (const col of cols) htr.append(el("th", undefined, col));
+          for (const col of cols) {
+            const th = el("th", sortable ? "sortable" : undefined, col + (sortCol === col ? (sortDir > 0 ? " ▲" : " ▼") : ""));
+            if (sortable) {
+              th.addEventListener("click", () => {
+                if (sortCol === col) sortDir = sortDir > 0 ? -1 : 1;
+                else {
+                  sortCol = col;
+                  sortDir = 1;
+                }
+                draw();
+              });
+            }
+            htr.append(th);
+          }
           thead.append(htr);
           const tbody = el("tbody");
-          for (const r of rows) {
+          const all = shown();
+          const pages = pageSize > 0 ? Math.max(1, Math.ceil(all.length / pageSize)) : 1;
+          pageIndex = Math.min(pageIndex, pages - 1);
+          const visible = pageSize > 0 ? all.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize) : all;
+          if (pageSize > 0) {
+            const prev = el("button", "formrun-pagebtn", "‹");
+            prev.type = "button";
+            prev.disabled = pageIndex === 0;
+            prev.addEventListener("click", () => ((pageIndex = Math.max(0, pageIndex - 1)), draw()));
+            const next = el("button", "formrun-pagebtn", "›");
+            next.type = "button";
+            next.disabled = pageIndex >= pages - 1;
+            next.addEventListener("click", () => ((pageIndex = Math.min(pages - 1, pageIndex + 1)), draw()));
+            pager.replaceChildren(prev, el("span", "formrun-pageno", `${pageIndex + 1} / ${pages}`), next, el("span", "formrun-rowcount", `${all.length} row${all.length === 1 ? "" : "s"}`));
+          }
+          for (const r of visible) {
             const tr = el("tr", r === selected ? "selected" : undefined);
             for (const col of cols) {
               const td = el("td", undefined, asText(r[col] as JsonValue));
@@ -621,7 +733,10 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
           table.replaceChildren(thead, tbody);
         };
         draw();
+        box.classList.add("datagrid");
+        if (p.filter === true) box.append(filterBox);
         box.append(scroll);
+        if (pageSize > 0) box.append(pager);
         out = {
           spec: c,
           box,
@@ -632,14 +747,22 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
               rows = got.rows;
               if (columns.length === 0 && got.columns) columns = got.columns;
               selected = null;
+              pageIndex = 0;
             } else if (k === "columns") columns = asItems(v);
             else if (k === "value") {
               const id = typeof v === "number" ? v : v && typeof v === "object" && "id" in v ? (v as { id: number }).id : null;
               selected = rows.find((r) => r.id === id) ?? null;
+              // bring its page into view
+              const at = selected ? shown().indexOf(selected) : -1;
+              if (at >= 0 && pageSize > 0) pageIndex = Math.floor(at / pageSize);
+            } else if (k === "filter") {
+              filterBox.value = asText(v);
+              filterText = filterBox.value.trim().toLowerCase();
+              pageIndex = 0;
             }
             draw();
           },
-          focus: () => scroll.focus(),
+          focus: () => (p.filter === true ? filterBox : scroll).focus(),
         };
         break;
       }
@@ -658,6 +781,7 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
       current = spec;
       openPage.clear();
       title.replaceChildren(el("span", "formrun-name", spec.title || "Form"), buttons);
+      drawMenu(spec);
       canvas.style.width = `${spec.w}px`;
       canvas.style.height = `${spec.h}px`;
       canvas.replaceChildren();

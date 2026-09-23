@@ -5,7 +5,7 @@
 ;; workspace's database, the same one the REPL sees — try (browse contacts) there). Click a row in
 ;; the grid to load it back into the boxes.
 
-(form "Contacts" :size (480 400) :on-load load-contacts
+(form "Contacts" :size (480 400) :on-load load-contacts :menu (("Contacts" ("Reload" load-contacts) ("-") ("Close" close-form)) ("Help" ("About" about)))
   (label lblName :text "Name" :at (16 20) :size (72 24))
   (textbox txtName :placeholder "Ada Lovelace" :required true :at (96 16) :size (240 28))
   (label lblAge :text "Age" :at (16 56) :size (72 24))
@@ -13,7 +13,7 @@
   (button btnSave :text "Save" :submit true :default true :at (96 96) :size (88 30) :on-click save-contact :on-validate check-contact)
   (button btnDelete :text "Delete" :at (192 96) :size (88 30) :on-click delete-contact)
   (label lblStatus :at (296 100) :size (168 24))
-  (grid grdAll :columns ("name" "age") :editable true :at (16 144) :size (448 232) :on-change pick-contact :on-edit save-edit))
+  (grid grdAll :columns ("name" "age") :editable true :sortable true :filter true :page-size 5 :at (16 144) :size (448 232) :on-change pick-contact :on-edit save-edit))
 
 (deftable contacts (name:string age:number))
 
@@ -66,3 +66,7 @@
         (ui-set "txtAge" :value (dict-get row "age"))
         (ui-set "lblStatus" :text ""))
       nil)))
+
+;; The menu bar's items are handlers like any other.
+(defn close-form (f) (ui-close))
+(defn about (f) (ui-message "Contacts — an EEditor form over the contacts table"))

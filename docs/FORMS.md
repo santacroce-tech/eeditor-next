@@ -73,11 +73,19 @@ with no dependency on the rest of the app beyond the engine client, so they coul
 to the handler; `:min`, `:max`, `:pattern`), `button` (`:submit`, `:default` — Enter in a box
 presses it, `:cancel` — Escape does), `checkbox`, `radio` (`:items`, one chosen), `dropdown`
 (`:items`), `listbox` (`:items`), `grid` (`:columns`, `:rows`; `:editable` — double-click a cell to
-type into it, and `:on-edit` gets the row as edited), `date` (`:value` as `yyyy-mm-dd`;
+type into it, and `:on-edit` gets the row as edited; `:sortable` — click a header; `:filter` — a
+box that narrows the rows to those containing the text; `:page-size` — pages, with ‹ › and a
+row count), `date` (`:value` as `yyyy-mm-dd`;
 `:min`, `:max`), `image` (`:src`, a path beside the form like a note's `![](assets/x.png)`), `timer`
 (`:interval` ms; nothing to see, fires `:on-tick` while enabled), `tabs` (`:pages`, `:value` the
-open one), `sheet` (`:file`, a `.eesheet` beside the form — the live grid, with its formula bar;
-handlers read and write its cells with `(sheet-get …)` / `(sheet-set …)`, and the grid follows).
+open one), `sheet` (`:file`, a `.eesheet` beside the form — the live grid, with its formula bar
+unless `:toolbar false`; handlers read and write its cells with `(sheet-get …)` / `(sheet-set …)`,
+and the grid follows).
+
+**The menu bar.** `(form … :menu (("File" ("New" new-item) ("-") ("Quit" quit)) ("Help" ("About"
+about))))` puts menus under the title; an item names the handler it runs, `"-"` is a separator, an
+item without a handler is greyed. In the designer the form's properties have a *Menu* box that takes
+the same thing as text: a title on its own line, its items indented as `label = handler`.
 
 **Pages.** A `tabs` control lists its `:pages`; any control with `:page "Details"` belongs to that
 page and shows only while it is open. Controls stay flat in the file with their own `:at`, so the
@@ -102,7 +110,7 @@ timer), `:on-load` (the form).
 | | |
 |---|---|
 | `(ui-get f "txtName")` | A control's value: text, a bool, the chosen item, the selected row (a dict) — or nil. |
-| `(ui-set "ctl" :prop v)` | Queue a change: `:value`, `:text`, `:items`, `:rows` (a result-set, records or dicts), `:columns`, `:src`, `:interval`, `:enabled`, `:visible`. |
+| `(ui-set "ctl" :prop v)` | Queue a change: `:value`, `:text`, `:items`, `:rows` (a result-set, records or dicts), `:columns`, `:filter`, `:src`, `:file`, `:interval`, `:pages`, `:enabled`, `:visible`. |
 | `(ui-message "…")` | A toast. |
 | `(ui-focus "ctl")` | Put the caret there. |
 | `(ui-close)` | Back to *Design*. |
@@ -186,10 +194,12 @@ the active form tab's mode.
 
 ## Later
 
-Export as a standalone page, a menu bar, printing a form.
+Export as a standalone page — which needs the engine in the browser, i.e. eelisp-rs compiled to
+WebAssembly, a project of its own; until then a form runs where the engine runs.
 
 *Done since v1:* multi-select with marquee, align/size/spread, copy/paste of controls, radio groups
 and dates, number boxes, `:required` + `:submit`, Tab order, `(ed-form …)` from a keybinding and
 the REPL, forms in floating windows that come back where they were left, `:min`/`:max`/`:pattern`
 and `:on-validate`, image and timer controls, `:default`/`:cancel` buttons, `:on-dblclick`,
-editable grid cells, tabs and `:page`, an embedded sheet.
+editable grid cells, tabs and `:page`, an embedded sheet, the datagrid (sort, filter, pages), the
+menu bar.
