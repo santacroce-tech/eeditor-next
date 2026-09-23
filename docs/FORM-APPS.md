@@ -5,7 +5,7 @@ variables with them, and **a runtime** that runs a set of forms as a program on 
 the editor around it. The first is what makes several `.eeform`s one application; the second is how
 that application reaches someone who doesn't use EEditor.
 
-Status: plan. Nothing here is built yet.
+Status: plan, decisions taken (see *Decided* at the end). Nothing here is built yet.
 
 ```
  ┌ Shop ─────────────────────────────────────────────────────────┐
@@ -37,7 +37,7 @@ A form with `:main true`. It is an ordinary form — controls, a menu, handlers 
       :menu (("Go" ("Books" go-books) ("Orders" go-orders) ("-") ("Quit" quit)))
   (listbox lstNav :items ("Books" "Orders" "Tables" "Agenda") :at (8 8) :size (160 400) :on-change go)
   (label lblCart :at (8 420) :size (160 24))
-  (frame frmBody :mode "tabs" :at (176 8) :size (776 624)))
+  (frame frmBody :at (176 8) :size (776 624)))       ;; :mode "screens", the default
 
 (public cart '())                          ;; shared with every form Shop opens
 (public user "ana" :persist true)          ;; …and kept across runs
@@ -49,7 +49,7 @@ A form with `:main true`. It is an ordinary form — controls, a menu, handlers 
 
 | Property | |
 |---|---|
-| `:mode` | `"single"` — one child at a time, a new one replaces the last (the menu-driven app); `"tabs"` — each child a tab across the top of the frame; `"windows"` — children as small windows that stay inside the frame (true MDI: cascade, tile). |
+| `:mode` | `"screens"` (the default) — the dBASE way: one screen fills the frame at a time, picked from the menu, but opening another doesn't close the last. Every screen opened stays alive with what was typed in it; a **Window** menu, added to the bar automatically, lists them, ⌃Tab cycles, and `(ui-close)` in a screen goes back to the one before it. Opening a form that is already open brings its screen forward rather than a second copy (`:new true` on `ui-open` asks for one). `"tabs"` — the same, with the screens as tabs across the top of the frame. `"windows"` — children as small windows that stay inside the frame (true MDI: cascade, tile). |
 | `:value` | the name of the child showing (read with `ui-get`; set with `ui-set` to bring one forward) |
 | `:on-change` | fires when the child showing changes |
 
@@ -71,7 +71,7 @@ what they mean:
 | Scope | Declared with | Lives | Seen by |
 |---|---|---|---|
 | **local** | `(local pos 0)` | one open form — a second copy of Books has its own | that form's handlers |
-| **public** | `(public cart '())` in the main form | while the main form runs; `:persist true` keeps it in the database between runs | the main form and every form it opened |
+| **public** | `(public cart '())` in the main form | while the main form runs; `:persist true` keeps it between runs, once per app — in the app's own database, so everyone using the same copy (or the same served app) sees one value | the main form and every form it opened |
 | **global** | `(def x …)`, as now | the engine | everything, the REPL included |
 
 Read and write them with the same two functions whatever the scope — the nearest one wins, local
@@ -149,7 +149,7 @@ main form filling the window. This is the VB-runtime / Access-runtime model.
 - What a runtime refuses: editor commands (`ed-*` do nothing — there is no editor), reading or
   writing files outside the bundle and its data folder, `ui-open` of a form outside the bundle.
 
-**2. Served to a browser — cheap once 1 exists.** `eelisp serve-app Shop.eeapp --port 8080`: the
+**2. Served to a browser — built alongside 1.** `eelisp serve-app Shop.eeapp --port 8080`: the
 engine serves the runtime page and answers its calls over HTTP, which is what the dev bridge does
 today for the whole editor. One engine per connection, or one shared engine with a lock; a small
 office's shared order book is the case it fits. Needs a login before it faces a network.
@@ -186,17 +186,18 @@ own; one app can't read another's database.
 | **A2** | The `frame` control, `(ui-open … :in …)`, the three modes, `:on-close` | A1 |
 | **A3** | `:main`, menu merge, **Shop.eeform** example; *Run app* runs the main form filling the pane | A2 |
 | **B1** | The `.eeapp` format, `app.eelisp`, *Export app…* | A3 |
-| **B2** | EEditor Runtime (Tauri, desktop), opens `.eeapp` | B1 |
+| **B1½** | The runtime page — `runtime.html`/`runtime.ts`, the renderer and a main form filling the window, over a small host interface (read a bundle file, call the engine) | B1 |
+| **B2** | EEditor Runtime (Tauri, desktop): the runtime page over the native engine; opens `.eeapp` | B1½ |
 | **B3** | *Export → macOS app* (runtime + bundle, one `.app`) | B2 |
-| **B4** | `eelisp serve-app` | B2 |
+| **B4** | `eelisp serve-app`: the same runtime page over HTTP | B1½ — in parallel with B2 |
 | **W0** | WebAssembly spike (engine + SQLite in the browser) | — (can run in parallel) |
 | **W1** | Single-file HTML export | W0, B1 |
 
-## Open questions
+## Decided
 
-- **Public variables that persist**: per app, or per app *and* per user (a shared database served
-  in B4 would need the second)?
-- **The frame's default mode**: `"single"` (menu swaps screens — the classic dBASE/Clipper main menu)
-  or `"tabs"`?
-- **Which standalone matters first** — handing someone a desktop app (B2/B3), or opening it in a
-  browser (B4, then W1)?
+- **Persisted public variables are per app** — stored in the app's database under the app's name,
+  not per user. A served app (B4) therefore shares them between everyone using it.
+- **The frame works the dBASE way, with several screens**: `:mode "screens"` is the default — one
+  screen at a time from the menu, but the others stay open and a Window menu switches between them.
+- **Both standalones**: the desktop runtime (B2) and the served app (B4) are built together on one
+  runtime page (B1½); the WebAssembly spike (W0) can start at any time.
