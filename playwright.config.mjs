@@ -5,13 +5,12 @@
 
 import { defineConfig } from "@playwright/test";
 
-/** A workspace of its own, wiped before each run (dev/ui/setup.mjs). */
+/** A workspace of its own, wiped before each run (dev/ui/setup.mjs, run ahead of the bridge). */
 export const UI_WORKSPACE = ".ui-workspace";
 
 export default defineConfig({
   testDir: "dev/ui",
   testMatch: "**/*.pw.mjs",
-  globalSetup: "./dev/ui/setup.mjs",
   fullyParallel: false,
   workers: 1,
   timeout: 30_000,
@@ -19,7 +18,7 @@ export default defineConfig({
   use: { baseURL: "http://localhost:5173", trace: process.env.CI ? "retain-on-failure" : "off" },
   webServer: [
     {
-      command: "node dev/bridge.mjs",
+      command: "node dev/ui/setup.mjs && node dev/bridge.mjs",
       port: 8787,
       env: { WORKSPACE_ROOT: UI_WORKSPACE },
       stdout: "pipe",
