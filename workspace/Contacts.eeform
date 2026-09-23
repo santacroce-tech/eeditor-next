@@ -1,0 +1,68 @@
+;; Contacts.eeform — an EEditor form over a table. The (form …) below is the layout the designer
+;; writes; everything after it is yours: the table, and the handlers the events name.
+;;
+;; Press ▶ run. Type a name and an age, press Save: the row lands in the contacts table (the
+;; workspace's database, the same one the REPL sees — try (browse contacts) there). Click a row in
+;; the grid to load it back into the boxes.
+
+(form "Contacts" :size (480 400) :on-load load-contacts
+  (label lblName :text "Name" :at (16 20) :size (72 24))
+  (textbox txtName :placeholder "Ada Lovelace" :required true :at (96 16) :size (240 28))
+  (label lblAge :text "Age" :at (16 56) :size (72 24))
+  (textbox txtAge :number true :min 0 :max 150 :at (96 52) :size (80 28))
+  (button btnSave :text "Save" :submit true :default true :at (96 96) :size (88 30) :on-click save-contact :on-validate check-contact)
+  (button btnDelete :text "Delete" :at (192 96) :size (88 30) :on-click delete-contact)
+  (label lblStatus :at (296 100) :size (168 24))
+  (grid grdAll :columns ("name" "age") :editable true :at (16 144) :size (448 232) :on-change pick-contact :on-edit save-edit))
+
+(deftable contacts (name:string age:number))
+
+;; The whole table into the grid, and the boxes cleared.
+(defn load-contacts (f)
+  (ui-set "grdAll" :rows (query contacts :order "name"))
+  (ui-set "txtName" :value "")
+  (ui-set "txtAge" :value "")
+  (ui-focus "txtName"))
+
+;; Asked before Save runs: a message refuses, nil lets it go ahead. The boxes' own rules
+;; (:required, :min, :max) have already been checked by then.
+(defn check-contact (f)
+  (let (name (str-trim (ui-get f "txtName")))
+    (if (str-contains name " ") nil "A contact needs a first and a last name")))
+
+;; Save: a new row, or the selected one changed. The button is :submit, so this only runs once
+;; the :required name box holds something; the :number age box arrives as a number, or nil.
+(defn save-contact (f)
+  (let (name (str-trim (ui-get f "txtName"))
+        age (ui-get f "txtAge")
+        row (ui-get f "grdAll"))
+    (if row
+      (update contacts (dict-get row "id") {:name name :age age})
+      (insert contacts {:name name :age age}))
+    (ui-set "lblStatus" :text (str "Saved " name))
+    (load-contacts f)))
+
+(defn delete-contact (f)
+  (let (row (ui-get f "grdAll"))
+    (if row
+      (do
+        (delete contacts (dict-get row "id"))
+        (ui-set "lblStatus" :text (str "Deleted " (dict-get row "name")))
+        (load-contacts f))
+      (ui-message "Pick a contact in the grid first"))))
+
+;; A cell typed into (double-click one): the grid's value is the row as edited.
+(defn save-edit (f)
+  (let (row (ui-get f "grdAll"))
+    (update contacts (dict-get row "id") {:name (dict-get row "name") :age (dict-get row "age")})
+    (ui-set "lblStatus" :text (str "Saved " (dict-get row "name")))))
+
+;; A row picked in the grid goes into the boxes; Save then changes it rather than adding one.
+(defn pick-contact (f)
+  (let (row (ui-get f "grdAll"))
+    (if row
+      (do
+        (ui-set "txtName" :value (dict-get row "name"))
+        (ui-set "txtAge" :value (dict-get row "age"))
+        (ui-set "lblStatus" :text ""))
+      nil)))

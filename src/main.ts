@@ -9,6 +9,12 @@ import { dictGet } from "./engine/types";
 import { createSheetClient } from "./engine/sheet";
 import { fromCSV, importedValue, isSheetPath, SHEET_EXT, toCSV, toTableHtml, toTSV, valueRows } from "./core/sheet";
 import { createSheetView, type SheetView } from "./ui/sheet";
+import { createFormClient } from "./engine/form";
+import { FORM_EXT, defnRange, handlerStub, isFormPath, layoutRange, newFormSource, printFormSpec, readFormSpec } from "./core/form";
+import { createFormDesigner } from "./ui/formdesigner";
+import { createFormRunner, type FormRunner } from "./ui/formrun";
+import { createFormWindow, type FormWindow } from "./ui/formwindow";
+import { isolateHistory, redo, undo } from "@codemirror/commands";
 import { createWorkspaceClient, inTauri, type ExternalFile, type FileNode } from "./engine/workspace";
 import { createEditor, type ThemeName } from "./ui/editor";
 import { createRepl } from "./ui/repl";
@@ -24,6 +30,7 @@ import { createKeybindings, type CommandTable } from "./ui/keybindings";
 import { createOpenWith } from "./ui/openwith";
 import { exportPdf } from "./ui/pdf";
 import { dataUrl, parseMarkdown, renderMedia } from "./ui/markdown";
+import { imageMime, resolveNoteRelative } from "./core/mdmedia";
 import { createImages } from "./ui/images";
 import { promptModal, confirmModal, infoModal, showContextMenu, toast, type MenuItem } from "./ui/dialogs";
 import { resolveWikiLink } from "./core/fuzzy";
@@ -178,7 +185,26 @@ function main(): void {
   copyInBtn.style.display = "none";
   const replBtn = document.createElement("button");
   replBtn.className = "head-btn repl-toggle";
-  headRight.append(copyInBtn, themeBtn, imageBtn, previewBtn, pdfBtn, keysBtn, replBtn);
+  // A form tab: the designer, the same file as text, or the form running. Shown for .eeform only.
+  type FormMode = "design" | "code" | "run";
+  const formModes = document.createElement("span");
+  formModes.className = "head-group form-modes";
+  formModes.style.display = "none";
+  const modeButtons = new Map<FormMode, HTMLButtonElement>();
+  for (const [mode, label, title] of [
+    ["design", "design", "Lay the form out"],
+    ["code", "code", "The form as EELisp — its layout and its handlers"],
+    ["run", "▶ run", "Run the form"],
+  ] as const) {
+    const b = document.createElement("button");
+    b.className = "head-btn";
+    b.textContent = label;
+    b.title = title;
+    b.addEventListener("click", () => void setFormMode(mode));
+    modeButtons.set(mode, b);
+    formModes.append(b);
+  }
+  headRight.append(copyInBtn, themeBtn, imageBtn, formModes, previewBtn, pdfBtn, keysBtn, replBtn);
   editorPane.head.append(nameEl, headRight);
 
   const tabBar = document.createElement("div");
@@ -196,7 +222,14 @@ function main(): void {
   const sheetHost = document.createElement("div");
   sheetHost.className = "sheet-host";
   sheetHost.style.display = "none";
-  editorPane.body.append(tabBar, editorHost, previewHost, sheetHost, backlinksBar);
+  // A form tab shows its designer or the running form here (see showSurface / setFormMode).
+  const designHost = document.createElement("div");
+  designHost.className = "formdesign-host";
+  designHost.style.display = "none";
+  const runHost = document.createElement("div");
+  runHost.className = "formrun-host";
+  runHost.style.display = "none";
+  editorPane.body.append(tabBar, editorHost, previewHost, sheetHost, designHost, runHost, backlinksBar);
 
   // ── repl pane ──
   const replPane = pane(shell, "repl-pane");
@@ -250,13 +283,22 @@ function main(): void {
     readOnly?: boolean;
     /** A .eesheet: drawn by its SheetView, written by the engine — never through ws.write. */
     sheet?: boolean;
+    /** A .eeform: an ordinary text tab whose text is shown by the designer, the editor, or the running form. */
+    form?: boolean;
+    mode?: FormMode;
   }
   let tabs: Tab[] = [];
   let activeIdx = -1;
   /** One grid per open sheet tab, kept while the tab is open so selection, scroll and undo survive a switch. */
   const sheetViews = new Map<string, SheetView>();
   const activeSheet = (): SheetView | undefined => (tabs[activeIdx]?.sheet ? sheetViews.get(tabs[activeIdx].path) : undefined);
+  /** The running forms, by path — a form keeps running while you look at another tab. */
+  const runners = new Map<string, FormRunner>();
+  /** Forms running in floating windows, by path — tools that stay open beside the notes. */
+  const windows = new Map<string, { runner: FormRunner; win: FormWindow }>();
+  const activeForm = (): Tab | undefined => (tabs[activeIdx]?.form ? tabs[activeIdx] : undefined);
   let suppressChange = false; // guards programmatic setDoc from marking the doc dirty
+  let designerWriting = false; // the designer is splicing its layout into the buffer — don't reload it from that
   let currentPath = "";
   let dirty = false;
   let previewing = false;
@@ -275,7 +317,7 @@ function main(): void {
   };
   function setEditorDoc(content: string): void {
     suppressChange = true;
-    editor.setDoc(content);
+    editor.setDoc(content, false); // loading a tab is not an edit: ⌘Z must never empty it
     suppressChange = false;
   }
 
@@ -352,15 +394,210 @@ function main(): void {
    */
   function showSurface(t: Tab | undefined): void {
     const sheet = t?.sheet ? sheetViews.get(t.path) : undefined;
+    const mode: FormMode | undefined = t?.form ? (t.mode ?? "design") : undefined;
+    const runner = mode === "run" && t ? runners.get(t.path) : undefined;
     sheetHost.style.display = sheet ? "" : "none";
-    editorHost.style.display = sheet || previewing ? "none" : "";
-    previewHost.style.display = !sheet && previewing ? "" : "none";
-    previewBtn.style.display = sheet ? "none" : "";
+    designHost.style.display = mode === "design" ? "" : "none";
+    runHost.style.display = mode === "run" ? "" : "none";
+    editorHost.style.display = sheet || (mode && mode !== "code") || (!mode && previewing) ? "none" : "";
+    previewHost.style.display = !sheet && !mode && previewing ? "" : "none";
+    previewBtn.style.display = sheet || mode ? "none" : "";
+    pdfBtn.style.display = mode ? "none" : "";
+    formModes.style.display = mode ? "" : "none";
+    for (const [m, b] of modeButtons) b.classList.toggle("active", m === mode);
     if (sheet) {
       sheetHost.replaceChildren(sheet.el);
       void sheet.refreshIfChanged();
       requestAnimationFrame(() => sheet.focus());
     }
+    if (mode === "design") designer.load(editor.getDoc());
+    if (runner) runHost.replaceChildren(runner.el);
+  }
+
+  // ── forms: the designer writes the buffer, the buffer feeds the designer ──
+  const designer = createFormDesigner({
+    // One transaction on the buffer per design change, so ⌘Z in the designer is the editor's undo.
+    onChange: (spec) => {
+      const doc = editor.getDoc();
+      const range = layoutRange(doc);
+      const text = printFormSpec(spec);
+      designerWriting = true;
+      try {
+        // Each change is its own undo step, however quickly it followed the last.
+        const annotations = isolateHistory.of("full");
+        if (range) editor.view.dispatch({ changes: { from: range.start, to: range.end, insert: text }, annotations });
+        else editor.view.dispatch({ changes: { from: 0, insert: text + (doc ? "\n\n" : "\n") }, annotations });
+      } finally {
+        designerWriting = false;
+      }
+    },
+    onEditHandler: (_control, event, fn) => openHandler(fn, event),
+    onUndo: () => void undo(editor.view),
+    onRedo: () => void redo(editor.view),
+    imageUrl: (src) => formImageUrl(activeForm()?.path ?? "", src),
+  });
+  designHost.append(designer.el);
+
+  /**
+   * An image control's `:src` resolves beside the form, the way a note's `![](assets/x.png)` does,
+   * and is read through the same door — the webview can't load workspace paths itself.
+   */
+  async function formImageUrl(formPath: string, src: string): Promise<string | null> {
+    const rel = resolveNoteRelative(formPath, src);
+    if (!rel) return null;
+    try {
+      const bytes = await ws.readImage(rel);
+      return URL.createObjectURL(new Blob([bytes], { type: imageMime(rel) }));
+    } catch {
+      return null;
+    }
+  }
+
+  /** Show the handler `fn` in the code — written as a stub at the end of the file when it isn't there. */
+  function openHandler(fn: string, event = "click"): void {
+    const t = activeForm();
+    if (!t) return;
+    let doc = editor.getDoc();
+    let range = defnRange(doc, fn);
+    if (!range) {
+      const sep = doc.endsWith("\n\n") || doc === "" ? "" : doc.endsWith("\n") ? "\n" : "\n\n";
+      editor.view.dispatch({ changes: { from: doc.length, insert: sep + handlerStub(fn, event) + "\n" }, annotations: isolateHistory.of("full") });
+      doc = editor.getDoc();
+      range = defnRange(doc, fn);
+    }
+    t.mode = "code";
+    showSurface(t);
+    if (range) editor.view.dispatch({ selection: { anchor: range.start }, scrollIntoView: true });
+    editor.view.focus();
+  }
+
+  function stopRunner(path: string): void {
+    runners.get(path)?.destroy();
+    runners.delete(path);
+  }
+
+  /**
+   * Switch the active form tab between its designer, its code and running it. Running evaluates the
+   * file — the handlers get defined on the engine — then builds the controls and fires `:on-load`.
+   */
+  async function setFormMode(mode: FormMode): Promise<void> {
+    const t = activeForm();
+    if (!t) return;
+    if (mode !== "run") {
+      if (t.mode === "run") stopRunner(t.path);
+      t.mode = mode;
+      showSurface(t);
+      if (mode === "code") editor.view.focus();
+      else designer.focus();
+      return;
+    }
+    const doc = editor.getDoc();
+    const r = readFormSpec(doc);
+    if ("error" in r) {
+      toast(`The form can't run: ${r.error}`);
+      return;
+    }
+    try {
+      await forms.load(doc);
+    } catch (e) {
+      const m = e instanceof Error ? e.message : String(e);
+      repl.note(`; ${basename(t.path)}: ${m}`);
+      toast(`The form can't run: ${m}`);
+      return;
+    }
+    if (tabs[activeIdx] !== t) return; // switched away while the engine was busy
+    stopRunner(t.path);
+    const backToDesign = () => {
+      if (t.mode !== "run") return;
+      stopRunner(t.path);
+      t.mode = "design";
+      if (tabs[activeIdx] === t) showSurface(t);
+    };
+    const runner = createFormRunner({
+      call: (handler, state) => forms.call(handler, state),
+      check: (handler, state) => forms.check(handler, state),
+      imageUrl: (src) => formImageUrl(t.path, src),
+      onMessage: toast,
+      onClose: backToDesign,
+      onOpen: (p) => void runForm(p),
+      onError: (m) => {
+        repl.note(`; ${basename(t.path)}: ${m}`);
+        toast(m);
+      },
+      note: (text) => repl.note(text),
+      onPopOut: () => {
+        backToDesign();
+        void runForm(t.path);
+      },
+    });
+    runners.set(t.path, runner);
+    t.mode = "run";
+    showSurface(t);
+    await runner.start(r.spec);
+    runner.focus();
+  }
+
+  /**
+   * `(ui-open "Orders")` from a form, `(ed-form "Orders")` from a keybinding or the REPL, ⧉ on a
+   * running tab: run that form in a floating window. Its text comes from the open tab when there is
+   * one — unsaved edits included — and from disk otherwise, so no tab has to open for a form to run.
+   */
+  async function runForm(path: string): Promise<void> {
+    const p = isFormPath(path) ? path : path + FORM_EXT;
+    const open = windows.get(p);
+    if (open) {
+      open.win.raise();
+      open.runner.focus();
+      return;
+    }
+    const tab = tabs.find((t) => t.path === p);
+    let src: string;
+    try {
+      src = tab ? (tabs[activeIdx] === tab ? editor.getDoc() : tab.content) : await ws.read(p);
+    } catch (e) {
+      toast(`Could not open ${p}: ${String(e)}`);
+      return;
+    }
+    const r = readFormSpec(src);
+    if ("error" in r) {
+      toast(`${basename(p)} can't run: ${r.error}`);
+      return;
+    }
+    try {
+      await forms.load(src);
+    } catch (e) {
+      const m = e instanceof Error ? e.message : String(e);
+      repl.note(`; ${basename(p)}: ${m}`);
+      toast(`${basename(p)} can't run: ${m}`);
+      return;
+    }
+    if (windows.has(p)) return; // opened twice at once — the first one won
+    const runner = createFormRunner({
+      call: (handler, state) => forms.call(handler, state),
+      check: (handler, state) => forms.check(handler, state),
+      imageUrl: (src) => formImageUrl(p, src),
+      onMessage: toast,
+      onClose: () => closeWindow(p),
+      onOpen: (other) => void runForm(other),
+      onError: (m) => {
+        repl.note(`; ${basename(p)}: ${m}`);
+        toast(m);
+      },
+      note: (text) => repl.note(text),
+      windowed: true,
+    });
+    const win = createFormWindow(runner.el, runner.handle, p);
+    windows.set(p, { runner, win });
+    await runner.start(r.spec);
+    runner.focus();
+  }
+
+  function closeWindow(path: string): void {
+    const w = windows.get(path);
+    if (!w) return;
+    w.runner.destroy();
+    w.win.close();
+    windows.delete(path);
   }
 
   /** Forget a sheet's grid and let the engine close the file. */
@@ -387,6 +624,7 @@ function main(): void {
     const wasActive = at === activeIdx;
     tabs.splice(at, 1);
     if (tab.sheet) await dropSheet(tab.path);
+    if (tab.form) stopRunner(tab.path);
     if (tabs.length === 0) {
       activeIdx = -1;
       currentPath = "";
@@ -426,8 +664,11 @@ function main(): void {
     clearTimeout(sheetRefresh);
     sheetRefresh = setTimeout(() => void activeSheet()?.refreshIfChanged(), 120);
   });
-  const repl = createRepl(replPane.body, watched);
+  // The REPL carries out editor commands too: (ed-form "Contacts") runs a form, (ed-insert …) types.
+  const repl = createRepl(replPane.body, watched, { onResult: (v) => keys.applyResult(v) });
   const snippets = createSnippets(watched, repl);
+  // A form's handlers may write a sheet, so they go through the same watched engine.
+  const forms = createFormClient(watched);
   snippetsBtn.addEventListener("click", () => snippets.open());
 
   const editor = createEditor(editorHost, "", {
@@ -442,6 +683,9 @@ function main(): void {
         renderTabs();
       }
       scheduleSave();
+      // The designer follows the buffer — an undo, a keybinding's edit — except for its own writes.
+      const t = tabs[activeIdx];
+      if (t?.form && (t.mode ?? "design") === "design" && !designerWriting) designer.load(editor.getDoc());
     },
     onRunBlock: (code) => void repl.run(code),
     onPasteImages: (files) => void images.addFiles(files),
@@ -483,7 +727,7 @@ function main(): void {
     if (isSheetPath(path)) return openSheet(path);
     const content = await ws.read(path);
     contentCache.set(path, content);
-    tabs.push({ path, content, dirty: false });
+    tabs.push(isFormPath(path) ? { path, content, dirty: false, form: true, mode: "design" } : { path, content, dirty: false });
     switchTab(tabs.length - 1);
   };
 
@@ -548,6 +792,7 @@ function main(): void {
     const name = await promptModal("New file", "untitled.md", "Create");
     if (!name) return;
     if (isSheetPath(name)) return createSheet(joinPath(dir, name));
+    if (isFormPath(name)) return createForm(joinPath(dir, name));
     const path = joinPath(dir, name);
     try {
       await ws.create(path, false);
@@ -567,6 +812,23 @@ function main(): void {
   async function createSheet(path: string): Promise<void> {
     try {
       await sheets.create(path);
+    } catch (e) {
+      toast(`Could not create ${path}: ${String(e instanceof Error ? e.message : e)}`);
+      return;
+    }
+    await sidebar.refresh();
+    await openFile(path);
+  }
+  async function newForm(dir: string): Promise<void> {
+    const name = await promptModal("New form", "Untitled", "Create");
+    if (!name) return;
+    await createForm(joinPath(dir, isFormPath(name) ? name : name + FORM_EXT));
+  }
+  /** A new form starts as a titled, empty layout — so the designer has something to draw. */
+  async function createForm(path: string): Promise<void> {
+    try {
+      await ws.create(path, false);
+      await ws.write(path, newFormSource(basename(path).replace(/\.eeform$/i, "")));
     } catch (e) {
       toast(`Could not create ${path}: ${String(e instanceof Error ? e.message : e)}`);
       return;
@@ -608,6 +870,14 @@ function main(): void {
       view.path = renamePath(p);
       sheetViews.set(view.path, view);
     }
+    for (const [p, runner] of [...runners]) {
+      runners.delete(p);
+      runners.set(renamePath(p), runner);
+    }
+    for (const [p, w] of [...windows]) {
+      windows.delete(p);
+      windows.set(renamePath(p), w);
+    }
     if (currentPath) currentPath = renamePath(currentPath);
     contentCache.delete(node.path);
     await sidebar.refresh();
@@ -630,6 +900,8 @@ function main(): void {
     // close any tabs under the deleted path and reconcile the active document
     const gone = (p: string): boolean => p === node.path || p.startsWith(node.path + "/");
     for (const p of [...sheetViews.keys()].filter(gone)) await dropSheet(p);
+    for (const p of [...runners.keys()].filter(gone)) stopRunner(p);
+    for (const p of [...windows.keys()].filter(gone)) closeWindow(p);
     if (tabs.some((t) => gone(t.path))) {
       const activePath = tabs[activeIdx]?.path;
       tabs = tabs.filter((t) => !gone(t.path));
@@ -741,6 +1013,7 @@ function main(): void {
     const items: MenuItem[] = [
       { label: "New file…", action: () => void newFile(dir) },
       { label: "New sheet…", action: () => void newSheet(dir) },
+      { label: "New form…", action: () => void newForm(dir) },
       { label: "New folder…", action: () => void newFolder(dir) },
       // the root row is the workspace itself — worth locating, even though it can't be renamed
       ...locationItems(node.path),
@@ -896,7 +1169,7 @@ function main(): void {
   /** The workspace note on screen, if it is one — its images resolve from its folder. */
   const workspaceNote = (): string | null => {
     const t = tabs[activeIdx];
-    return t && !t.sheet && !t.external ? t.path : null;
+    return t && !t.sheet && !t.form && !t.external ? t.path : null;
   };
   function renderPreview(): void {
     clearPreviewMedia();
@@ -1037,7 +1310,10 @@ function main(): void {
   /** Focus whatever the editor pane is showing: a sheet's grid, or the text. */
   function focusDocument(): void {
     const sheet = activeSheet();
+    const form = activeForm();
     if (sheet) sheet.focus();
+    else if (form && form.mode === "run") runners.get(form.path)?.focus();
+    else if (form && form.mode !== "code") designer.focus();
     else editor.view.focus();
   }
 
@@ -1050,6 +1326,10 @@ function main(): void {
     "new-file": () => void newFile(""),
     "new-folder": () => void newFolder(""),
     "new-sheet": () => void newSheet(""),
+    "new-form": () => void newForm(""),
+    "form-design": () => void setFormMode("design"),
+    "form-code": () => void setFormMode("code"),
+    "form-run": () => void setFormMode("run"),
     "open-keys": () => void keys.openConfig(),
     "reload-keys": () => void keys.reload(),
     "toggle-repl": toggleRepl,
@@ -1093,9 +1373,10 @@ function main(): void {
       void openSheet(f.path, true).catch((e) => toast(`Could not open ${f.name}: ${String(e)}`));
       return;
     }
-    tabs.push({ path: f.path, content: f.content, dirty: false, external: true });
+    const form = isFormPath(f.path) ? { form: true, mode: "design" as const } : {};
+    tabs.push({ path: f.path, content: f.content, dirty: false, external: true, ...form });
     switchTab(tabs.length - 1);
-    editor.view.focus();
+    focusDocument();
   }
   /**
    * Turn the active ↗ tab into a real note. Copies what is *in the editor* rather than what is on
@@ -1193,6 +1474,7 @@ function main(): void {
     file: () => currentPath,
     openFile: (p) => openFile(p),
     createFile: (p, content) => openOrCreate(p, content),
+    runForm: (p) => runForm(p),
     note: (t) => repl.note(t),
     focus: focusDocument,
   });
@@ -1249,6 +1531,7 @@ function main(): void {
         .catch(() => {}) // an unreadable tree must not cost us the shortcuts
         .then(async () => {
           await keys.reload();
+          void keys.loadPrelude(); // so (ed-…) works at the REPL before any key has fired
           if (!(await keys.runStart().catch(() => false))) await openFirstFile();
           void tags.refresh();
         });

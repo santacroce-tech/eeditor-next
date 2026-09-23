@@ -3,7 +3,7 @@
 // block under the cursor. The editor theme is switchable (dark / light) via a Compartment.
 
 import { EditorView, keymap } from "@codemirror/view";
-import { EditorState, Compartment } from "@codemirror/state";
+import { EditorState, Compartment, Transaction } from "@codemirror/state";
 import { basicSetup } from "codemirror";
 import { markdown } from "@codemirror/lang-markdown";
 import { oneDark } from "@codemirror/theme-one-dark";
@@ -23,7 +23,8 @@ export type ThemeName = "dark" | "light";
 export interface Editor {
   view: EditorView;
   getDoc(): string;
-  setDoc(content: string): void;
+  /** Replace the whole document. `history: false` for loading a tab — that is not an edit to undo. */
+  setDoc(content: string, history?: boolean): void;
   gotoLine(line: number): void;
   setTheme(theme: ThemeName): void;
 }
@@ -180,8 +181,11 @@ export function createEditor(parent: HTMLElement, doc: string, opts: EditorOptio
   return {
     view,
     getDoc: () => view.state.doc.toString(),
-    setDoc: (content: string) =>
-      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: content } }),
+    setDoc: (content: string, history = true) =>
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: content },
+        annotations: history ? undefined : Transaction.addToHistory.of(false),
+      }),
     gotoLine: (line: number) => {
       const l = Math.max(1, Math.min(line, view.state.doc.lines));
       const pos = view.state.doc.line(l).from;
