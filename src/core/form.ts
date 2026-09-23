@@ -438,7 +438,8 @@ export const CONTROLS: Record<ControlType, ControlDef> = {
   },
 };
 
-export const CONTROL_TYPES = Object.keys(CONTROLS) as ControlType[];
+/** The toolbox order: the everyday controls first, containers and the odd ones last. */
+export const CONTROL_TYPES: ControlType[] = ["label", "textbox", "button", "checkbox", "radio", "dropdown", "listbox", "grid", "date", "image", "tabs", "sheet", "timer"];
 export const isControlType = (s: string): s is ControlType => s in CONTROLS;
 
 export interface Control {

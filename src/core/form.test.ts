@@ -22,6 +22,8 @@ import {
   replaceLayout,
   topLevelForms,
   type FormSpec,
+  CONTROLS,
+  CONTROL_TYPES,
 } from "./form";
 
 const FILE = `;; Contacts.eeform — a comment with (parens) and "quotes" in it
@@ -215,6 +217,13 @@ describe("pages", () => {
     const open = openPages(spec);
     expect([a, b, c, d].map((k) => onOpenPage(k, spec, open))).toEqual([true, false, true, true]);
     expect(printFormSpec(spec)).toContain('(button a :at (0 0) :size (88 32) :page "A")');
+  });
+});
+
+describe("the catalogue", () => {
+  it("lists every control in the toolbox, once", () => {
+    expect([...CONTROL_TYPES].sort()).toEqual(Object.keys(CONTROLS).sort());
+    expect(new Set(CONTROL_TYPES).size).toBe(CONTROL_TYPES.length);
   });
 });
 

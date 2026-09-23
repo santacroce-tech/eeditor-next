@@ -75,6 +75,53 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
 };
 
 const clamp = (n: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, n));
+
+/** The toolbox icons: 16×16 line drawings in the text colour, one per control kind. */
+type IconPart = ["path", string] | ["rect", number, number, number, number] | ["circle", number, number, number, boolean?];
+const ICONS: Record<ControlType | "select", IconPart[]> = {
+  select: [["path", "M3.5 2.5l9.5 5.5-4.2 1.3-1.5 4.2z"]],
+  label: [["path", "M2.5 13L6.5 3l4 10M4 9.5h5"], ["path", "M12 13h2"]],
+  textbox: [["rect", 1.5, 4.5, 13, 7], ["path", "M5 6.5v3"]],
+  button: [["rect", 1.5, 4.5, 13, 7], ["path", "M5 8h6"]],
+  checkbox: [["rect", 2.5, 2.5, 11, 11], ["path", "M5 8l2 2 4-4.5"]],
+  radio: [["circle", 8, 8, 5.5], ["circle", 8, 8, 2, true]],
+  dropdown: [["rect", 1.5, 4.5, 13, 7], ["path", "M9.5 7l1.5 1.5L12.5 7"]],
+  listbox: [["rect", 2.5, 2.5, 11, 11], ["path", "M5 5.5h6M5 8h6M5 10.5h6"]],
+  grid: [["rect", 2, 3, 12, 10], ["path", "M2 6.5h12M2 9.5h12M6 3v10M10 3v10"]],
+  date: [["rect", 2, 3.5, 12, 10], ["path", "M2 6.5h12M5 2v3M11 2v3"], ["rect", 9, 8.5, 2.5, 2.5]],
+  image: [["rect", 2, 3, 12, 10], ["circle", 5.5, 6, 1.2], ["path", "M2 11l3.5-3 2.5 2 2.5-2 3.5 3"]],
+  tabs: [["rect", 2, 5, 12, 8], ["path", "M2 5V3h5v2M7 5V3"]],
+  sheet: [["rect", 2, 3, 12, 10], ["path", "M2 6.5h12M6 3v10"], ["rect", 6.8, 7.3, 2.6, 2.4, ]],
+  timer: [["circle", 8, 8.5, 5.5], ["path", "M8 5.5v3l2 1.5M6.5 1.5h3"]],
+};
+
+function svgIcon(parts: IconPart[]): SVGSVGElement {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("aria-hidden", "true");
+  for (const part of parts) {
+    const e = document.createElementNS(NS, part[0]);
+    if (part[0] === "path") e.setAttribute("d", part[1]);
+    else if (part[0] === "rect") {
+      const [, x, y, w, h] = part;
+      e.setAttribute("x", String(x));
+      e.setAttribute("y", String(y));
+      e.setAttribute("width", String(w));
+      e.setAttribute("height", String(h));
+      e.setAttribute("rx", "1");
+      if (w <= 3) e.setAttribute("fill", "currentColor");
+    } else {
+      const [, cx, cy, r, filled] = part;
+      e.setAttribute("cx", String(cx));
+      e.setAttribute("cy", String(cy));
+      e.setAttribute("r", String(r));
+      if (filled) e.setAttribute("fill", "currentColor");
+    }
+    svg.append(e);
+  }
+  return svg;
+}
 const cloneControl = (c: Control): Control => ({ ...c, props: { ...c.props }, events: { ...c.events }, extra: [...c.extra] });
 
 export function createFormDesigner(opts: FormDesignerOptions): FormDesigner {
@@ -85,13 +132,14 @@ export function createFormDesigner(opts: FormDesignerOptions): FormDesigner {
   const toolbox = el("div", "fd-toolbox");
   const toolButtons = new Map<ControlType | "select", HTMLButtonElement>();
   const addTool = (key: ControlType | "select", label: string, title: string) => {
-    const b = el("button", "fd-tool", label);
+    const b = el("button", "fd-tool");
+    b.append(svgIcon(ICONS[key]), el("span", undefined, label));
     b.title = title;
     b.addEventListener("click", () => setTool(key === tool ? "select" : key));
     toolButtons.set(key, b);
     toolbox.append(b);
   };
-  addTool("select", "↖ select", "Select, move and resize controls");
+  addTool("select", "Select", "Select, move and resize controls");
   for (const t of CONTROL_TYPES) addTool(t, CONTROLS[t].label, `Click on the canvas to add a ${CONTROLS[t].label.toLowerCase()}, or drag out its size`);
 
   // ── stage + canvas ──
