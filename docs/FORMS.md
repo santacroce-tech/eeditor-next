@@ -75,7 +75,14 @@ presses it, `:cancel` — Escape does), `checkbox`, `radio` (`:items`, one chose
 (`:items`), `listbox` (`:items`), `grid` (`:columns`, `:rows`; `:editable` — double-click a cell to
 type into it, and `:on-edit` gets the row as edited), `date` (`:value` as `yyyy-mm-dd`;
 `:min`, `:max`), `image` (`:src`, a path beside the form like a note's `![](assets/x.png)`), `timer`
-(`:interval` ms; nothing to see, fires `:on-tick` while enabled).
+(`:interval` ms; nothing to see, fires `:on-tick` while enabled), `tabs` (`:pages`, `:value` the
+open one).
+
+**Pages.** A `tabs` control lists its `:pages`; any control with `:page "Details"` belongs to that
+page and shows only while it is open. Controls stay flat in the file with their own `:at`, so the
+designer, alignment and code work unchanged — draw them inside the tabs control's box. The
+designer shows one page at a time: click a tab header on the canvas to open another. Page names
+are matched across the form, so give two tabs controls different page names.
 
 **Validation**, in the order it runs when a `:submit` button is pressed: each control's own rules
 — `:required`, `:min`/`:max` on numbers and dates, `:pattern` (a regular expression the whole
@@ -178,10 +185,10 @@ the active form tab's mode.
 
 ## Later
 
-A tabs/page-frame container, an embedded sheet, export as a standalone page.
+An embedded sheet, export as a standalone page.
 
 *Done since v1:* multi-select with marquee, align/size/spread, copy/paste of controls, radio groups
 and dates, number boxes, `:required` + `:submit`, Tab order, `(ed-form …)` from a keybinding and
 the REPL, forms in floating windows that come back where they were left, `:min`/`:max`/`:pattern`
 and `:on-validate`, image and timer controls, `:default`/`:cancel` buttons, `:on-dblclick`,
-editable grid cells.
+editable grid cells, tabs and `:page`.

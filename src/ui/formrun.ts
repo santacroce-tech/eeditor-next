@@ -1,7 +1,7 @@
 // A form, running: real controls at the positions the designer gave them. An event reads the whole
 // form into a dict, hands it to the handler, and applies the changes the handler queued.
 
-import { humanName, type Control, type FormSpec, type StateValue } from "../core/form";
+import { humanName, onOpenPage, openPages, type Control, type FormSpec, type StateValue } from "../core/form";
 import { rowsOf, stateValue, type Row, type UiChange } from "../engine/form";
 import type { JsonValue } from "../engine/types";
 
@@ -109,6 +109,18 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
   root.append(stage);
 
   let live = new Map<string, Live>();
+  let current: FormSpec = { title: "", w: 0, h: 0, controls: [], extra: [] };
+  /** Which page each tabs control has open. */
+  const openPage = new Map<string, string>();
+  /** Show the controls on open pages, hide the rest — `:visible false` still wins. */
+  const showPages = () => {
+    const open = openPages(current, openPage);
+    for (const l of live.values()) {
+      if (l.spec.type === "timer") continue;
+      const on = onOpenPage(l.spec, current, open);
+      l.box.style.display = on ? "" : "none";
+    }
+  };
   /** Events run one after another, in the order they happened — never dropped, never interleaved. */
   let queue: Promise<void> = Promise.resolve();
   let pending = 0;
@@ -316,6 +328,46 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
             draw();
           },
           focus: () => group.querySelector("input")?.focus(),
+        };
+        break;
+      }
+      case "tabs": {
+        const head = el("div", "formrun-tabhead");
+        let pages = (p.pages as string[]) ?? [];
+        const draw = () => {
+          const open = openPages(current, openPage);
+          head.replaceChildren(
+            ...pages.map((pg) => {
+              const b = el("button", "formrun-tab" + (open.has(pg) ? " active" : ""), pg);
+              b.type = "button";
+              b.addEventListener("click", () => {
+                if (openPage.get(c.name) === pg) return;
+                openPage.set(c.name, pg);
+                draw();
+                showPages();
+                void fire(c.events.change);
+              });
+              return b;
+            }),
+          );
+        };
+        openPage.set(c.name, pages.includes(String(p.value ?? "")) ? String(p.value) : (pages[0] ?? ""));
+        draw();
+        box.append(head, el("div", "formrun-tabbody"));
+        out = {
+          spec: c,
+          box,
+          value: () => openPage.get(c.name) ?? null,
+          set: (k, v) => {
+            if (k === "pages") {
+              pages = asItems(v);
+              c.props.pages = pages;
+              if (!pages.includes(openPage.get(c.name) ?? "")) openPage.set(c.name, pages[0] ?? "");
+            } else if (k === "value" && pages.includes(asText(v))) openPage.set(c.name, asText(v));
+            draw();
+            showPages();
+          },
+          focus: () => head.querySelector("button")?.focus(),
         };
         break;
       }
@@ -543,6 +595,8 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
     async start(spec) {
       stopTimers();
       live = new Map();
+      current = spec;
+      openPage.clear();
       title.replaceChildren(el("span", "formrun-name", spec.title || "Form"), buttons);
       canvas.style.width = `${spec.w}px`;
       canvas.style.height = `${spec.h}px`;
@@ -552,6 +606,7 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
         live.set(c.name, l);
         canvas.append(l.box);
       }
+      showPages();
       await fire(spec.onLoad);
     },
     state,

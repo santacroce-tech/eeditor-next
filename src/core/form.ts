@@ -234,7 +234,7 @@ export function defnRange(src: string, name: string): Range | undefined {
 
 // ── the layout ────────────────────────────────────────────────────────────
 
-export type ControlType = "label" | "textbox" | "button" | "checkbox" | "radio" | "dropdown" | "listbox" | "grid" | "date" | "image" | "timer";
+export type ControlType = "label" | "textbox" | "button" | "checkbox" | "radio" | "dropdown" | "listbox" | "grid" | "date" | "image" | "timer" | "tabs";
 
 /** `scalar`: a number or a string, kept as whichever it was — `:min 0` stays a number, `:min "2026-01-01"` a string. */
 export type PropKind = "text" | "number" | "bool" | "items" | "scalar";
@@ -267,8 +267,10 @@ const ENABLED: PropDef = { key: "enabled", kind: "bool", label: "Enabled", defau
 /** A `:submit` button refuses to run its handler while a required control holds nothing. */
 const REQUIRED: PropDef = { key: "required", kind: "bool", label: "Required", default: false };
 const VISIBLE: PropDef = { key: "visible", kind: "bool", label: "Visible", default: true };
+/** `:page "Notes"` — the control belongs to that page of a `tabs` control, and shows only while it is the one open. */
+const PAGE: PropDef = { key: "page", kind: "text", label: "Page", default: "" };
 /** Every control has these, after its own. */
-export const COMMON_PROPS: PropDef[] = [ENABLED, VISIBLE];
+export const COMMON_PROPS: PropDef[] = [ENABLED, VISIBLE, PAGE];
 
 export const CONTROLS: Record<ControlType, ControlDef> = {
   label: {
@@ -385,6 +387,18 @@ export const CONTROLS: Record<ControlType, ControlDef> = {
     props: [{ key: "src", kind: "text", label: "Source", default: "" }],
     events: [],
     initial: {},
+  },
+  tabs: {
+    label: "Tabs",
+    prefix: "tab",
+    w: 320,
+    h: 200,
+    props: [
+      { key: "pages", kind: "items", label: "Pages", default: [] },
+      { key: "value", kind: "text", label: "Open page", default: "" },
+    ],
+    events: ["change"],
+    initial: { pages: ["General", "Details"] },
   },
   timer: {
     label: "Timer",
@@ -614,6 +628,26 @@ export function replaceLayout(src: string, spec: FormSpec): { src: string; range
   return { src: text + sep + src, range: { start: 0, end: text.length } };
 }
 
+/** The pages open across the form's `tabs` controls: each one's `:value`, or its first page. `open` overrides by control name. */
+export function openPages(spec: FormSpec, open: Map<string, string> = new Map()): Set<string> {
+  const out = new Set<string>();
+  for (const c of spec.controls) {
+    if (c.type !== "tabs") continue;
+    const pages = Array.isArray(c.props.pages) ? c.props.pages : [];
+    const chosen = open.get(c.name) ?? String(c.props.value ?? "");
+    out.add(pages.includes(chosen) ? chosen : (pages[0] ?? ""));
+  }
+  return out;
+}
+
+/** Whether a control is on a page that is open — or on no page, or on a page no tabs control has (so never hidden by mistake). */
+export function onOpenPage(c: Control, spec: FormSpec, open: Set<string>): boolean {
+  const page = String(c.props.page ?? "");
+  if (!page) return true;
+  const known = spec.controls.some((t) => t.type === "tabs" && Array.isArray(t.props.pages) && t.props.pages.includes(page));
+  return !known || open.has(page);
+}
+
 // ── helpers for the designer ──────────────────────────────────────────────
 
 /** btnSave, txtName, … — the first free number for the prefix. */
@@ -637,7 +671,7 @@ export function handlerStub(name: string, event = "click"): string {
 
 /** What to call a control in a message: `txtFirstName` → "First name", `grdAll` → "All". */
 export function humanName(name: string): string {
-  const stem = name.replace(/^(lbl|txt|btn|chk|opt|cmb|lst|grd|dtp|img|tmr)(?=[A-Z0-9_-])/, "");
+  const stem = name.replace(/^(lbl|txt|btn|chk|opt|cmb|lst|grd|dtp|img|tmr|tab)(?=[A-Z0-9_-])/, "");
   const words = stem.replace(/[_-]+/g, " ").replace(/([a-z0-9])([A-Z])/g, "$1 $2").trim();
   return words ? words[0].toUpperCase() + words.slice(1).toLowerCase() : name;
 }

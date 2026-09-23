@@ -186,3 +186,35 @@ test("several controls at once: marquee, align, copy and paste", async ({ page }
   await page.keyboard.press("Delete");
   await expect(page.locator(".fd-ctl")).toHaveCount(8);
 });
+
+test("pages: a control on a tab's page shows only while that page is open", async ({ page }) => {
+  await page.goto("/");
+  await page.locator(".tree-dir").click({ button: "right" });
+  await page.locator(".ctx-item", { hasText: "New form…" }).click();
+  await page.locator(".dlg-input").fill("Paged");
+  await page.locator(".dlg-input").press("Enter");
+  await page.waitForSelector(".fd-canvas");
+  const canvas = page.locator(".fd-canvas");
+  await page.locator(".fd-tool", { hasText: "Tabs" }).click();
+  await canvas.click({ position: { x: 20, y: 20 } });
+  await page.locator(".fd-tool", { hasText: "Button" }).click();
+  await canvas.click({ position: { x: 60, y: 100 } });
+  await expect(page.locator(".fd-props-head")).toHaveText("Button · btn1");
+  // put the button on the second page: it disappears, since the designer shows the first
+  const pageField = page.locator(".fd-field", { hasText: "Page" }).locator("input");
+  await pageField.fill("Details");
+  await pageField.press("Enter");
+  await expect(page.locator(".fd-ctl[data-name=btn1]")).toBeHidden();
+  await expect.poll(() => buffer(page)).toContain(':page "Details"');
+  // clicking the tab header in the designer opens that page
+  await page.locator(".fd-p-tab", { hasText: "Details" }).click();
+  await expect(page.locator(".fd-ctl[data-name=btn1]")).toBeVisible();
+  // and when the form runs, the button is there only on its page
+  await page.locator(".form-modes .head-btn", { hasText: "run" }).click();
+  await page.waitForSelector(".formrun-canvas");
+  await expect(page.locator(".formrun-ctl[data-name=btn1]")).toBeHidden();
+  await page.locator(".formrun-tab", { hasText: "Details" }).click();
+  await expect(page.locator(".formrun-ctl[data-name=btn1]")).toBeVisible();
+  await page.locator(".formrun-tab", { hasText: "General" }).click();
+  await expect(page.locator(".formrun-ctl[data-name=btn1]")).toBeHidden();
+});

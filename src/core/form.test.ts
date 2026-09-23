@@ -10,6 +10,8 @@ import {
   newControl,
   newFormSource,
   nextName,
+  onOpenPage,
+  openPages,
   parseFormSpec,
   printFormSpec,
   printSx,
@@ -167,6 +169,24 @@ describe("splicing the layout back", () => {
   it("starts a new file with a comment and an empty layout", () => {
     const src = newFormSource("Orders");
     expect(readFormSpec(src)).toMatchObject({ spec: { title: "Orders", controls: [] } });
+  });
+});
+
+describe("pages", () => {
+  const [x] = readAll('(form (tabs tab1 :pages ("A" "B") :at (0 0)) (button a :page "A" :at (0 0)) (button b :page "B" :at (0 0)) (button c :at (0 0)) (button d :page "Nowhere" :at (0 0)))');
+  const spec = parseFormSpec(x) as FormSpec;
+  const [tab, a, b, c, d] = spec.controls;
+  it("opens the first page unless the tabs control says otherwise", () => {
+    expect([...openPages(spec)]).toEqual(["A"]);
+    expect([...openPages(spec, new Map([["tab1", "B"]]))]).toEqual(["B"]);
+    tab.props.value = "B";
+    expect([...openPages(spec)]).toEqual(["B"]);
+    tab.props.value = "";
+  });
+  it("hides what is on a closed page, and never what is on none or on an unknown one", () => {
+    const open = openPages(spec);
+    expect([a, b, c, d].map((k) => onOpenPage(k, spec, open))).toEqual([true, false, true, true]);
+    expect(printFormSpec(spec)).toContain('(button a :at (0 0) :size (88 32) :page "A")');
   });
 });
 

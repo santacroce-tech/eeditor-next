@@ -135,7 +135,7 @@ after any REPL, snippet or keybinding evaluation the sheet on screen reloads if 
 ### Forms are EELisp on a canvas
 
 A `.eeform` opens in a **form designer** in the Visual Basic tradition: a toolbox (label, text box,
-button, check box, radio group, dropdown, list box, grid, date, image, timer), a canvas to drop them on with
+button, check box, radio group, dropdown, list box, grid, date, image, timer, tabs), a canvas to drop them on with
 marquee selection, alignment and copy/paste, a properties panel, and *design · code · run* at the top. The file is EELisp text — one `(form …)` holding the layout, which
 the designer writes, followed by your `(deftable …)` and the handlers its events name. Double-click
 a button and its `(defn btnSave-click (f) …)` is written for you; a handler reads the form as a

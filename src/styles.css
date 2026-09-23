@@ -565,6 +565,17 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-s
 .fd-p-check { display: block; padding: 3px 2px; white-space: nowrap; }
 .fd-p-item, .formrun-item { padding: 2px 6px; white-space: nowrap; }
 .fd-p-item.selected, .formrun-item.selected { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.fd-ctl.offpage { display: none; }
+.fd-p-tabs, .formrun-ctl.tabs > .formrun-tabhead { display: block; }
+.fd-p-tabs { width: 100%; height: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+.fd-ctl.tabs > .fd-p-tabs { pointer-events: auto; }
+.fd-p-tabhead, .formrun-tabhead { display: flex; gap: 2px; padding: 4px 4px 0; background: var(--bg-2); border-bottom: 1px solid var(--border); }
+.fd-p-tab, .formrun-tab { padding: 3px 10px; border: 1px solid var(--border); border-bottom: none; border-radius: 4px 4px 0 0;
+  background: var(--bg-2); color: var(--muted); font: 12px system-ui, sans-serif; cursor: pointer; }
+.fd-p-tab.active, .formrun-tab.active { background: var(--bg); color: var(--fg); }
+.formrun-ctl.tabs { border: 1px solid var(--border); border-radius: 4px; overflow: hidden; pointer-events: none; }
+.formrun-ctl.tabs > .formrun-tabhead { pointer-events: auto; }
+.formrun-tab { font-family: inherit; }
 .fd-p-timer { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; box-sizing: border-box;
   border: 1px dashed var(--border); border-radius: 4px; color: var(--muted); font-size: 16px; }
 .fd-p-image { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; box-sizing: border-box;

@@ -20,6 +20,8 @@ import {
   handlerName,
   newControl,
   nextName,
+  onOpenPage,
+  openPages,
   readFormSpec,
   snap,
   validName,
@@ -117,6 +119,8 @@ export function createFormDesigner(opts: FormDesignerOptions): FormDesigner {
   let drag: Drag | null = null;
   /** The last press on a control — a second one soon after is a double-click. */
   let lastPress = { name: "", at: 0 };
+  /** Which page each tabs control shows in the designer — a click on a tab header, not a change to the file. */
+  const shownPage = new Map<string, string>();
   const boxes = new Map<string, HTMLElement>();
 
   const byName = (name: string | null): Control | undefined => spec.controls.find((c) => c.name === name);
@@ -173,6 +177,18 @@ export function createFormDesigner(opts: FormDesignerOptions): FormDesigner {
         }
         return b;
       }
+      case "tabs": {
+        const b = el("div", "fd-p-tabs");
+        const head = el("div", "fd-p-tabhead");
+        const open = openPages(spec, shownPage);
+        for (const pg of (p.pages as string[]) ?? []) {
+          const t = el("span", "fd-p-tab" + (open.has(pg) ? " active" : ""), pg);
+          t.dataset.page = pg;
+          head.append(t);
+        }
+        b.append(head);
+        return b;
+      }
       case "timer":
         return el("span", "fd-p-timer", "⏱");
       case "checkbox":
@@ -214,6 +230,7 @@ export function createFormDesigner(opts: FormDesignerOptions): FormDesigner {
     box.style.height = `${c.h}px`;
     if (c.props.visible === false) box.classList.add("hidden");
     if (c.props.enabled === false) box.classList.add("disabled");
+    if (!onOpenPage(c, spec, openPages(spec, shownPage))) box.classList.add("offpage");
     box.append(preview(c));
     if (on && selection.length === 1) {
       for (const d of DIRS) {
@@ -559,6 +576,14 @@ export function createFormDesigner(opts: FormDesignerOptions): FormDesigner {
       canvas.append(ghost);
       drag = { kind: "place", type: tool, x0: e.clientX, y0: e.clientY, cx: x, cy: y, ghost };
       stage.setPointerCapture(e.pointerId);
+      return;
+    }
+    const tabHead = target.closest<HTMLElement>(".fd-p-tab");
+    if (tabHead && ctl?.dataset.name && tabHead.dataset.page) {
+      // A tab header: open that page in the designer (and pick the tabs control), no drag.
+      shownPage.set(ctl.dataset.name, tabHead.dataset.page);
+      selection = [ctl.dataset.name];
+      draw();
       return;
     }
     if (ctl?.dataset.name) {
