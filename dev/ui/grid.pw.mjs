@@ -134,7 +134,8 @@ test("the fill handle repeats a formula down a column", async ({ page }) => {
 
   // drag the handle at the bottom-right of B5 down two rows
   const box = await page.locator(".sheet-scroller").boundingBox();
-  const gutter = await page.$eval(".sheet-rowname", (e) => parseFloat(e.style.width));
+  // a locator waits for the row names to be painted; $eval would ask before they are and find none
+  const gutter = await page.locator(".sheet-rowname").first().evaluate((e) => parseFloat(e.style.width));
   const widths = await page.$$eval(".sheet-colname", (els) => els.slice(0, 2).map((e) => parseFloat(e.style.width)));
   const rowH = 24;
   const headH = 24;
@@ -206,7 +207,8 @@ test("a date shows as the format asks, and a filled cell stays readable", async 
 test("a row can be made taller, and the sheet prints as a table", async ({ page }) => {
   await openSheet(page);
   const box = await page.locator(".sheet-scroller").boundingBox();
-  const gutter = await page.$eval(".sheet-rowname", (e) => parseFloat(e.style.width));
+  // a locator waits for the row names to be painted; $eval would ask before they are and find none
+  const gutter = await page.locator(".sheet-rowname").first().evaluate((e) => parseFloat(e.style.width));
   const edge = box.y + 24 + 2 * 24; // row 2's bottom edge
   await page.mouse.move(box.x + gutter / 2, edge);
   await expect.poll(() => page.locator(".sheet-scroller").evaluate((e) => e.style.cursor)).toBe("row-resize");

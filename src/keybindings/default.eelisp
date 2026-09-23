@@ -21,6 +21,7 @@
 ;;   (ed-open "notes/x.md")          open a file in a tab
 ;;   (ed-new path)                   create the note if it doesn't exist, then open it
 ;;   (ed-new path text)              …with text as its starting content
+;;   (ed-form "Contacts")            open a .eeform and run it, in a window beside your notes
 ;;   (ed-message text)               toast
 ;;
 ;; A binding may list several commands; they run in order against the live document.
@@ -93,9 +94,10 @@
 ;; which at launch has no note to point at yet (*file* is "").
 
 ;; ── built-in commands ──────────────────────────────────────────────────────
-;; save · quick-open · search · daily-note · new-file · new-sheet · new-folder · open-keys · reload-keys
-;; toggle-repl · focus-repl · toggle-preview · toggle-theme · export-pdf · snippets · calendar
-;; agenda-setup · agenda-refresh · close-tab · next-tab · prev-tab · focus-editor
+;; save · quick-open · search · daily-note · new-file · new-sheet · new-form · new-folder · open-keys
+;; reload-keys · toggle-repl · focus-repl · toggle-preview · toggle-theme · export-pdf · snippets
+;; calendar · agenda-setup · agenda-refresh · close-tab · next-tab · prev-tab · focus-editor
+;; form-design · form-code · form-run   the active form tab's mode
 ;; open-file           pick a file from anywhere; asks whether to copy it in or edit it in place
 ;; copy-into-workspace turn the current ↗ (outside) note into a copy in the workspace
 ;; insert-image        pick images; each is copied into assets/ beside the note and linked at the caret

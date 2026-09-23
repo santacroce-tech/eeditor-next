@@ -32,6 +32,10 @@ export interface Keybindings {
   openConfig(): Promise<void>;
   isConfigPath(path: string): boolean;
   bindings(): Binding[];
+  /** Load the `ed-*` constructors into the engine now, so the REPL can use them before any key fires. */
+  loadPrelude(): Promise<void>;
+  /** Carry out a value that is an editor command (or a list of them). True when it was one. */
+  applyResult(v: JsonValue): boolean;
 }
 
 export interface KeybindingsOptions {
@@ -44,6 +48,8 @@ export interface KeybindingsOptions {
   openFile: (path: string) => Promise<void>;
   /** Create the note if it isn't there yet, then open it (the `ed-new` command). */
   createFile: (path: string, content: string) => Promise<void>;
+  /** Open a form's tab and run it (the `ed-form` command). */
+  runForm?: (path: string) => Promise<void>;
   /** Where errors and `println` output from a binding go (the REPL scrollback). */
   note: (text: string) => void;
   /** Put focus back on the document after a binding ran — the grid, when a sheet is showing. */
@@ -65,6 +71,7 @@ const COMMANDS = new Set([
   "set-buffer",
   "open",
   "new",
+  "form",
   "message",
 ]);
 
@@ -187,6 +194,9 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
       case "new":
         void opts.createFile(text(args[0]), text(args[1]));
         return false;
+      case "form":
+        void opts.runForm?.(text(args[0]));
+        return false;
       case "insert": {
         const at = view.state.selection.main.head;
         const insert = text(args[0]);
@@ -233,6 +243,13 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
       default:
         return false;
     }
+  }
+
+  /** A command, or a non-empty list made only of commands — what the REPL may carry out unasked. */
+  function isCommand(v: JsonValue): boolean {
+    if (!Array.isArray(v) || v.length === 0) return false;
+    if (typeof v[0] === "string" && COMMANDS.has(v[0])) return true;
+    return v.every(isCommand);
   }
 
   /**
@@ -293,5 +310,11 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
     openConfig,
     isConfigPath: (p) => p === KEYBINDINGS_PATH,
     bindings: () => [...map.values()],
+    loadPrelude: async () => void (await ensurePrelude()),
+    applyResult: (v) => {
+      if (!isCommand(v)) return false;
+      if (apply(v)) (opts.focus ?? (() => editor.view.focus()))();
+      return true;
+    },
   };
 }

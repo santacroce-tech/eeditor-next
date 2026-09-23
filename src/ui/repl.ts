@@ -4,6 +4,7 @@
 
 import type { EngineClient } from "../engine/client";
 import { renderEnvelope } from "../engine/render";
+import type { JsonValue } from "../engine/types";
 import { renderModelEl } from "./results";
 
 export interface Repl {
@@ -13,7 +14,16 @@ export interface Repl {
   focus(): void;
 }
 
-export function createRepl(parent: HTMLElement, engine: EngineClient): Repl {
+export interface ReplOptions {
+  /**
+   * Given each successful result before it is shown. Returning true means it was an editor command
+   * — `(ed-form "Contacts")`, `(ed-insert "…")` — and has been carried out, so the REPL shows that
+   * rather than the command as data.
+   */
+  onResult?: (v: JsonValue) => boolean;
+}
+
+export function createRepl(parent: HTMLElement, engine: EngineClient, opts: ReplOptions = {}): Repl {
   const root = document.createElement("div");
   root.className = "repl";
 
@@ -55,7 +65,8 @@ export function createRepl(parent: HTMLElement, engine: EngineClient): Repl {
     append("repl-echo", "› " + trimmed);
     const env = await engine.evalSrc(trimmed);
     if (env.output) append("repl-output", env.output.replace(/\n$/, ""));
-    append("repl-result", renderModelEl(renderEnvelope(env)));
+    if (env.ok && opts.onResult?.(env.result)) append("repl-output", "→ done");
+    else append("repl-result", renderModelEl(renderEnvelope(env)));
   }
 
   function autosize(): void {

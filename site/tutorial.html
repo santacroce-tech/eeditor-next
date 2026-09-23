@@ -189,6 +189,45 @@
 
 <section>
   <div class="wrap"><div class="prose">
+    <h2>7. Draw a form</h2>
+    <p>
+      Right-click the workspace row in the file tree and choose <strong>New form…</strong>. Call it
+      <code>Notes</code>. An empty window appears on a canvas, with a toolbox on the left and a
+      properties panel on the right.
+    </p>
+    <p>
+      Click <strong>Text box</strong> in the toolbox, then click near the top of the form. Click
+      <strong>Button</strong>, then click below the box. Two controls, named <code>txt1</code> and
+      <code>btn1</code>. Pick the button and change its <em>Text</em> to <code>Add</code>.
+    </p>
+    <p>
+      Now double-click the button. EEditor names its handler, writes an empty one at the end of the
+      file, and opens the code with the caret on it. Notice the top of the file: the layout you just
+      drew is a <code>(form …)</code>, and it is EELisp like everything else. Make the handler do
+      something:
+    </p>
+<pre><code>(deftable notes (text:string))
+
+(defn btn1-click (f)
+  (insert notes {:text (ui-get f <span class="st">"txt1"</span>)})
+  (ui-set <span class="st">"txt1"</span> :value <span class="st">""</span>)
+  (ui-message (str (count-records notes) <span class="st">" notes"</span>)))</code></pre>
+    <p>
+      Press <strong>▶ run</strong>. Type something, press <strong>Add</strong>. The row is in the
+      database — <code>(browse notes)</code> in the REPL shows it — and the toast counts them.
+      <strong>■ stop</strong> takes you back to the designer.
+    </p>
+    <p>
+      One more thing. In the REPL, type <code>(ed-form "Notes")</code>. The form opens in a
+      floating window over whatever note you are writing, and stays there. Bind that to a key and
+      you have a tool. <a href="manual.html#forms">Chapter 10 of the manual</a> has the rest: grids
+      with sorting and pages, validation, menus, tabs.
+    </p>
+  </div></div>
+</section>
+
+<section class="alt">
+  <div class="wrap"><div class="prose">
     <h2>Where to go next</h2>
     <ul>
       <li><a href="manual.html">The manual</a> — every feature, every command, every default shortcut.</li>
