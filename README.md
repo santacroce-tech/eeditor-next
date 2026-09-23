@@ -132,6 +132,18 @@ values, and each sheet is a SQLite file the engine owns (see `docs/SPREADSHEET.m
 last result, so opening a sheet runs no code. A sheet tab never goes through the text save path, and
 after any REPL, snippet or keybinding evaluation the sheet on screen reloads if its version moved.
 
+### Forms are EELisp on a canvas
+
+A `.eeform` opens in a **form designer** in the Visual Basic tradition: a toolbox (label, text box,
+button, check box, radio group, dropdown, list box, grid, date, image, timer), a canvas to drop them on with
+marquee selection, alignment and copy/paste, a properties panel, and *design · code · run* at the top. The file is EELisp text — one `(form …)` holding the layout, which
+the designer writes, followed by your `(deftable …)` and the handlers its events name. Double-click
+a button and its `(defn btnSave-click (f) …)` is written for you; a handler reads the form as a
+dict — `(ui-get f "txtName")` — and queues changes — `(ui-set "grdAll" :rows (query contacts))`.
+*Run* evaluates the file and shows real controls over the workspace's database; `(ed-form "Contacts")`
+from a shortcut or the REPL opens it in a floating window beside your notes. `workspace/Contacts.eeform`
+is the worked example; `docs/FORMS.md` has the plan and the reference.
+
 ### Keyboard shortcuts are a lisp file
 
 `.eeditor/keybindings.eelisp` in the workspace **is** the shortcut table (the ⌘ button in the editor
