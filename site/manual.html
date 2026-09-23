@@ -45,10 +45,11 @@
         <li><a href="#outside">7. Files from outside</a></li>
         <li><a href="#agenda">8. The agenda</a></li>
         <li><a href="#sheets">9. Sheets</a></li>
-        <li><a href="#repl">10. The REPL</a></li>
-        <li><a href="#keybindings">11. Keybindings</a></li>
-        <li><a href="#mobile">12. iPhone and iPad</a></li>
-        <li><a href="#shortcuts">13. Shortcut reference</a></li>
+        <li><a href="#forms">10. Forms</a></li>
+        <li><a href="#repl">11. The REPL</a></li>
+        <li><a href="#keybindings">12. Keybindings</a></li>
+        <li><a href="#mobile">13. iPhone and iPad</a></li>
+        <li><a href="#shortcuts">14. Shortcut reference</a></li>
       </ul>
     </div>
   </div>
@@ -559,9 +560,189 @@ sequenceDiagram
   </div></div>
 </section>
 
-<section id="repl" class="alt">
+<section id="forms" class="alt">
   <div class="wrap"><div class="prose">
-    <h2>10. The REPL</h2>
+    <h2>10. Forms</h2>
+    <p>
+      A form is a window you draw — buttons, boxes, a grid — with EELisp behind its events. It is
+      the Visual Basic and FoxPro way of putting a screen over a table, and it lives in your
+      workspace as a file: <code>Contacts.eeform</code> sits in the tree, opens in a tab, and can be
+      renamed, moved and searched like a note. Right-click a folder and choose
+      <strong>New form…</strong>, or type a name ending in <code>.eeform</code> into <strong>＋</strong>.
+    </p>
+    <p>
+      A form tab has three modes, switched at the top of the pane: <strong>design</strong>,
+      <strong>code</strong> and <strong>run</strong>.
+    </p>
+
+    <h3>The designer</h3>
+    <p>Three columns, as VB had them.</p>
+    <ul>
+      <li><strong>The toolbox</strong>, on the left. Click a kind of control, then click on the form
+        to place one there — or drag out the size you want.</li>
+      <li><strong>The canvas</strong>, in the middle, the size of the form. Click a control to select
+        it, drag to move it, pull a handle to resize it. <kbd>⇧</kbd>-click adds to the selection,
+        a drag from empty canvas draws a box around several, <kbd>⌘A</kbd> takes them all. Arrows
+        nudge by a grid step (<kbd>⇧</kbd> by a pixel), <kbd>Delete</kbd> removes, <kbd>⌘D</kbd>
+        duplicates, <kbd>⌘C</kbd> <kbd>⌘X</kbd> <kbd>⌘V</kbd> copy, cut and paste — into another
+        form's tab too. <kbd>⌘Z</kbd> undoes, because every change is one edit to the file.
+        The small square at the bottom right resizes the form itself.</li>
+      <li><strong>The properties</strong>, on the right: the selected control's name, position and
+        size, what it holds, and its events. With several selected the panel becomes
+        <em>align</em>, <em>same size</em> and <em>spread evenly</em>, all relative to the one you
+        picked last — drawn with the heavier outline. With nothing selected it shows the form:
+        title, size, menu, and what runs when it loads.</li>
+    </ul>
+
+    <h3>The file</h3>
+    <p>
+      Switch to <strong>code</strong> and there is no second language. The form is EELisp: one
+      <code>(form …)</code> holding the layout, which the designer rewrites as you work, followed by
+      your own code — a table, and the handlers the events name. Edit either half; the other follows.
+    </p>
+<pre><code>(form <span class="st">"Contacts"</span> :size (480 400) :on-load load-contacts
+  (label   lblName :text <span class="st">"Name"</span> :at (16 20) :size (72 24))
+  (textbox txtName :required true :at (96 16) :size (240 28))
+  (label   lblAge  :text <span class="st">"Age"</span> :at (16 56) :size (72 24))
+  (textbox txtAge  :number true :min 0 :max 150 :at (96 52) :size (80 28))
+  (button  btnSave :text <span class="st">"Save"</span> :submit true :default true :at (96 96) :size (88 30) :on-click save-contact)
+  (grid    grdAll  :columns (<span class="st">"name"</span> <span class="st">"age"</span>) :sortable true :filter true :page-size 5
+           :at (16 144) :size (448 232) :on-change pick-contact))
+
+(deftable contacts (name:string age:number))
+
+(defn load-contacts (f)
+  (ui-set <span class="st">"grdAll"</span> :rows (query contacts :order <span class="st">"name"</span>)))
+
+(defn save-contact (f)
+  (insert contacts {:name (ui-get f <span class="st">"txtName"</span>) :age (ui-get f <span class="st">"txtAge"</span>)})
+  (ui-set <span class="st">"txtName"</span> :value <span class="st">""</span>)
+  (load-contacts f))
+
+(defn pick-contact (f)
+  (let (row (ui-get f <span class="st">"grdAll"</span>))
+    (ui-set <span class="st">"txtName"</span> :value (dict-get row <span class="st">"name"</span>))
+    (ui-set <span class="st">"txtAge"</span> :value (dict-get row <span class="st">"age"</span>))))</code></pre>
+
+    <h3>Attaching code to an event</h3>
+    <p>
+      Double-click a button. That names its <code>on-click</code> handler after it, writes an empty
+      <code>(defn btnSave-click (f) …)</code> at the end of the file, and opens the code with the
+      caret on it. The <strong>…</strong> beside any event in the properties panel does the same, and
+      you can type any function's name there instead.
+    </p>
+    <p>
+      A handler is a function of the form. Its one argument, <code>f</code>, is the whole form as a
+      dict keyed by control name, so <code>(ui-get f "txtName")</code> is what the box holds — text,
+      a number, true or false, the chosen item, the selected row. To change the form, a handler
+      <em>queues</em> changes; EEditor applies them, in order, when the handler returns.
+    </p>
+    <div class="table-wrap"><table>
+      <tr><th>In a handler</th><th>Does</th></tr>
+      <tr><td><code>(ui-get f "ctl")</code></td><td>the control's value</td></tr>
+      <tr><td><code>(ui-set "ctl" :value v)</code></td><td>change what it holds — also <code>:text</code>, <code>:items</code>, <code>:rows</code>, <code>:columns</code>, <code>:filter</code>, <code>:src</code>, <code>:file</code>, <code>:pages</code>, <code>:interval</code>, <code>:enabled</code>, <code>:visible</code></td></tr>
+      <tr><td><code>(ui-message "…")</code></td><td>a toast</td></tr>
+      <tr><td><code>(ui-focus "ctl")</code></td><td>put the caret there</td></tr>
+      <tr><td><code>(ui-close)</code></td><td>stop the form</td></tr>
+      <tr><td><code>(ui-open "Orders")</code></td><td>open and run another form, in a window</td></tr>
+    </table></div>
+    <p>
+      Everything else is the language: <code>insert</code>, <code>query</code>, <code>update</code>,
+      <code>sheet-get</code>, your own functions. A grid takes what <code>query</code> returns as its
+      <code>:rows</code>, and the row a user picks comes back as a dict, so
+      <code>(dict-get row "id")</code> is what <code>update</code> and <code>delete</code> want.
+      Handlers are ordinary functions: try one from the REPL with a dict of your own.
+    </p>
+
+    <h3>The controls</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Control</th><th>Holds</th><th>Of note</th></tr>
+      <tr><td><code>label</code></td><td><code>:text</code></td><td></td></tr>
+      <tr><td><code>textbox</code></td><td><code>:value</code>, text</td><td><code>:multiline</code>; <code>:number</code> makes it worth a number, or nil while empty; <code>:placeholder</code>, <code>:pattern</code>, <code>:min</code>, <code>:max</code></td></tr>
+      <tr><td><code>button</code></td><td><code>:text</code></td><td><code>:submit</code> checks the form first; <code>:default</code> is pressed by <kbd>↵</kbd> in a box, <code>:cancel</code> by <kbd>Esc</kbd></td></tr>
+      <tr><td><code>checkbox</code></td><td><code>:value</code>, true or false</td><td></td></tr>
+      <tr><td><code>radio</code></td><td>the chosen one of <code>:items</code></td><td></td></tr>
+      <tr><td><code>dropdown</code> · <code>listbox</code></td><td>the chosen one of <code>:items</code></td><td>a listbox also fires <code>on-dblclick</code></td></tr>
+      <tr><td><code>grid</code></td><td>the selected row, a dict</td><td><code>:columns</code>; <code>:rows</code> from a query; <code>:sortable</code> headers; a <code>:filter</code> box; <code>:page-size</code> pages; <code>:editable</code> cells, with <code>on-edit</code> handed the row as edited</td></tr>
+      <tr><td><code>date</code></td><td><code>:value</code>, <code>yyyy-mm-dd</code></td><td><code>:min</code>, <code>:max</code></td></tr>
+      <tr><td><code>image</code></td><td><code>:src</code></td><td>a path beside the form, like a note's <code>assets/x.png</code></td></tr>
+      <tr><td><code>tabs</code></td><td>the open one of <code>:pages</code></td><td>see <em>pages</em> below</td></tr>
+      <tr><td><code>sheet</code></td><td><code>:file</code></td><td>a live <code>.eesheet</code> beside the form; <code>:toolbar false</code> for cells only</td></tr>
+      <tr><td><code>timer</code></td><td></td><td>invisible; fires <code>on-tick</code> every <code>:interval</code> ms while enabled</td></tr>
+    </table></div>
+    <p>
+      Every control has a name, <code>:at</code>, <code>:size</code>, <code>:enabled</code> and
+      <code>:visible</code>. Events are properties naming a function: <code>:on-click</code> for a
+      button, <code>:on-change</code> for anything with a value, <code>:on-load</code> for the form.
+      The order of the controls in the file is the Tab order when it runs; the properties panel has
+      <em>earlier</em> and <em>later</em> buttons to move one.
+    </p>
+
+    <h3>Checking what was typed</h3>
+    <p>
+      A <code>:submit</code> button does three things before its handler runs. First each control's
+      own rules: <code>:required</code>, <code>:min</code> and <code>:max</code> on numbers and dates,
+      <code>:pattern</code> — a regular expression the whole text must match. The first one broken is
+      marked, focused and named: <em>Age must be at most 150</em>. Then the button's
+      <code>:on-validate</code> handler, if it has one — a function of the form that returns a message
+      to refuse, or nil to go ahead. Then <code>:on-click</code>.
+    </p>
+<pre><code>(defn check-contact (f)
+  (if (str-contains (ui-get f <span class="st">"txtName"</span>) <span class="st">" "</span>)
+    nil
+    <span class="st">"A contact needs a first and a last name"</span>))</code></pre>
+
+    <h3>Running it</h3>
+    <p>
+      <strong>▶ run</strong> evaluates the file — the table gets defined, the handlers too — builds
+      the controls, and fires <code>on-load</code>. What the form writes goes into the workspace's
+      database, the same one the REPL and your notes see, so <code>(browse contacts)</code> shows what
+      it saved. <strong>■ stop</strong> is the way back to the designer. Opening a form runs nothing:
+      only <em>run</em> does, the same rule as sheets and <code>eelisp</code> blocks.
+    </p>
+    <p>
+      To keep a form open while you write, run it in a <strong>window</strong>: type
+      <code>(ed-form "Contacts")</code> in the REPL, bind it to a key, or press <strong>⧉</strong>
+      on a running tab. The window floats over the app, drags by its title bar, and comes back where
+      you left it. <code>(ui-open …)</code> from another form opens one the same way.
+    </p>
+
+    <h3>Menus, pages, and a sheet in a form</h3>
+    <p>
+      A <code>:menu</code> on the form puts a menu bar under its title; each item names the handler
+      it runs, <code>"-"</code> is a separator. The designer edits it as text — a title on its own
+      line, items indented as <code>label = handler</code>.
+    </p>
+<pre><code>(form <span class="st">"Contacts"</span> :size (480 400)
+  :menu ((<span class="st">"Contacts"</span> (<span class="st">"Reload"</span> load-contacts) (<span class="st">"-"</span>) (<span class="st">"Close"</span> close-form))
+         (<span class="st">"Help"</span> (<span class="st">"About"</span> about)))
+  …)</code></pre>
+    <p>
+      A <code>tabs</code> control lists its <code>:pages</code>, and any control with
+      <code>:page "Details"</code> belongs to that page and shows only while it is open. Controls
+      stay flat in the file with their own coordinates — draw them inside the tabs control's box —
+      and the designer shows one page at a time; click a tab header on the canvas to open another.
+    </p>
+    <p>
+      A <code>sheet</code> control shows a <code>.eesheet</code> beside the form as the real grid,
+      formula bar and all. Handlers read and write it with <code>sheet-get</code> and
+      <code>sheet-set</code>, and the grid follows.
+    </p>
+
+    <div class="note">
+      <p>
+        The worked example, <code>Contacts.eeform</code>, ships in the sample workspace and uses
+        nearly all of this: required and number boxes, a submit button with its own check, an
+        editable grid with sorting, a filter and pages, a menu. Its <em>code</em> view is the best
+        second read after this chapter.
+      </p>
+    </div>
+  </div></div>
+</section>
+
+<section id="repl">
+  <div class="wrap"><div class="prose">
+    <h2>11. The REPL</h2>
     <p>
       <kbd>⌘J</kbd> shows and hides the EELisp REPL. Type an expression, press <kbd>⌘↵</kbd>, and
       the result appears above the prompt.
@@ -623,9 +804,9 @@ zzalinhar — function
   </div></div>
 </section>
 
-<section id="keybindings">
+<section id="keybindings" class="alt">
   <div class="wrap"><div class="prose">
-    <h2>11. Keybindings</h2>
+    <h2>12. Keybindings</h2>
     <p>
       <kbd>⌘⇧K</kbd> opens <code>.eeditor/keybindings.eelisp</code>, writing the documented defaults
       into it the first time. That file <em>is</em> the shortcut table. Save it and it reloads at
@@ -646,7 +827,9 @@ zzalinhar — function
     <h3>What a binding returns</h3>
     <p>
       The body is EELisp, evaluated on the engine when the key fires. It returns editor commands as
-      data, and a binding may list several — they run in order against the live document.
+      data, and a binding may list several — they run in order against the live document. The REPL
+      carries out the same commands: type <code>(ed-insert "hello")</code> at the prompt and it lands
+      in the note.
     </p>
     <div class="table-wrap"><table>
       <tr><th>Command</th><th>Effect</th></tr>
@@ -661,6 +844,7 @@ zzalinhar — function
       <tr><td><code>(ed-set-buffer text)</code></td><td>replace the whole document</td></tr>
       <tr><td><code>(ed-open "notes/x.md")</code></td><td>open a file in a tab</td></tr>
       <tr><td><code>(ed-new path)</code><br><code>(ed-new path text)</code></td><td>create the note if it doesn't exist, then open it — never overwrites</td></tr>
+      <tr><td><code>(ed-form "Contacts")</code></td><td>open a form (<a href="#forms">chapter 10</a>) and run it in a floating window</td></tr>
       <tr><td><code>(ed-message text)</code></td><td>show a toast</td></tr>
       <tr><td><code>(ed-nothing)</code></td><td>do nothing, useful as a <code>cond</code> branch</td></tr>
     </table></div>
@@ -711,7 +895,8 @@ zzalinhar — function
       <tr><td><code>quick-open</code></td><td>fuzzy file finder</td></tr>
       <tr><td><code>search</code></td><td>full-text search</td></tr>
       <tr><td><code>daily-note</code></td><td>open (or create) today's note</td></tr>
-      <tr><td><code>new-file</code> / <code>new-folder</code></td><td>create at the workspace root, asking for a name</td></tr>
+      <tr><td><code>new-file</code> / <code>new-folder</code> / <code>new-sheet</code> / <code>new-form</code></td><td>create at the workspace root, asking for a name</td></tr>
+      <tr><td><code>form-design</code> / <code>form-code</code> / <code>form-run</code></td><td>switch the active form tab's mode</td></tr>
       <tr><td><code>open-file</code></td><td>pick any file; asks whether to copy it in or edit in place</td></tr>
       <tr><td><code>copy-into-workspace</code></td><td>turn the current ↗ note into a copy in the workspace</td></tr>
       <tr><td><code>open-keys</code> / <code>reload-keys</code></td><td>edit or re-read this config</td></tr>
@@ -755,9 +940,9 @@ zzalinhar — function
   </div></div>
 </section>
 
-<section id="mobile" class="alt">
+<section id="mobile">
   <div class="wrap"><div class="prose">
-    <h2>12. iPhone and iPad</h2>
+    <h2>13. iPhone and iPad</h2>
     <p>
       Below 900 pixels the layout becomes a single pane with a tab bar — <strong>Files</strong>,
       <strong>Editor</strong>, <strong>REPL</strong> — so the same app works on a phone without
@@ -776,9 +961,9 @@ zzalinhar — function
   </div></div>
 </section>
 
-<section id="shortcuts">
+<section id="shortcuts" class="alt">
   <div class="wrap"><div class="prose">
-    <h2>13. Shortcut reference</h2>
+    <h2>14. Shortcut reference</h2>
     <p>The defaults. <kbd>⌘</kbd> is <kbd>Ctrl</kbd> on Windows and Linux.</p>
     <div class="table-wrap"><table>
       <tr><th>Key</th><th>Does</th></tr>
