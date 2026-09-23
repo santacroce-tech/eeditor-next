@@ -70,7 +70,8 @@ with no dependency on the rest of the app beyond the engine client, so they coul
 ```
 
 **Controls**: `label`, `textbox` (`:multiline`, `:placeholder`, `:number` — worth a number or nil
-to the handler; `:min`, `:max`, `:pattern`), `button` (`:submit`, `:default` — Enter in a box
+to the handler; `:min`, `:max`, `:pattern`; `:readonly` — selectable and copyable, not typed into;
+`:mono` — a monospaced font, for code), `button` (`:submit`, `:default` — Enter in a box
 presses it, `:cancel` — Escape does), `checkbox`, `radio` (`:items`, one chosen), `dropdown`
 (`:items`), `listbox` (`:items`), `grid` (`:columns`, `:rows`; `:editable` — double-click a cell to
 type into it, and `:on-edit` gets the row as edited; `:sortable` — click a header; `:filter` — a
@@ -125,6 +126,21 @@ over the app, so it stays usable beside the note you are writing; no tab has to 
 tab's unsaved text counts). ⧉ on a running tab moves it into a window; ✕ closes one. Asking for a
 form already in a window raises it. The `form-run`, `form-design` and `form-code` commands switch
 the active form tab's mode.
+
+## Examples
+
+`workspace/examples/` — each one is run end to end by `dev/ui/examples.pw.mjs`.
+
+| Form | Shows |
+|---|---|
+| `Functions.eeform` | Every function in scope — `(function-list)` into a grid, `(source-text name)` for the one picked, and a box of arguments to call it with (the call is built as text and `(eval (parse …))`d, so arguments are written as at the REPL). |
+| `Books.eeform` | One record at a time, dBASE-style: \|◀ ◀ ▶ ▶\|, *Record n of m*, find, and New / Edit / Save / Cancel / Delete with the boxes locked while browsing (`:enabled` from the handlers). |
+| `Tables.eeform` | Any table: pick it from `(tables)`, a WHERE / order / limit that shows the `(query …)` it ran, cells edited in place, new row, delete, pack. The table is named by an expression — `(query (str name))`. |
+| `Orders.eeform` | Master–detail: customers, the picked one's orders (`:where "customer = ?"`), a worked-out amount column and a total. |
+| `Agenda.eeform` | The agenda PIM through most of the controls: tabs, menu, datagrid, date, radio, dropdowns, checkbox, timer. Items by due date, an editor for one (`item->dict` reads it), quick add with a `smart-parse` preview, categories, rules, saved views. |
+
+`defcategory`, `defrule` and `defview` take their arguments unevaluated, so the Agenda form writes
+those calls as text and evaluates them — `json-stringify` quotes a string safely.
 
 ---
 

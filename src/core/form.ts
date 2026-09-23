@@ -291,6 +291,8 @@ export const CONTROLS: Record<ControlType, ControlDef> = {
       { key: "value", kind: "text", label: "Value", default: "" },
       { key: "placeholder", kind: "text", label: "Placeholder", default: "" },
       { key: "multiline", kind: "bool", label: "Multiline", default: false },
+      { key: "readonly", kind: "bool", label: "Read-only", default: false },
+      { key: "mono", kind: "bool", label: "Monospaced", default: false },
       { key: "number", kind: "bool", label: "Number", default: false },
       REQUIRED,
       { key: "min", kind: "scalar", label: "Min", default: "" },

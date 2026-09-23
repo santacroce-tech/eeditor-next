@@ -123,7 +123,7 @@ test("running the form saves into the table and reads it back", async ({ page })
 
 test("a new form gets a button from the toolbox, written into the code, and undone", async ({ page }) => {
   await page.goto("/");
-  await page.locator(".tree-dir").click({ button: "right" });
+  await page.locator(".tree-dir").first().click({ button: "right" });
   await page.locator(".ctx-item", { hasText: "New form…" }).click();
   await page.locator(".dlg-input").fill("Orders");
   await page.locator(".dlg-input").press("Enter");
@@ -189,7 +189,7 @@ test("several controls at once: marquee, align, copy and paste", async ({ page }
 
 test("pages: a control on a tab's page shows only while that page is open", async ({ page }) => {
   await page.goto("/");
-  await page.locator(".tree-dir").click({ button: "right" });
+  await page.locator(".tree-dir").first().click({ button: "right" });
   await page.locator(".ctx-item", { hasText: "New form…" }).click();
   await page.locator(".dlg-input").fill("Paged");
   await page.locator(".dlg-input").press("Enter");
@@ -225,7 +225,7 @@ test("a sheet control shows a live grid over a .eesheet beside the form", async 
   await page.locator(".repl-input").fill('(do (sheet-new "Figures") (sheet-set "Figures" "A1" "hello") (sheet-set "Figures" "B1" "=(* 6 7)"))');
   await page.locator(".repl-input").press(`${MOD}+Enter`);
   await expect(page.locator(".repl-scrollback .repl-result").last()).toBeVisible();
-  await page.locator(".tree-dir").click({ button: "right" });
+  await page.locator(".tree-dir").first().click({ button: "right" });
   await page.locator(".ctx-item", { hasText: "New form…" }).click();
   await page.locator(".dlg-input").fill("Sheeted");
   await page.locator(".dlg-input").press("Enter");

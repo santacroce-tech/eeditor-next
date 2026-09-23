@@ -1,0 +1,233 @@
+;; Agenda.eeform — the agenda (the engine's Lotus-Agenda-style PIM) as a form, using most of what a
+;; form can do: a menu bar, tabs, a sortable paged grid, a date box, a radio group, dropdowns, a
+;; checkbox and a timer that keeps the list fresh.
+;;
+;;   Items               what's due — today, the next 7 days, overdue, or all — and an editor for one
+;;   Quick add           type it the way you'd say it; the preview shows what the parser understood
+;;   Categories & rules  the category tree, and rules that file items by their text
+;;   Views               saved filters, run with (show …)
+;;
+;; It is the same agenda the Agenda panel and the REPL see: (items), (add …), (show …).
+
+(form "Agenda" :size (760 568) :on-load ag-load :menu (("Agenda" ("Refresh" ag-refresh) ("New item" ag-new) ("-") ("Close" ag-close)) ("Rules" ("Apply rules now" ag-apply)) ("Help" ("About" ag-about)))
+  (tabs tabMain :pages ("Items" "Quick add" "Categories & rules" "Views") :at (8 8) :size (744 552))
+  (label lblShow :text "Show" :page "Items" :at (20 48) :size (44 24))
+  (dropdown cboShow :items ("today" "next 7 days" "overdue" "all") :value "next 7 days" :page "Items" :at (64 44) :size (132 28) :on-change ag-refresh)
+  (textbox txtSearch :placeholder "search text and notes…" :page "Items" :at (204 44) :size (180 28) :on-change ag-refresh)
+  (label lblCount :page "Items" :at (392 48) :size (72 24))
+  (grid grdItems :columns ("text" "when" "priority" "categories") :sortable true :page-size 12 :page "Items" :at (20 80) :size (444 468) :on-change ag-pick :on-dblclick ag-done)
+  (label lblEdit :text "New item" :page "Items" :at (480 48) :size (256 24))
+  (textbox txtText :required true :placeholder "what" :page "Items" :at (480 80) :size (256 28))
+  (label lblWhen :text "When" :page "Items" :at (480 118) :size (60 24))
+  (date dtWhen :page "Items" :at (540 114) :size (196 28))
+  (label lblPri :text "Priority" :page "Items" :at (480 152) :size (80 24))
+  (radio optPri :items ("1" "2" "3" "none") :value "none" :page "Items" :at (480 176) :size (100 100))
+  (label lblCat :text "Category" :page "Items" :at (596 152) :size (140 24))
+  (dropdown cboCat :items ("") :page "Items" :at (596 176) :size (140 28))
+  (textbox txtNotes :multiline true :placeholder "notes…" :page "Items" :at (480 284) :size (256 180))
+  (button btnSave :text "Save" :submit true :page "Items" :at (480 474) :size (80 30) :on-click ag-save)
+  (button btnDone :text "Done ✓" :page "Items" :at (568 474) :size (80 30) :on-click ag-done)
+  (button btnNew :text "New" :page "Items" :at (656 474) :size (80 30) :on-click ag-new)
+  (label lblStatus :page "Items" :at (480 516) :size (256 24))
+  (label lblQuick :text "Type it the way you'd say it: today, tomorrow, in 3 days, 2026-10-01 · urgent or !! · @someone" :page "Quick add" :at (24 52) :size (708 24))
+  (textbox txtQuick :placeholder "call Bob tomorrow !! @bob" :page "Quick add" :at (24 84) :size (600 30) :on-change ag-preview)
+  (button btnQuick :text "Add" :page "Quick add" :at (632 84) :size (100 30) :on-click ag-quick)
+  (textbox txtPreview :multiline true :readonly true :mono true :page "Quick add" :at (24 128) :size (708 160))
+  (label lblCats :text "Categories" :page "Categories & rules" :at (24 52) :size (160 24))
+  (textbox txtCats :multiline true :readonly true :mono true :page "Categories & rules" :at (24 76) :size (340 300))
+  (textbox txtNewCat :placeholder "work/calls" :page "Categories & rules" :at (24 388) :size (240 28))
+  (button btnDefCat :text "Define" :page "Categories & rules" :at (272 388) :size (92 28) :on-click ag-defcat)
+  (label lblRules :text "Rules — file an item when its text contains…" :page "Categories & rules" :at (388 52) :size (344 24))
+  (textbox txtRules :multiline true :readonly true :mono true :page "Categories & rules" :at (388 76) :size (344 180))
+  (textbox txtRuleName :placeholder "name" :page "Categories & rules" :at (388 268) :size (108 28))
+  (textbox txtRuleText :placeholder "contains…" :page "Categories & rules" :at (504 268) :size (108 28))
+  (dropdown cboRuleCat :items ("") :page "Categories & rules" :at (620 268) :size (112 28))
+  (button btnDefRule :text "Add rule" :page "Categories & rules" :at (388 304) :size (108 30) :on-click ag-defrule)
+  (button btnApply :text "Apply rules now" :page "Categories & rules" :at (504 304) :size (140 30) :on-click ag-apply)
+  (checkbox chkAuto :text "File new items as they arrive" :page "Categories & rules" :at (388 348) :size (344 24) :on-change ag-auto)
+  (label lblViews :text "Saved views" :page "Views" :at (24 52) :size (200 24))
+  (listbox lstViews :page "Views" :at (24 76) :size (200 300) :on-change ag-show-view)
+  (grid grdView :columns ("text" "when" "priority" "categories") :sortable true :page "Views" :at (236 76) :size (496 300))
+  (textbox txtViewName :placeholder "view name" :page "Views" :at (24 392) :size (200 28))
+  (dropdown cboViewKind :items ("overdue" "text contains" "in category") :value "overdue" :page "Views" :at (236 392) :size (140 28))
+  (textbox txtViewArg :placeholder "text or category" :page "Views" :at (384 392) :size (220 28))
+  (button btnDefView :text "Save view" :page "Views" :at (612 392) :size (120 28) :on-click ag-defview)
+  (timer tmrRefresh :interval 60000 :at (720 12) :size (24 24) :on-tick ag-refresh))
+
+;; The item in the editor, by id — nil while it holds a new one.
+(def ag-id nil)
+
+(defn ag-today () (date-format (today) "yyyy-MM-dd"))
+(defn ag-blank? (s) (or (nil? s) (= (str-trim s) "")))
+
+;; (categories), (rules) and (views) answer in text, one entry per line; these are the entries.
+(defn ag-lines (text)
+  (filter (fn (l) (and (not (= l "")) (not (str-starts-with l "("))))
+          (map str-trim (str-split text "\n"))))
+
+(defn ag-load (f)
+  (ag-refresh f)
+  (ag-setup f)
+  (ag-views f)
+  (ag-new f))
+
+;; ── Items ──
+
+(defn ag-query (show search)
+  (cond
+    (not (ag-blank? search)) (items :search (str-trim search))
+    (= show "today") (items-on (ag-today))
+    (= show "overdue") (items :when-before (ag-today))
+    (= show "all") (items)
+    true (items-between (ag-today) (date-add (ag-today) 7 :days))))
+
+(defn ag-refresh (f)
+  (let (rs (ag-query (ui-get f "cboShow") (ui-get f "txtSearch")))
+    (ui-set "grdItems" :rows rs)
+    (ui-set "lblCount" :text (str (length (records rs)) " items"))))
+
+;; A row picked: the whole item — notes included, which the grid doesn't carry — into the editor.
+(defn ag-pick (f)
+  (let (row (ui-get f "grdItems"))
+    (when row
+      (let (it (item->dict (item-get (dict-get row "id"))))
+        (set! ag-id (dict-get it "id"))
+        (ui-set "lblEdit" :text (str "Item #" ag-id))
+        (ui-set "txtText" :value (dict-get it "text"))
+        (ui-set "dtWhen" :value (or (dict-get it "when") ""))
+        (ui-set "optPri" :value (let (p (str (or (dict-get it "priority") ""))) (if (= p "") "none" p)))
+        (ui-set "cboCat" :value (or (first (dict-get it "categories")) ""))
+        (ui-set "txtNotes" :value (dict-get it "notes"))
+        (ui-set "lblStatus" :text "")))))
+
+(defn ag-new (f)
+  (set! ag-id nil)
+  (ui-set "lblEdit" :text "New item")
+  (for-each c '("txtText" "dtWhen" "cboCat" "txtNotes") (ui-set c :value ""))
+  (ui-set "optPri" :value "none")
+  (ui-focus "txtText"))
+
+;; Save: a new item, or the one picked. Save is :submit, so the text is there by now.
+(defn ag-save (f)
+  (let (text (str-trim (ui-get f "txtText"))
+        due (or (ui-get f "dtWhen") "")
+        pri (ui-get f "optPri")
+        cat (or (ui-get f "cboCat") "")
+        id (if ag-id ag-id (dict-get (item->dict (add-item text)) "id"))
+        was (dict-get (item->dict (item-get id)) "categories"))
+    (item-set id :text text :notes (or (ui-get f "txtNotes") "") :when due
+                 :priority (if (or (nil? pri) (= pri "none")) "" pri))
+    (for-each c was (when (not (= c cat)) (unassign id c)))
+    (when (not (= cat "")) (assign id cat))
+    (set! ag-id id)
+    (ui-set "lblEdit" :text (str "Item #" id))
+    (ui-set "lblStatus" :text (str "Saved " text))
+    (ag-refresh f)))
+
+;; Done: gone from the list — or, for a recurring item, rolled on to its next date.
+(defn ag-done (f)
+  (let (row (ui-get f "grdItems")
+        id (or ag-id (and row (dict-get row "id"))))
+    (if (nil? id)
+      (ui-message "Pick an item first")
+      (do
+        (item-done id)
+        (ui-set "lblStatus" :text "Done ✓")
+        (ag-new f)
+        (ag-refresh f)))))
+
+;; ── Quick add ──
+
+(defn ag-preview (f)
+  (let (text (ui-get f "txtQuick"))
+    (ui-set "txtPreview" :value
+      (if (ag-blank? text)
+        ""
+        (let (p (smart-parse text))
+          (str "text      " (dict-get p "text") "\n"
+               "when      " (or (dict-get p "when") "—") "\n"
+               "priority  " (or (dict-get p "priority") "—") "\n"
+               "who       " (or (dict-get p "who") "—")))))))
+
+(defn ag-quick (f)
+  (let (text (ui-get f "txtQuick"))
+    (if (ag-blank? text)
+      (ui-message "Type something to add")
+      (do
+        (add text)
+        (ui-set "txtQuick" :value "")
+        (ui-set "txtPreview" :value (str "Added: " text))
+        (ag-refresh f)))))
+
+;; ── Categories & rules ──
+
+(defn ag-setup (f)
+  (let (cats (cons "" (ag-lines (categories))))
+    (ui-set "txtCats" :value (categories))
+    (ui-set "txtRules" :value (rules))
+    (ui-set "cboCat" :items cats)
+    (ui-set "cboRuleCat" :items cats)))
+
+;; defcategory and defrule read their arguments unevaluated — they are meant to be typed — so a
+;; program writes the call as text and evaluates it. json-stringify quotes a string safely.
+(defn ag-name? (s) (and (not (ag-blank? s)) (str-matches (str-trim s) "^[A-Za-z0-9_/-]+$")))
+
+(defn ag-defcat (f)
+  (let (name (ui-get f "txtNewCat"))
+    (if (not (ag-name? name))
+      (ui-message "A category is letters, digits, - and _, with / between levels: work/calls")
+      (do
+        (eval (parse (str "(defcategory " (str-trim name) ")")))
+        (ui-set "txtNewCat" :value "")
+        (ag-setup f)))))
+
+(defn ag-defrule (f)
+  (let (name (ui-get f "txtRuleName")
+        text (ui-get f "txtRuleText")
+        cat (ui-get f "cboRuleCat"))
+    (cond
+      (not (ag-name? name)) (ui-message "Name the rule: letters, digits, - and _")
+      (ag-blank? text) (ui-message "What should the item's text contain?")
+      (ag-blank? cat) (ui-message "Pick the category it files into")
+      true (do
+             (eval (parse (str "(defrule " (str-trim name)
+                               " :when (str-contains (str-lower text) " (json-stringify (str-lower (str-trim text))) ")"
+                               " :assign " (json-stringify cat) ")")))
+             (ui-set "txtRuleName" :value "")
+             (ui-set "txtRuleText" :value "")
+             (ag-setup f)))))
+
+(defn ag-apply (f)
+  (let (n (apply-rules))
+    (ui-message (str "Rules changed " n " item" (if (= n 1) "" "s")))
+    (ag-refresh f)))
+
+(defn ag-auto (f) (auto-categorize (ui-get f "chkAuto")))
+
+;; ── Views ──
+
+(defn ag-views (f) (ui-set "lstViews" :items (ag-lines (views))))
+
+(defn ag-show-view (f)
+  (let (v (ui-get f "lstViews"))
+    (when v (ui-set "grdView" :rows (show (str v))))))
+
+(defn ag-defview (f)
+  (let (name (ui-get f "txtViewName")
+        kind (ui-get f "cboViewKind")
+        arg (or (ui-get f "txtViewArg") "")
+        filt (cond
+               (= kind "text contains") (str "(str-contains (str-lower text) " (json-stringify (str-lower (str-trim arg))) ")")
+               (= kind "in category") (str "(has-category " (json-stringify (str-trim arg)) ")")
+               true "(overdue?)"))
+    (cond
+      (not (ag-name? name)) (ui-message "Name the view: letters, digits, - and _")
+      (and (not (= kind "overdue")) (ag-blank? arg)) (ui-message "What should it look for?")
+      true (do
+             (eval (parse (str "(defview " (str-trim name) " :filter " filt " :sort-by when)")))
+             (ag-views f)
+             (ui-set "lstViews" :value (str-trim name))
+             (ui-set "grdView" :rows (show (str-trim name)))))))
+
+(defn ag-close (f) (ui-close))
+(defn ag-about (f) (ui-message "Agenda — items, categories, rules and views, as a form"))

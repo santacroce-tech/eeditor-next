@@ -1,0 +1,88 @@
+;; Orders.eeform — master and detail: customers on the left, the picked customer's orders on the
+;; right, and what they add up to. Two tables tied by a field — orders.customer holds a customer's id.
+;;
+;; Press ▶ run. Empty? Orders → Add sample data. Double-click an order's cell to change it; the total
+;; follows.
+
+(form "Orders" :size (760 480) :on-load or-load :menu (("Orders" ("Add sample data" or-samples) ("-") ("Close" or-close)))
+  (label lblCustomers :text "Customers" :at (16 12) :size (200 24))
+  (grid grdCustomers :columns ("name" "city") :sortable true :filter true :at (16 36) :size (300 340) :on-change or-pick)
+  (textbox txtName :placeholder "name" :required true :at (16 388) :size (144 28))
+  (textbox txtCity :placeholder "city" :at (168 388) :size (148 28))
+  (button btnAddCustomer :text "Add customer" :submit true :at (16 424) :size (120 30) :on-click or-add-customer)
+  (label lblOrders :text "Pick a customer" :at (336 12) :size (408 24))
+  (grid grdOrders :columns ("item" "qty" "price" "amount") :editable true :at (336 36) :size (408 300) :on-edit or-edit)
+  (label lblTotal :at (336 344) :size (408 24))
+  (textbox txtItem :placeholder "item" :at (336 388) :size (160 28))
+  (textbox txtQty :number true :min 1 :placeholder "qty" :at (504 388) :size (64 28))
+  (textbox txtPrice :number true :min 0 :placeholder "price" :at (576 388) :size (80 28))
+  (button btnAddOrder :text "Add" :at (664 386) :size (80 32) :on-click or-add-order)
+  (button btnDelOrder :text "Delete order" :at (336 424) :size (120 30) :on-click or-del-order))
+
+(deftable customers (name:string city:string))
+(deftable orders (customer:number item:string qty:number price:number))
+
+;; The customer whose orders are showing, by id.
+(def or-customer nil)
+
+(defn or-load (f)
+  (ui-set "grdCustomers" :rows (query customers :order "name"))
+  (or-show-orders))
+
+;; The detail: this customer's orders, each with its amount worked out, and the sum of them.
+(defn or-show-orders ()
+  (if (nil? or-customer)
+    (do (ui-set "grdOrders" :rows '()) (ui-set "lblTotal" :text ""))
+    (let (rows (map (fn (r)
+                      (let (qty (or (field-get r :qty) 0) price (or (field-get r :price) 0))
+                        {:id (record-id r) :item (field-get r :item) :qty qty :price price :amount (* qty price)}))
+                    (records (query orders :where "customer = ?" :params (list or-customer))))
+          total (reduce + 0 (map (fn (r) (dict-get r "amount")) rows)))
+      (ui-set "grdOrders" :rows rows)
+      (ui-set "lblTotal" :text (str (length rows) " orders · total " total)))))
+
+(defn or-pick (f)
+  (let (row (ui-get f "grdCustomers"))
+    (when row
+      (set! or-customer (dict-get row "id"))
+      (ui-set "lblOrders" :text (str "Orders of " (dict-get row "name")))
+      (or-show-orders))))
+
+(defn or-add-customer (f)
+  (insert customers {:name (str-trim (ui-get f "txtName")) :city (or (ui-get f "txtCity") "")})
+  (ui-set "txtName" :value "")
+  (ui-set "txtCity" :value "")
+  (or-load f))
+
+(defn or-add-order (f)
+  (let (item (str-trim (or (ui-get f "txtItem") "")))
+    (cond
+      (nil? or-customer) (ui-message "Pick a customer first")
+      (= item "") (ui-message "What was ordered?")
+      true (do
+             (insert orders {:customer or-customer :item item :qty (or (ui-get f "txtQty") 1) :price (or (ui-get f "txtPrice") 0)})
+             (for-each c '("txtItem" "txtQty" "txtPrice") (ui-set c :value ""))
+             (ui-focus "txtItem")
+             (or-show-orders)))))
+
+;; A cell changed: write back what can be typed — the amount is worked out, not stored.
+(defn or-edit (f)
+  (let (row (ui-get f "grdOrders"))
+    (update orders (dict-get row "id") {:item (dict-get row "item") :qty (dict-get row "qty") :price (dict-get row "price")})
+    (or-show-orders)))
+
+(defn or-del-order (f)
+  (let (row (ui-get f "grdOrders"))
+    (if (nil? row)
+      (ui-message "Pick an order first")
+      (do (delete orders (dict-get row "id")) (or-show-orders)))))
+
+(defn or-samples (f)
+  (let (ada (record-id (insert customers {:name "Ada Lovelace" :city "London"}))
+        grace (record-id (insert customers {:name "Grace Hopper" :city "Arlington"})))
+    (insert orders {:customer ada :item "Analytical engine gears" :qty 12 :price 8.5})
+    (insert orders {:customer ada :item "Punched cards" :qty 500 :price 0.02})
+    (insert orders {:customer grace :item "Nanosecond wire" :qty 30 :price 0.3})
+    (or-load f)))
+
+(defn or-close (f) (ui-close))

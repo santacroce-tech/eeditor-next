@@ -202,7 +202,7 @@ export function createFormDesigner(opts: FormDesignerOptions): FormDesigner {
       case "button":
         return el("span", "fd-p-button", text);
       case "textbox": {
-        const b = el("div", "fd-p-input" + (p.multiline ? " multi" : ""), String(p.value ?? ""));
+        const b = el("div", "fd-p-input" + (p.multiline ? " multi" : "") + (p.mono ? " mono" : ""), String(p.value ?? ""));
         if (!p.value && p.placeholder) {
           b.textContent = String(p.placeholder);
           b.classList.add("placeholder");

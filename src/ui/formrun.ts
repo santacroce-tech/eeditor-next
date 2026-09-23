@@ -343,6 +343,9 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
         if (numeric) (i as HTMLInputElement).type = "number";
         i.value = asText(p.value as string);
         if (p.placeholder) i.placeholder = String(p.placeholder);
+        // Read-only still selects and copies, which is what a box showing code or a result is for.
+        i.readOnly = p.readonly === true;
+        if (p.mono === true) i.classList.add("mono");
         i.addEventListener("change", on("change"));
         box.append(i);
         out = {
