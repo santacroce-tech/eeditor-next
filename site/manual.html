@@ -196,8 +196,14 @@ sequenceDiagram
     </p>
     <h3>Running code from a note</h3>
     <p>
-      Put EELisp in a fenced block and press <kbd>⌘⇧↵</kbd> with the caret inside it. The result
-      appears in the REPL below — a live notebook without leaving the document.
+      Select any EELisp in a note — a line, a few forms, an inline <code>`(+ 1 2)`</code> — and press
+      <kbd>⌘⇧↵</kbd>. The result appears in the REPL, which opens if it was hidden. Surrounding
+      backticks and fence lines in the selection are ignored.
+    </p>
+    <p>
+      For code you'll run again, a fenced block saves the selecting: with nothing selected,
+      <kbd>⌘⇧↵</kbd> runs the whole <code>eelisp</code> block the caret is in — a live notebook
+      without leaving the document.
     </p>
 <pre><code>```eelisp
 (items :category <span class="st">"work"</span> :when-before (today))
@@ -977,7 +983,7 @@ zzalinhar — function
       <tr><td><kbd>⌘E</kbd></td><td>Preview ⇄ edit</td></tr>
       <tr><td><kbd>⌘J</kbd></td><td>Show/hide the REPL</td></tr>
       <tr><td><kbd>⌘⇧K</kbd></td><td>Edit these keybindings</td></tr>
-      <tr><td><kbd>⌘⇧↵</kbd></td><td>Run the <code>eelisp</code> block at the caret</td></tr>
+      <tr><td><kbd>⌘⇧↵</kbd></td><td>Run the selection as EELisp, or the <code>eelisp</code> block at the caret</td></tr>
       <tr><td><kbd>⌘↵</kbd></td><td>Evaluate in the REPL</td></tr>
       <tr><td><kbd>⌘</kbd>-click</td><td>Follow a wiki link from the editor</td></tr>
     </table></div>

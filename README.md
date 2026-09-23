@@ -98,7 +98,7 @@ src/
     mdmedia.ts   images in notes: assets/ beside the note, link ⇄ workspace path, safe file names
     core.test.ts / engine/render.test.ts  — 27 vitest cases
   ui/
-    editor.ts    CodeMirror 6 editor; switchable theme (one-dark / solarized-light); ⌘⇧⏎ runs the ```eelisp block
+    editor.ts    CodeMirror 6 editor; switchable theme (one-dark / solarized-light); ⌘⇧⏎ runs the selection or the ```eelisp block
     sidebar.ts   workspace file tree (click to open) + flat file list for quick-open
     agenda.ts    agenda panel — `(items)` table + smart-`(add …)` quick-add
     calendar.ts  📅 month grid (calendar.ts) with agenda-item dots (items-between/on) → click a day
