@@ -1,0 +1,187 @@
+# Forms — plan
+
+A visual form designer in the spirit of Visual Basic and FoxPro: drop buttons, text boxes and grids
+on a canvas, set their properties, attach **EELisp** to their events, press *Run*. The obvious job
+is a screen over a table — `(insert contacts …)` on *Save*, `(query contacts …)` into a grid — but
+a form is just controls plus code, so a calculator or a launcher for keybinding commands is the same
+thing. Branch `feat/forms`, app only; no engine change is needed for v1.
+
+```
+ ┌ Contacts ────────────────────────────────────────┐
+ │  Name  [ Ada Lovelace          ]                  │
+ │  Age   [ 36  ]                                    │
+ │                                                   │
+ │        ( Save )                                   │
+ │  ┌──────────────────────────────────────────────┐ │
+ │  │ name            │ age                        │ │
+ │  │ Ada Lovelace    │ 36                         │ │
+ │  └──────────────────────────────────────────────┘ │
+ └───────────────────────────────────────────────────┘
+```
+
+## Where it lives
+
+Inside EEditor, as a document type: `Contacts.eeform` in the workspace, opened in a tab like a note
+or a sheet. The database a form manages is the engine's database (`<workspace>/.eeditor/eeditor.db`),
+the handlers run on the same engine as the REPL and the keybindings, and the tree, tabs, quick-open,
+rename and *Reveal in Finder* all work on a form for free. A separate project would have to rebuild
+the engine bridge, the workspace and the database access before drawing its first button. The
+designer and the runtime are their own modules (`core/form.ts`, `ui/formdesigner.ts`, `ui/formrun.ts`)
+with no dependency on the rest of the app beyond the engine client, so they could be lifted out later.
+
+## Decisions
+
+| | Choice | Why |
+|---|---|---|
+| File format | **EELisp source.** A `.eeform` is a text file: one `(form …)` top-level form holding the layout, followed by the handlers as ordinary `(defn …)`s. | It is what VB's `.frm` was — a machine-written header and your code below — and it fits "keybindings are EELisp". The file is readable, diffable, greppable, editable by hand, and searchable by the app's full-text search. No JSON schema, no second parser: the layout is data the engine already reads. |
+| The designer | A **structured editor for one top-level form** of that file. The tab has three modes: *Design* (canvas + toolbox + properties), *Code* (the ordinary CodeMirror editor on the same text), *Run*. | Design edits rewrite only the `(form …)` region of the buffer, as one CodeMirror transaction — so ⌘Z in the designer is CodeMirror's undo, autosave and dirty tracking are the note's, and switching to *Code* shows exactly what will be saved. |
+| Events | A property naming a function: `(button btnSave :text "Save" :on-click save-contact)`. Double-clicking a control in the designer creates `(defn save-contact (f) …)` if it is missing and jumps to it. | The layout stays data and never has to parse code. A handler is a plain function, testable from the REPL: `(save-contact {:txtName "Ada"})`. |
+| The runtime | In the app. The form's state is handed to the handler as a dict; the handler *queues* changes with `(ui-set "lblStatus" :text "Saved")`, and the app applies the queue when the handler returns. | The engine has no way to reach the UI (see `keybindings/prelude.eelisp`), and a handler that returns commands as data is the pattern the app already has. `ui-set` reads as imperative code — `(ui-set …)` then `(ui-message …)` in a row — because a global queue and `set!` make it so, in pure EELisp. No Rust. |
+| Where code runs | *Run* evaluates the whole file (defining the handlers), then `:on-load`. Opening a form in *Design* runs nothing. | A `.eeform` from somewhere else must not run by being opened, the same rule as sheets and ```eelisp blocks. |
+| Naming | This is a *form*. The engine's older `(edit contacts 1)` / `(defform …)` stay as the **instant** forms of the REPL. | Same word VB and FoxPro use; the REPL's record editor is a different, smaller thing and keeps its name. |
+
+## The file
+
+```lisp
+;; Contacts.eeform
+(form "Contacts" :size (480 380) :on-load load-contacts
+  (label   lblName :text "Name" :at (16 20) :size (72 24))
+  (textbox txtName :at (96 16) :size (240 28))
+  (label   lblAge  :text "Age"  :at (16 56) :size (72 24))
+  (textbox txtAge  :at (96 52) :size (80 28))
+  (button  btnSave :text "Save" :at (96 92) :size (90 30) :on-click save-contact)
+  (grid    grdAll  :columns ("name" "age") :at (16 136) :size (448 220) :on-change pick-contact))
+
+(deftable contacts (name:string age:number))
+
+(defn load-contacts (f)
+  (ui-set "grdAll" :rows (query contacts :order "name")))
+
+(defn save-contact (f)
+  (insert contacts {:name (ui-get f "txtName") :age (->number (ui-get f "txtAge"))})
+  (ui-set "txtName" :value "")
+  (ui-set "txtAge" :value "")
+  (load-contacts f))
+
+(defn pick-contact (f)
+  (let (r (ui-get f "grdAll"))
+    (ui-set "txtName" :value (dict-get r "name"))
+    (ui-set "txtAge" :value (dict-get r "age"))))
+```
+
+**Controls**: `label`, `textbox` (`:multiline`, `:placeholder`, `:number` — worth a number or nil
+to the handler; `:min`, `:max`, `:pattern`), `button` (`:submit`, `:default` — Enter in a box
+presses it, `:cancel` — Escape does), `checkbox`, `radio` (`:items`, one chosen), `dropdown`
+(`:items`), `listbox` (`:items`), `grid` (`:columns`, `:rows`; `:editable` — double-click a cell to
+type into it, and `:on-edit` gets the row as edited), `date` (`:value` as `yyyy-mm-dd`;
+`:min`, `:max`), `image` (`:src`, a path beside the form like a note's `![](assets/x.png)`), `timer`
+(`:interval` ms; nothing to see, fires `:on-tick` while enabled).
+
+**Validation**, in the order it runs when a `:submit` button is pressed: each control's own rules
+— `:required`, `:min`/`:max` on numbers and dates, `:pattern` (a regular expression the whole
+text must match) — with the first offender marked, focused and named ("Age must be at most 150");
+then the button's `:on-validate` handler, a function of the form that returns a message to refuse
+or nil to go ahead; then `:on-click`. Every control has a name, `:at (x y)`, `:size (w h)`,
+`:enabled`, `:visible`; the value-bearing ones take `:required`. The order of the controls in the
+file is the Tab order when the form runs (the *Order* buttons in the properties move a control).
+**Events**: `:on-click` (button), `:on-change` (anything with a value — a
+textbox when editing ends, a checkbox, a radio group, a dropdown, a date, a listbox or grid when the
+selection moves), `:on-dblclick` (a listbox or grid row), `:on-validate` (a button), `:on-tick` (a
+timer), `:on-load` (the form).
+
+**The handler's world** (`src/forms/prelude.eelisp`, loaded once before the first event):
+
+| | |
+|---|---|
+| `(ui-get f "txtName")` | A control's value: text, a bool, the chosen item, the selected row (a dict) — or nil. |
+| `(ui-set "ctl" :prop v)` | Queue a change: `:value`, `:text`, `:items`, `:rows` (a result-set, records or dicts), `:columns`, `:src`, `:interval`, `:enabled`, `:visible`. |
+| `(ui-message "…")` | A toast. |
+| `(ui-focus "ctl")` | Put the caret there. |
+| `(ui-close)` | Back to *Design*. |
+| `(ui-open "Other.eeform")` | Open and run another form. |
+
+`f` is the whole form as a dict, keyed by control name, so a handler is a function of plain data.
+
+**Two ways to run.** *▶ run* in the tab is for trying the form you are designing; *stop* is the
+way back. `(ed-form "Contacts")` — from a keybinding, or typed at the REPL, which carries out
+editor commands too — and `(ui-open …)` from another form open the form in a **floating window**
+over the app, so it stays usable beside the note you are writing; no tab has to be open (an open
+tab's unsaved text counts). ⧉ on a running tab moves it into a window; ✕ closes one. Asking for a
+form already in a window raises it. The `form-run`, `form-design` and `form-code` commands switch
+the active form tab's mode.
+
+---
+
+## Milestone 1 — the model (`core/form.ts`, pure)
+
+*Done.*
+
+- An s-expression **reader** and **printer** for the layout subset: lists, symbols, keywords,
+  strings, numbers, booleans, nil, `;` comments. The printer writes one control per line so the
+  file reads like the example above and a diff shows the property that changed.
+- `topLevelForms(src)` — the ranges of the top-level forms in a file, string- and comment-aware;
+  `layoutRange(src)` finds the `(form …)`. `replaceLayout(src, spec)` splices a printed layout back
+  in, or prepends one when the file has none.
+- `FormSpec` ⇄ s-expression: `parseFormSpec` is forgiving (unknown properties are kept and written
+  back, a missing `:size` gets the control's default), `printFormSpec` is canonical.
+- The control catalogue: default size and text for each type, which properties it has and their
+  editors (text / number / bool / items list / function name), which events.
+- Helpers the designer needs: `snap`, `nextName("txt")`, `handlerName(control, event)`, `defnRange(src,
+  name)`, `handlerStub(name)`, and `formState(...)` → the `'{…}` literal handed to the engine.
+- vitest: round-trips, the splice, a hand-edited file surviving a design change untouched outside
+  the layout.
+
+## Milestone 2 — the designer (`ui/formdesigner.ts`)
+
+*Done.*
+
+- A `.eeform` tab opens in **Design**. The head shows *design · code · run* in place of *preview*.
+- **Canvas** the size of the form, controls drawn as inert previews at their `:at`/`:size`.
+  Click selects; ⇧-click adds; a drag from empty canvas is a marquee; ⌘A takes all. Drag moves the
+  selection; eight handles resize a single control; arrows nudge by a grid step (⇧ by a pixel);
+  Delete removes; ⌘D duplicates; ⌘C/⌘X/⌘V copy, cut and paste (into any form's tab); Escape clears
+  the selection. Everything snaps to an 8px grid.
+- With several selected, the properties panel becomes **align** (left, centre, right, top, middle,
+  bottom), **same width/height** and, from three up, **spread evenly** — all relative to the one
+  picked last, drawn with a heavier outline, as VB did it.
+- **Toolbox**: one button per control type — click, then click on the canvas to place it (or
+  drag out its size).
+- **Properties**: the selected control's name, position, size, type-specific properties and its
+  events, each event a function name with a *…* that creates the stub and opens *Code* at it.
+  With nothing selected: the form's title, size and `:on-load`.
+- Every change → `replaceLayout` → one CodeMirror transaction on the hidden buffer. Undo/redo are
+  ⌘Z/⌘⇧Z on that buffer; the canvas re-reads the layout after each.
+- *Code* mode is the normal editor; coming back to *Design* re-parses the buffer. A layout that
+  doesn't parse shows the error and stays in *Code*.
+
+## Milestone 3 — running (`ui/formrun.ts`, `engine/form.ts`)
+
+*Done.*
+
+- *Run* evaluates the prelude (once), then the file, then `:on-load`. Errors go to the REPL
+  scrollback and a toast, and the tab stays in *Design*.
+- Real controls in the tab: inputs, a select, a list, a table for the grid. An event reads the
+  whole form into a dict, calls `(ui-run handler '{…})`, and applies the returned queue in order.
+- `(ui-set … :rows …)` accepts what `(query …)` returns, a list of records, or a list of dicts;
+  `:columns` defaults to the result-set's columns when the control has none.
+- *Stop* (or `(ui-close)`) returns to *Design*.
+
+## Milestone 4 — the rest of v1
+
+*Done, except the tree icon — the tree shows every file the same way today.*
+
+- **New form…** in the tree menu and as the `new-form` command; the file starts with a titled
+  empty layout. The tree shows a form with its own icon.
+- `Contacts.eeform` in the bundled workspace, as the worked example.
+- Playwright: create a form, drop a button, run it, click, see the row in the grid.
+- `docs/FORMS.md` becomes the manual; the README gets a paragraph.
+
+## Later
+
+A tabs/page-frame container, an embedded sheet, export as a standalone page.
+
+*Done since v1:* multi-select with marquee, align/size/spread, copy/paste of controls, radio groups
+and dates, number boxes, `:required` + `:submit`, Tab order, `(ed-form …)` from a keybinding and
+the REPL, forms in floating windows that come back where they were left, `:min`/`:max`/`:pattern`
+and `:on-validate`, image and timer controls, `:default`/`:cancel` buttons, `:on-dblclick`,
+editable grid cells.
