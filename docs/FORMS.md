@@ -76,7 +76,8 @@ presses it, `:cancel` — Escape does), `checkbox`, `radio` (`:items`, one chose
 type into it, and `:on-edit` gets the row as edited), `date` (`:value` as `yyyy-mm-dd`;
 `:min`, `:max`), `image` (`:src`, a path beside the form like a note's `![](assets/x.png)`), `timer`
 (`:interval` ms; nothing to see, fires `:on-tick` while enabled), `tabs` (`:pages`, `:value` the
-open one).
+open one), `sheet` (`:file`, a `.eesheet` beside the form — the live grid, with its formula bar;
+handlers read and write its cells with `(sheet-get …)` / `(sheet-set …)`, and the grid follows).
 
 **Pages.** A `tabs` control lists its `:pages`; any control with `:page "Details"` belongs to that
 page and shows only while it is open. Controls stay flat in the file with their own `:at`, so the
@@ -185,10 +186,10 @@ the active form tab's mode.
 
 ## Later
 
-An embedded sheet, export as a standalone page.
+Export as a standalone page, a menu bar, printing a form.
 
 *Done since v1:* multi-select with marquee, align/size/spread, copy/paste of controls, radio groups
 and dates, number boxes, `:required` + `:submit`, Tab order, `(ed-form …)` from a keybinding and
 the REPL, forms in floating windows that come back where they were left, `:min`/`:max`/`:pattern`
 and `:on-validate`, image and timer controls, `:default`/`:cancel` buttons, `:on-dblclick`,
-editable grid cells, tabs and `:page`.
+editable grid cells, tabs and `:page`, an embedded sheet.

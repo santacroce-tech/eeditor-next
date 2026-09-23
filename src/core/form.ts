@@ -234,7 +234,7 @@ export function defnRange(src: string, name: string): Range | undefined {
 
 // ── the layout ────────────────────────────────────────────────────────────
 
-export type ControlType = "label" | "textbox" | "button" | "checkbox" | "radio" | "dropdown" | "listbox" | "grid" | "date" | "image" | "timer" | "tabs";
+export type ControlType = "label" | "textbox" | "button" | "checkbox" | "radio" | "dropdown" | "listbox" | "grid" | "date" | "image" | "timer" | "tabs" | "sheet";
 
 /** `scalar`: a number or a string, kept as whichever it was — `:min 0` stays a number, `:min "2026-01-01"` a string. */
 export type PropKind = "text" | "number" | "bool" | "items" | "scalar";
@@ -399,6 +399,15 @@ export const CONTROLS: Record<ControlType, ControlDef> = {
     ],
     events: ["change"],
     initial: { pages: ["General", "Details"] },
+  },
+  sheet: {
+    label: "Sheet",
+    prefix: "sht",
+    w: 400,
+    h: 240,
+    props: [{ key: "file", kind: "text", label: "Sheet file", default: "" }],
+    events: [],
+    initial: {},
   },
   timer: {
     label: "Timer",
@@ -671,7 +680,7 @@ export function handlerStub(name: string, event = "click"): string {
 
 /** What to call a control in a message: `txtFirstName` → "First name", `grdAll` → "All". */
 export function humanName(name: string): string {
-  const stem = name.replace(/^(lbl|txt|btn|chk|opt|cmb|lst|grd|dtp|img|tmr|tab)(?=[A-Z0-9_-])/, "");
+  const stem = name.replace(/^(lbl|txt|btn|chk|opt|cmb|lst|grd|dtp|img|tmr|tab|sht)(?=[A-Z0-9_-])/, "");
   const words = stem.replace(/[_-]+/g, " ").replace(/([a-z0-9])([A-Z])/g, "$1 $2").trim();
   return words ? words[0].toUpperCase() + words.slice(1).toLowerCase() : name;
 }

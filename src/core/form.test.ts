@@ -138,6 +138,11 @@ describe("the layout", () => {
     expect(timed.controls[0].props).toEqual({ interval: 500 });
     expect(timed.controls[0].events).toEqual({ tick: "tick" });
     expect(printFormSpec(timed)).toContain("(button ok :default true :at (0 0)");
+    const [sh] = readAll('(form (sheet shtBudget :file "Budget" :at (0 0)) (tabs tab1 :pages ("A") :value "A" :at (0 0)))');
+    const sheeted = parseFormSpec(sh) as FormSpec;
+    expect(sheeted.controls[0].props).toEqual({ file: "Budget" });
+    expect(sheeted.controls[1].props).toEqual({ pages: ["A"], value: "A" });
+    expect(nextName("sheet", [])).toBe("sht1");
     expect(readFormSpec(printFormSpec(spec))).toMatchObject({ spec });
     expect(nextName("radio", [])).toBe("opt1");
     expect(nextName("date", ["dtp1"])).toBe("dtp2");

@@ -189,6 +189,13 @@ export function createFormDesigner(opts: FormDesignerOptions): FormDesigner {
         b.append(head);
         return b;
       }
+      case "sheet": {
+        const b = el("div", "fd-p-grid");
+        const head = el("div", "fd-p-gridhead");
+        for (const col of ["A", "B", "C", "D"]) head.append(el("span", undefined, col));
+        b.append(head, el("div", "fd-p-sheetname", String(p.file || "sheet…")));
+        return b;
+      }
       case "timer":
         return el("span", "fd-p-timer", "⏱");
       case "checkbox":

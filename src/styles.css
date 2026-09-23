@@ -576,6 +576,10 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-s
 .formrun-ctl.tabs { border: 1px solid var(--border); border-radius: 4px; overflow: hidden; pointer-events: none; }
 .formrun-ctl.tabs > .formrun-tabhead { pointer-events: auto; }
 .formrun-tab { font-family: inherit; }
+.fd-p-sheetname { padding: 6px; font: 11px var(--mono); color: var(--muted); }
+.formrun-ctl.sheet { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+.formrun-ctl.sheet .sheet { font-size: 12px; }
+.formrun-nosheet { padding: 8px; font: 11px var(--mono); color: var(--muted); }
 .fd-p-timer { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; box-sizing: border-box;
   border: 1px dashed var(--border); border-radius: 4px; color: var(--muted); font-size: 16px; }
 .fd-p-image { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; box-sizing: border-box;

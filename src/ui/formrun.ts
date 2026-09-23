@@ -24,6 +24,8 @@ export interface FormRunnerOptions {
   check: (handler: string, state: Record<string, StateValue>) => Promise<string | null>;
   /** A URL for an image control's `:src` (relative to the form), or null when it can't be read. */
   imageUrl?: (src: string) => Promise<string | null>;
+  /** A live grid for a sheet control's `:file` (a path relative to the form, `.eesheet` implied). */
+  sheetView?: (file: string) => EmbeddedSheet | null;
   onMessage: (text: string) => void;
   /** `(ui-close)` or the Stop button. */
   onClose: () => void;
@@ -36,6 +38,16 @@ export interface FormRunnerOptions {
   onPopOut?: () => void;
   /** Drawn to fit a floating window rather than to fill a tab. */
   windowed?: boolean;
+}
+
+/** What the runner needs of a sheet grid: the element, loading, writing what is being typed, and letting go. */
+export interface EmbeddedSheet {
+  readonly el: HTMLElement;
+  load(): Promise<void>;
+  commit(): Promise<void>;
+  refreshIfChanged(): Promise<void>;
+  focus(): void;
+  destroy(): void;
 }
 
 /** One live control: its box, and how to read and write it. */
@@ -109,6 +121,12 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
   root.append(stage);
 
   let live = new Map<string, Live>();
+  /** Embedded sheet grids, let go of when the form stops. */
+  let sheets: EmbeddedSheet[] = [];
+  const dropSheets = () => {
+    for (const s of sheets) s.destroy();
+    sheets = [];
+  };
   let current: FormSpec = { title: "", w: 0, h: 0, controls: [], extra: [] };
   /** Which page each tabs control has open. */
   const openPage = new Map<string, string>();
@@ -206,6 +224,8 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
     } catch (e) {
       opts.onError(`${handler}: ${e instanceof Error ? e.message : String(e)}`);
     }
+    // A handler may have written a sheet a control shows — (sheet-set …) — so the grids look again.
+    for (const s of sheets) void s.refreshIfChanged();
   }
 
   function apply(ch: UiChange): void {
@@ -368,6 +388,45 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
             showPages();
           },
           focus: () => head.querySelector("button")?.focus(),
+        };
+        break;
+      }
+      case "sheet": {
+        // A live grid over a .eesheet beside the form; handlers reach its cells with (sheet-get …).
+        let file = asText(p.file as string);
+        let view: EmbeddedSheet | null = null;
+        const show = () => {
+          if (view) {
+            view.destroy();
+            sheets = sheets.filter((s) => s !== view);
+            view = null;
+          }
+          box.replaceChildren();
+          if (!file || !opts.sheetView) {
+            box.append(el("div", "formrun-nosheet", file ? "no sheet client" : "no :file"));
+            return;
+          }
+          view = opts.sheetView(file);
+          if (!view) {
+            box.append(el("div", "formrun-nosheet", `${file}: not found`));
+            return;
+          }
+          sheets.push(view);
+          box.append(view.el);
+          void view.load().catch((e) => opts.onError(`${c.name}: ${e instanceof Error ? e.message : String(e)}`));
+        };
+        show();
+        out = {
+          spec: c,
+          box,
+          value: () => file,
+          set: (k, v) => {
+            if (k === "file") {
+              file = asText(v);
+              show();
+            } else if (k === "value") void view?.refreshIfChanged();
+          },
+          focus: () => view?.focus(),
         };
         break;
       }
@@ -594,6 +653,7 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
     handle: title,
     async start(spec) {
       stopTimers();
+      dropSheets();
       live = new Map();
       current = spec;
       openPage.clear();
@@ -616,6 +676,8 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
     },
     destroy: () => {
       stopTimers();
+      for (const s of sheets) void s.commit();
+      dropSheets();
       live = new Map();
       root.remove();
     },

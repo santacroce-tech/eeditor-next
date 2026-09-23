@@ -218,3 +218,26 @@ test("pages: a control on a tab's page shows only while that page is open", asyn
   await page.locator(".formrun-tab", { hasText: "General" }).click();
   await expect(page.locator(".formrun-ctl[data-name=btn1]")).toBeHidden();
 });
+
+test("a sheet control shows a live grid over a .eesheet beside the form", async ({ page }) => {
+  await page.goto("/");
+  // a sheet with something in it, made from the REPL
+  await page.locator(".repl-input").fill('(do (sheet-new "Figures") (sheet-set "Figures" "A1" "hello") (sheet-set "Figures" "B1" "=(* 6 7)"))');
+  await page.locator(".repl-input").press(`${MOD}+Enter`);
+  await expect(page.locator(".repl-scrollback .repl-result").last()).toBeVisible();
+  await page.locator(".tree-dir").click({ button: "right" });
+  await page.locator(".ctx-item", { hasText: "New form…" }).click();
+  await page.locator(".dlg-input").fill("Sheeted");
+  await page.locator(".dlg-input").press("Enter");
+  await page.waitForSelector(".fd-canvas");
+  await page.locator(".fd-tool", { hasText: "Sheet" }).click();
+  await page.locator(".fd-canvas").click({ position: { x: 20, y: 20 } });
+  const fileField = page.locator(".fd-field", { hasText: "Sheet file" }).locator("input");
+  await fileField.fill("Figures");
+  await fileField.press("Enter");
+  await expect.poll(() => buffer(page)).toContain('(sheet sht1 :file "Figures"');
+  await page.locator(".form-modes .head-btn", { hasText: "run" }).click();
+  await page.waitForSelector(".formrun-ctl[data-name=sht1] .sheet-cell");
+  await expect.poll(() => page.$$eval(".formrun-ctl[data-name=sht1] .sheet-cell", (els) => els.map((e) => e.textContent))).toEqual(["hello", "42"]);
+  await page.locator(".formrun-stop").click();
+});

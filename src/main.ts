@@ -442,6 +442,15 @@ function main(): void {
    * An image control's `:src` resolves beside the form, the way a note's `![](assets/x.png)` does,
    * and is read through the same door — the webview can't load workspace paths itself.
    */
+  /** A sheet control's `:file`, beside the form like an image, as a live grid on the shared sheet client. */
+  function formSheetView(formPath: string, file: string): SheetView | null {
+    const raw = file.trim();
+    if (!raw) return null;
+    const rel = isSheetPath(raw) ? raw : raw + SHEET_EXT;
+    const path = rel.startsWith("/") ? rel : joinPath(parentDir(formPath), rel);
+    return createSheetView({ client: sheets, path, onError: (m) => toast(m), onEditing: () => {} });
+  }
+
   async function formImageUrl(formPath: string, src: string): Promise<string | null> {
     const rel = resolveNoteRelative(formPath, src);
     if (!rel) return null;
@@ -517,6 +526,7 @@ function main(): void {
       call: (handler, state) => forms.call(handler, state),
       check: (handler, state) => forms.check(handler, state),
       imageUrl: (src) => formImageUrl(t.path, src),
+      sheetView: (file) => formSheetView(t.path, file),
       onMessage: toast,
       onClose: backToDesign,
       onOpen: (p) => void runForm(p),
@@ -576,6 +586,7 @@ function main(): void {
       call: (handler, state) => forms.call(handler, state),
       check: (handler, state) => forms.check(handler, state),
       imageUrl: (src) => formImageUrl(p, src),
+      sheetView: (file) => formSheetView(p, file),
       onMessage: toast,
       onClose: () => closeWindow(p),
       onOpen: (other) => void runForm(other),
