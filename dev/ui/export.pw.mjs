@@ -1,7 +1,7 @@
 // Export as HTML: a form becomes one file that runs on its own — opened from disk, with the network
 // off. Needs the runtime template: `npm run engine:wasm && npm run runtime:template`.
 
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 import { UI_WORKSPACE } from "../../playwright.config.mjs";
@@ -155,6 +155,16 @@ test("Office exports as a whole app: every screen inside one file, run from disk
 });
 
 test("an exported page unpacks back into forms that edit and run", async ({ page }) => {
+  // The unpacked copies would be a second Books.eeform in the tree for the specs after this one.
+  const cleanUp = () => rmSync(resolve(UI_WORKSPACE, "examples", "Office forms"), { recursive: true, force: true });
+  try {
+    await unpackAndRun(page);
+  } finally {
+    cleanUp();
+  }
+});
+
+async function unpackAndRun(page) {
   await page.goto("/");
   await page.locator(".tree-file", { hasText: /^Office\.html$/ }).click({ button: "right" });
   await page.locator(".ctx-menu .ctx-item", { hasText: "Import forms from this page…" }).click();
@@ -175,4 +185,4 @@ test("an exported page unpacks back into forms that edit and run", async ({ page
   await page.locator(".tree-file", { hasText: "Plain.html" }).click({ button: "right" });
   await page.locator(".ctx-menu .ctx-item", { hasText: "Import forms from this page…" }).click();
   await expect(page.locator(".toast").last()).toContainText("isn't a page exported from EEditor");
-});
+}
