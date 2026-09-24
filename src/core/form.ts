@@ -474,6 +474,8 @@ export interface FormSpec {
   w: number;
   h: number;
   onLoad?: string;
+  /** `:on-public` — runs when another form of the same main writes a public variable; its name is `$changed`. */
+  onPublic?: string;
   /** `:menu (("File" ("New" new-item) ("-") ("Quit" quit)) …)` — a menu bar under the title. */
   menu: Menu[];
   controls: Control[];
@@ -644,6 +646,7 @@ export function parseFormSpec(x: Sx): FormSpec | { error: string } {
     if (size) [spec.w, spec.h] = size;
     else if (k === "title" && v.t === "str") spec.title = v.v;
     else if (k === "on-load" && fnName(v) !== undefined) spec.onLoad = fnName(v);
+    else if (k === "on-public" && fnName(v) !== undefined) spec.onPublic = fnName(v);
     else if (k === "menu") spec.menu = parseMenu(v);
     else spec.extra.push([k, v]);
   }
@@ -699,6 +702,7 @@ function controlSx(c: Control): Sx {
 export function printFormSpec(spec: FormSpec): string {
   const head: Sx[] = [sym("form"), str(spec.title), kw("size"), list(num(spec.w), num(spec.h))];
   if (spec.onLoad) head.push(kw("on-load"), sym(spec.onLoad));
+  if (spec.onPublic) head.push(kw("on-public"), sym(spec.onPublic));
   if (spec.menu.length) head.push(kw("menu"), menuSx(spec.menu));
   for (const [k, v] of spec.extra) head.push(kw(k), v);
   const lines = [printSx(list(...head)).slice(0, -1), ...spec.controls.map((c) => "  " + printSx(controlSx(c)))];
@@ -795,8 +799,9 @@ export function lispLiteral(v: StateValue): string {
   if (typeof v === "number") return Number.isFinite(v) ? String(v) : "nil";
   if (typeof v === "boolean") return v ? "true" : "false";
   if (Array.isArray(v)) return "(" + v.map(lispLiteral).join(" ") + ")";
-  const entries = Object.entries(v).filter(([k]) => validName(k));
-  return "{" + entries.map(([k, x]) => `:${k} ${lispLiteral(x)}`).join(" ") + "}";
+  // A key that reads as a keyword is written as one (`:txtName`); any other — `$form`, a column
+  // called "unit price" — as a string. The engine files both under the same string key.
+  return "{" + Object.entries(v).map(([k, x]) => `${validName(k) ? ":" + k : lispString(k)} ${lispLiteral(x)}`).join(" ") + "}";
 }
 
 /** The whole form as a quoted dict keyed by control name — the `f` every handler receives. */

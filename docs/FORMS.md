@@ -104,7 +104,7 @@ file is the Tab order when the form runs (the *Order* buttons in the properties 
 **Events**: `:on-click` (button), `:on-change` (anything with a value — a
 textbox when editing ends, a checkbox, a radio group, a dropdown, a date, a listbox or grid when the
 selection moves), `:on-dblclick` (a listbox or grid row), `:on-validate` (a button), `:on-tick` (a
-timer), `:on-load` (the form).
+timer), `:on-load` (the form), `:on-public` (the form — another form of its main wrote a public variable).
 
 **The handler's world** (`src/forms/prelude.eelisp`, loaded once before the first event):
 
@@ -115,7 +115,8 @@ timer), `:on-load` (the form).
 | `(ui-message "…")` | A toast. |
 | `(ui-focus "ctl")` | Put the caret there. |
 | `(ui-close)` | Back to *Design*. |
-| `(ui-open "Other.eeform")` | Open and run another form. |
+| `(ui-open "Other.eeform")` | Open and run another form. It joins this form's *main* and shares its public variables. |
+| `(var "pos")` · `(var! "pos" 3)` | Read and write a variable declared with `local` or `public` (below). |
 
 `f` is the whole form as a dict, keyed by control name, so a handler is a function of plain data.
 
@@ -126,6 +127,33 @@ over the app, so it stays usable beside the note you are writing; no tab has to 
 tab's unsaved text counts). ⧉ on a running tab moves it into a window; ✕ closes one. Asking for a
 form already in a window raises it. The `form-run`, `form-design` and `form-code` commands switch
 the active form tab's mode.
+
+## Variables: local and public
+
+```lisp
+(local pos 0)                      ;; each open copy of this form has its own
+(public cart '())                  ;; shared by a form and every form it opens with ui-open
+(public visits 0 :persist true)    ;; …and kept in the database between runs, once per app
+
+(var "pos")   (var! "pos" (+ (var "pos") 1))
+```
+
+Declarations sit in the file beside the handlers. A form that nothing opened is a **main** form;
+what it opens with `(ui-open …)` belongs to the same main, and so does what *those* open. A public
+variable is one per main: two forms under one main see the same `cart`, a second main has its own.
+Writing one is an event — every *other* open form of that main with `:on-public` runs it, with the
+variable's name in `(ui-get f "$changed")` — so a label counting the cart keeps up without being
+asked. A `:persist` public variable is stored (as JSON, in the `_ui_public` table) under the main
+form's title, and read back the next time. A plain `(def …)` is still what it was: one binding for
+the whole engine, shared by every form and the REPL.
+
+How: the host hands every handler which open form it runs for — `$form`, `$main`, `$key` (its file,
+where its `local`s were recorded when it loaded) and `$app` (the main form's title) — in `f`;
+`ui-run` keeps that `f` while the handler runs, so `var` needs only the name. All in
+`forms/prelude.eelisp`; the runner turns the queued `("public" name)` into `onPublic`, and
+main.ts's `running` registry passes it to the other forms of that main. A form closing lets its
+locals go (`ui-forget`). An undeclared name gives a message naming it, and nil. Tests:
+`dev/ui/vars.pw.mjs`. `Books.eeform` keeps its place in a `local`, so two copies move apart.
 
 ## Export as HTML
 

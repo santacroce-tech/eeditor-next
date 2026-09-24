@@ -19,5 +19,98 @@
 (defn ui-close () (ui-queue (list "close")))                    ;; stop the form, back to the designer
 (defn ui-open (path) (ui-queue (list "open" path)))             ;; open and run another form
 
+;; ── Variables: local to one open form, public to a main form and the forms it opens ──
+;;
+;;   (local pos 0)                       ;; each open copy of this form has its own
+;;   (public cart '())                   ;; shared by the form that opens others, and those it opens
+;;   (public user "" :persist true)      ;; …and kept in the database between runs, once per app
+;;
+;;   (var "pos")  (var! "pos" 3)         ;; read and write, whichever scope the name is in
+;;
+;; Declarations sit in the form file beside the handlers. The host tells each handler which open form
+;; it runs for — `$form` (this copy), `$main` (the form that opened it, or itself), `$key` (its file)
+;; and `$app` (the main form's name) in `f` — and ui-run keeps that `f` in ui-f while it runs, so
+;; `var` needs no argument but the name. Writing a public variable queues ("public" name): the host
+;; then runs `:on-public` on the other open forms of the same main, with the name in `$changed`.
+
+(def ui-f {})               ;; the state of the form whose handler is running
+(def ui-loading "")         ;; the $key of the file being loaded — where its declarations go
+(def ui-local-decls {})     ;; $key → {name → first value}
+(def ui-public-decls {})    ;; name → {"value" first value, "persist" bool}
+(def ui-locals {})          ;; $form → {name → value}
+(def ui-publics {})         ;; $main → {name → value}
+
+(defmacro local (name value) `(ui-declare-local ,(str name) ,value))
+(defmacro public (name value . opts) `(ui-declare-public ,(str name) ,value (list ,@opts)))
+
+(defn ui-declare-local (name value)
+  (set! ui-local-decls
+        (dict-set ui-local-decls ui-loading (dict-set (or (dict-get ui-local-decls ui-loading) {}) name value)))
+  value)
+
+(defn ui-declare-public (name value opts)
+  (set! ui-public-decls
+        (dict-set ui-public-decls name {"value" value "persist" (and (= (first opts) :persist) (second opts))}))
+  value)
+
+;; A public variable kept between runs lives here, as JSON, one row per app and name.
+(deftable _ui_public (app:string name:string value:string))
+
+(defn ui-kept-row (app name)
+  (first (records (query _ui_public :where "app = ? and name = ?" :params (list app name)))))
+
+(defn ui-local? (name)
+  (dict-has (or (dict-get ui-local-decls (dict-get ui-f "$key")) {}) name))
+
+(defn ui-public-value (name)
+  (let (mine (or (dict-get ui-publics (dict-get ui-f "$main")) {})
+        decl (dict-get ui-public-decls name))
+    (cond
+      (dict-has mine name) (dict-get mine name)
+      (dict-get decl "persist")
+        (let (row (ui-kept-row (dict-get ui-f "$app") name))
+          (if row (json-parse (field-get row :value)) (dict-get decl "value")))
+      true (dict-get decl "value"))))
+
+(defn ui-no-variable (name)
+  (ui-message (str "No variable \"" name "\" — declare it with (local " name " …) or (public " name " …)"))
+  nil)
+
+(defn var (name)
+  (cond
+    (ui-local? name)
+      (let (mine (or (dict-get ui-locals (dict-get ui-f "$form")) {}))
+        (if (dict-has mine name) (dict-get mine name) (dict-get (dict-get ui-local-decls (dict-get ui-f "$key")) name)))
+    (dict-has ui-public-decls name) (ui-public-value name)
+    true (ui-no-variable name)))
+
+(defn var! (name value)
+  (cond
+    (ui-local? name)
+      (let (id (dict-get ui-f "$form"))
+        (set! ui-locals (dict-set ui-locals id (dict-set (or (dict-get ui-locals id) {}) name value)))
+        value)
+    (dict-has ui-public-decls name)
+      (let (main (dict-get ui-f "$main") app (dict-get ui-f "$app"))
+        (set! ui-publics (dict-set ui-publics main (dict-set (or (dict-get ui-publics main) {}) name value)))
+        (when (dict-get (dict-get ui-public-decls name) "persist")
+          (let (row (ui-kept-row app name) json (json-stringify value))
+            (if row
+              (update _ui_public (record-id row) {:app app :name name :value json})
+              (insert _ui_public {:app app :name name :value json}))))
+        (ui-queue (list "public" name))
+        value)
+    true (ui-no-variable name)))
+
+;; An open form closed: its local variables go with it. A main form closed: its public ones too
+;; (the kept ones stay in the database).
+(defn ui-forget (id)
+  (set! ui-locals (dict-set ui-locals id nil))
+  (set! ui-publics (dict-set ui-publics id nil))
+  nil)
+
 ;; What EEditor calls for every event: empty the queue, run the handler, hand the queue back.
-(defn ui-run (handler f) (set! ui-changes '()) (handler f) (reverse ui-changes))
+(defn ui-run (handler f) (set! ui-changes '()) (set! ui-f f) (handler f) (reverse ui-changes))
+
+;; A button's :on-validate, asked before its :on-click: a message refuses, nil goes ahead.
+(defn ui-check (handler f) (set! ui-f f) (handler f))

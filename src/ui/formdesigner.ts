@@ -428,6 +428,7 @@ export function createFormDesigner(opts: FormDesignerOptions): FormDesigner {
       field("Height", numberInput(spec.h, (v) => ((spec.h = clamp(snap(v), MIN_FORM, MAX_FORM)), commit()))),
       el("div", "fd-props-sub", "Events"),
       eventRow("load", spec.onLoad ?? "", null, (fn) => ((spec.onLoad = fn || undefined), commit())),
+      eventRow("public", spec.onPublic ?? "", null, (fn) => ((spec.onPublic = fn || undefined), commit())),
       el("div", "fd-props-sub", "Menu"),
     );
     const menu = el("textarea", "fd-input fd-items fd-menutext");

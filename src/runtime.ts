@@ -14,7 +14,7 @@
 
 import "./styles.css";
 import { readFormSpec, type FormSpec } from "./core/form";
-import { createFormClient } from "./engine/form";
+import { createFormClient, identityState, newFormId } from "./engine/form";
 import { indexedDbStore } from "./engine/store";
 import { WasmEngine, defaultWasmUrls, loadWasmFrom, loadWasmFromText } from "./engine/wasm";
 import { toast } from "./ui/dialogs";
@@ -120,7 +120,7 @@ async function main(): Promise<void> {
   const engine = await engineFor(key, keep);
   const forms = createFormClient(engine);
   try {
-    await forms.load(src.text);
+    await forms.load(src.text, spec.title);
   } catch (e) {
     return fail(`${spec.title} can't run: ${e instanceof Error ? e.message : String(e)}`);
   }
@@ -132,9 +132,13 @@ async function main(): Promise<void> {
 
   const run = async (): Promise<void> => {
     runner?.destroy();
+    // Alone on the page, the form is its own main; its title names the app its kept variables belong to.
+    const form = newFormId();
+    const who = identityState({ form, main: form, key: spec.title, app: spec.title });
     runner = createFormRunner({
-      call: (handler, state) => forms.call(handler, state),
-      check: (handler, state) => forms.check(handler, state),
+      call: (handler, state) => forms.call(handler, { ...state, ...who }),
+      check: (handler, state) => forms.check(handler, { ...state, ...who }),
+      onDestroy: () => void forms.forget(form).catch(() => {}),
       imageUrl: async (s) => src.assets?.[s] ?? (src.base ? new URL(s, src.base).href : null),
       sheetView: () => null,
       onMessage: toast,

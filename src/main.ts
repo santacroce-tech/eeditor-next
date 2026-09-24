@@ -9,8 +9,8 @@ import { dictGet } from "./engine/types";
 import { createSheetClient } from "./engine/sheet";
 import { fromCSV, importedValue, isSheetPath, SHEET_EXT, toCSV, toTableHtml, toTSV, valueRows } from "./core/sheet";
 import { createSheetView, type SheetView } from "./ui/sheet";
-import { createFormClient } from "./engine/form";
-import { FORM_EXT, defnRange, handlerStub, isFormPath, layoutRange, newFormSource, printFormSpec, readFormSpec } from "./core/form";
+import { createFormClient, identityState, newFormId, type FormIdentity } from "./engine/form";
+import { FORM_EXT, defnRange, handlerStub, isFormPath, layoutRange, newFormSource, printFormSpec, readFormSpec, type StateValue } from "./core/form";
 import { createFormDesigner } from "./ui/formdesigner";
 import { createFormRunner, type FormRunner } from "./ui/formrun";
 import { createFormWindow, type FormWindow } from "./ui/formwindow";
@@ -513,7 +513,7 @@ function main(): void {
       return;
     }
     try {
-      await forms.load(doc);
+      await forms.load(doc, t.path);
     } catch (e) {
       const m = e instanceof Error ? e.message : String(e);
       repl.note(`; ${basename(t.path)}: ${m}`);
@@ -528,14 +528,13 @@ function main(): void {
       t.mode = "design";
       if (tabs[activeIdx] === t) showSurface(t);
     };
+    const id = formIdentity(t.path, r.spec.title);
     const runner = createFormRunner({
-      call: (handler, state) => forms.call(handler, state),
-      check: (handler, state) => forms.check(handler, state),
+      ...runningForm(id),
       imageUrl: (src) => formImageUrl(t.path, src),
       sheetView: (file) => formSheetView(t.path, file),
       onMessage: toast,
       onClose: backToDesign,
-      onOpen: (p) => void runForm(p),
       onError: (m) => {
         repl.note(`; ${basename(t.path)}: ${m}`);
         toast(m);
@@ -547,10 +546,41 @@ function main(): void {
       },
     });
     runners.set(t.path, runner);
+    running.set(id.form, { runner, id });
     t.mode = "run";
     showSurface(t);
     await runner.start(r.spec);
     runner.focus();
+  }
+
+  /** Every form running now, in a tab or a window, by its id — for public variables and ui-open. */
+  const running = new Map<string, { runner: FormRunner; id: FormIdentity }>();
+
+  /**
+   * Who a form about to run is. Opened by another form (`ui-open`), it joins that form's main and
+   * shares its public variables; otherwise it is a main of its own, and its title names the app.
+   */
+  function formIdentity(key: string, title: string, opener?: FormIdentity): FormIdentity {
+    const form = newFormId();
+    return opener ? { form, main: opener.main, key, app: opener.app } : { form, main: form, key, app: title };
+  }
+
+  /** What every running form's runner shares: its identity on each call, and the variables' wiring. */
+  function runningForm(id: FormIdentity) {
+    const who = identityState(id);
+    return {
+      call: (handler: string, state: Record<string, StateValue>) => forms.call(handler, { ...state, ...who }),
+      check: (handler: string, state: Record<string, StateValue>) => forms.check(handler, { ...state, ...who }),
+      onOpen: (other: string) => void runForm(other, id),
+      // A public variable written here: every other form of the same main hears of it.
+      onPublic: (name: string) => {
+        for (const [other, r] of running) if (other !== id.form && r.id.main === id.main) r.runner.publicChanged(name);
+      },
+      onDestroy: () => {
+        running.delete(id.form);
+        void forms.forget(id.form).catch(() => {});
+      },
+    };
   }
 
   /**
@@ -558,7 +588,7 @@ function main(): void {
    * running tab: run that form in a floating window. Its text comes from the open tab when there is
    * one — unsaved edits included — and from disk otherwise, so no tab has to open for a form to run.
    */
-  async function runForm(path: string): Promise<void> {
+  async function runForm(path: string, opener?: FormIdentity): Promise<void> {
     const p = isFormPath(path) ? path : path + FORM_EXT;
     const open = windows.get(p);
     if (open) {
@@ -580,7 +610,7 @@ function main(): void {
       return;
     }
     try {
-      await forms.load(src);
+      await forms.load(src, p);
     } catch (e) {
       const m = e instanceof Error ? e.message : String(e);
       repl.note(`; ${basename(p)}: ${m}`);
@@ -588,14 +618,13 @@ function main(): void {
       return;
     }
     if (windows.has(p)) return; // opened twice at once — the first one won
+    const id = formIdentity(p, r.spec.title, opener);
     const runner = createFormRunner({
-      call: (handler, state) => forms.call(handler, state),
-      check: (handler, state) => forms.check(handler, state),
+      ...runningForm(id),
       imageUrl: (src) => formImageUrl(p, src),
       sheetView: (file) => formSheetView(p, file),
       onMessage: toast,
       onClose: () => closeWindow(p),
-      onOpen: (other) => void runForm(other),
       onError: (m) => {
         repl.note(`; ${basename(p)}: ${m}`);
         toast(m);
@@ -605,6 +634,7 @@ function main(): void {
     });
     const win = createFormWindow(runner.el, runner.handle, p);
     windows.set(p, { runner, win });
+    running.set(id.form, { runner, id });
     await runner.start(r.spec);
     runner.focus();
   }

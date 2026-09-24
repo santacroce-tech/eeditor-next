@@ -251,7 +251,7 @@ describe("the form's state for a handler", () => {
       `'{:txtName "Ada" :chk true :n 3 :lst nil :grd {:id 1 :name "A"} :items ("a" "b")}`,
     );
   });
-  it("drops keys that could not be keywords", () => {
-    expect(lispLiteral({ "bad key": 1, ok: 2 })).toBe("{:ok 2}");
+  it("writes a key that can't be a keyword as a string, so none is lost", () => {
+    expect(lispLiteral({ "bad key": 1, ok: 2, $form: "f1" })).toBe('{"bad key" 1 :ok 2 "$form" "f1"}');
   });
 });

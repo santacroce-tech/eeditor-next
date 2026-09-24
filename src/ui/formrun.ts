@@ -15,6 +15,8 @@ export interface FormRunner {
   state(): Record<string, StateValue>;
   focus(): void;
   destroy(): void;
+  /** Another form of the same main wrote the public variable `name`: run `:on-public`, if it has one. */
+  publicChanged(name: string): void;
 }
 
 export interface FormRunnerOptions {
@@ -31,6 +33,10 @@ export interface FormRunnerOptions {
   onClose: () => void;
   /** `(ui-open "Other.eeform")`. */
   onOpen: (path: string) => void;
+  /** A handler wrote the public variable `name` — for the host to tell the other forms. */
+  onPublic?: (name: string) => void;
+  /** The runner was destroyed: the form is gone. */
+  onDestroy?: () => void;
   onError: (message: string) => void;
   /** Where a handler's `println` output goes. */
   note: (text: string) => void;
@@ -235,18 +241,26 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
    * button first checks every control's rules, then asks its `:on-validate` handler, and refuses
    * with a message when either objects.
    */
-  function fire(handler: string | undefined, gate?: { submit: boolean; validate?: string }): Promise<void> {
+  function fire(
+    handler: string | undefined,
+    gate?: { submit: boolean; validate?: string },
+    extra?: Record<string, StateValue>,
+  ): Promise<void> {
     if (!handler && !gate?.submit && !gate?.validate) return Promise.resolve();
     pending++;
     root.classList.add("busy");
-    const job = queue.then(() => runEvent(handler, gate));
+    const job = queue.then(() => runEvent(handler, gate, extra));
     queue = job.catch(() => {}).finally(() => {
       if (--pending === 0) root.classList.remove("busy");
     });
     return job;
   }
 
-  async function runEvent(handler: string | undefined, gate?: { submit: boolean; validate?: string }): Promise<void> {
+  async function runEvent(
+    handler: string | undefined,
+    gate?: { submit: boolean; validate?: string },
+    extra?: Record<string, StateValue>,
+  ): Promise<void> {
     if (gate?.submit) {
       const bad = problem();
       if (bad) {
@@ -270,7 +284,7 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
     }
     if (!handler) return;
     try {
-      const { changes, output } = await opts.call(handler, state());
+      const { changes, output } = await opts.call(handler, extra ? { ...state(), ...extra } : state());
       if (output) opts.note(output.replace(/\n$/, ""));
       for (const ch of changes) apply(ch);
     } catch (e) {
@@ -298,6 +312,8 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
         return opts.onClose();
       case "open":
         return opts.onOpen(ch.path);
+      case "public":
+        return opts.onPublic?.(ch.name);
     }
   }
 
@@ -807,6 +823,8 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
       dropSheets();
       live = new Map();
       root.remove();
+      opts.onDestroy?.();
     },
+    publicChanged: (name) => void fire(current.onPublic, undefined, { $changed: name }),
   };
 }
