@@ -259,11 +259,12 @@ describe("the form's state for a handler", () => {
 
 describe(":main and :on-public on a form", () => {
   it("read and write back, and the frame control with them", () => {
-    const src = `(form "Office" :size (400 300) :main true :on-public heard\n  (frame frmMain :mode "tabs" :at (8 8) :size (384 284)))`;
+    const src = `(form "Office" :size (400 300) :main true :on-public heard :on-close may-close\n  (frame frmMain :mode "tabs" :at (8 8) :size (384 284)))`;
     const r = readFormSpec(src);
     if ("error" in r) throw new Error(r.error);
     expect(r.spec.main).toBe(true);
     expect(r.spec.onPublic).toBe("heard");
+    expect(r.spec.onClose).toBe("may-close");
     expect(r.spec.controls[0].type).toBe("frame");
     expect(r.spec.controls[0].props.mode).toBe("tabs");
     const again = readFormSpec(printFormSpec(r.spec));
