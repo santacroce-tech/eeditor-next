@@ -52,6 +52,7 @@ jobs:
           workspaces: |
             eeditor-next/src-tauri
             eelisp-rs
+            eelisp-rs/web
       - name: System dependencies (webkit2gtk for Tauri)
         run: |
           sudo apt-get update
@@ -66,6 +67,22 @@ jobs:
       - name: Install app dependencies
         working-directory: eeditor-next
         run: npm ci
+
+      # The engine compiled to WebAssembly, for dev/ui/wasm.pw.mjs (which skips without it). Only
+      # once eelisp-rs has its web/ crate; wasm-bindgen must match the version web/Cargo.toml pins.
+      - name: WebAssembly toolchain
+        if: hashFiles('eelisp-rs/web/build.sh') != ''
+        run: |
+          rustup target add wasm32-unknown-unknown
+          rustup component add llvm-tools
+      - uses: taiki-e/install-action@v2
+        if: hashFiles('eelisp-rs/web/build.sh') != ''
+        with:
+          tool: wasm-bindgen@0.2.126
+      - name: Build the WebAssembly engine
+        if: hashFiles('eelisp-rs/web/build.sh') != ''
+        working-directory: eeditor-next
+        run: npm run engine:wasm
 
       # `tauri-build` expects frontendDist (../dist) to exist before the crate compiles.
       - name: Build frontend

@@ -201,7 +201,7 @@ can be exported on its own — and the main form (A) is what turns several of th
 | | What | Depends on |
 |---|---|---|
 | ~~**W0**~~ | ~~WebAssembly spike (engine + SQLite in the browser)~~ — done, it holds | — |
-| **W1** | A `wasm` transport for the app's `EngineClient` (beside Tauri and the HTTP bridge), so the renderer talks to the in-page engine; the engine published as a package the app builds against | W0 |
+| ~~**W1**~~ | ~~A `wasm` transport for the app's `EngineClient`~~ — done: `src/engine/wasm.ts`; `?engine=wasm` (or `VITE_ENGINE=wasm`) runs the whole app on it. `npm run engine:wasm` builds eelisp-rs `web/` into `public/engine/`, loaded at run time (fetched, imported from a blob — Vite's dev server won't serve a `public/` file to `import()`), so a build without it still builds. `dev/ui/wasm.pw.mjs`: the REPL and Books.eeform on it. Not yet on it: sheets (their `.eesheet` files are on disk, out of the page's reach) and keeping the data (in memory — a reload starts empty) — both W2 | W0 |
 | **W2** | The runtime page: the renderer and one form filling the window, over the wasm engine; data in OPFS | W1 |
 | **W3** | *Export as HTML…* on a form: one self-contained file (engine gzipped inline, the form, the `lib/` it loads, images) | W2 |
 | **A1** | Scopes — `local`, `public`, `var`, `var!`, `:on-public`; instance ids in `f` | — |
