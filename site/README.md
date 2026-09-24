@@ -41,11 +41,13 @@ cp workspace/examples/*.eeform site/examples/
 ## Deploying
 
 ```bash
-rsync -avz --delete -e "ssh -i ~/.ssh/id_epitetus" \
+rsync -avz --delete --delete-excluded --exclude README.md -e "ssh -i ~/.ssh/id_epitetus" \
   site/ root@91.98.47.97:/var/www/eeditor.app/
 ```
 
-`--delete` removes files on the server that are no longer here. Drop it if the server holds anything
+`--delete` removes files on the server that are no longer here. `--exclude README.md` keeps this
+file — which names the server and its paths — off the public site, and `--delete-excluded` takes
+away a copy an older deploy left there. Drop it if the server holds anything
 this folder doesn't, such as the `downloads/` directory below.
 
 ## Publishing installers

@@ -158,3 +158,12 @@ footer a { color: var(--muted); }
 /* screenshots in the manual */
 .shot { display: block; max-width: 100%; height: auto; margin: 0 0 1.2em; border: 1px solid var(--line); border-radius: 8px; }
 .doc h4 { scroll-margin-top: 76px; margin-top: 2em; }
+
+/* the "try it" cards on the home page: a picture of the app, what it is, a way in */
+.try-grid { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.try-card { display: flex; flex-direction: column; text-decoration: none; color: inherit; transition: border-color .15s, transform .15s; }
+.try-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.try-card img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 6px; margin-bottom: 14px; }
+.try-card h3 { margin-top: 0; }
+.try-card p { color: var(--muted); flex: 1; }
+.try-open { color: var(--accent); font-weight: 600; margin-top: 6px; }
