@@ -127,6 +127,28 @@ tab's unsaved text counts). ⧉ on a running tab moves it into a window; ✕ clo
 form already in a window raises it. The `form-run`, `form-design` and `form-code` commands switch
 the active form tab's mode.
 
+## Export as HTML
+
+Right-click a form in the tree → **Export as HTML…** (or the `export-html` command on the open form)
+writes `Name.html` beside it — `Name-1.html` if that's taken; nothing is overwritten. The file runs
+on its own in any browser, offline, opened straight from disk: the EELisp engine is inside it,
+compiled to WebAssembly (about 1.5 MB, most of it the engine). What the form writes is kept in that
+browser, per exported app; **Save data…** under the form downloads it as a SQLite file and **Open
+data…** loads one back — how data moves between browsers or people.
+
+- What goes in: the form's source and the images its image controls show (as `data:` URLs).
+- What doesn't yet: a sheet control, and `ui-open` of another form — whole-app export comes with the
+  main form (`docs/FORM-APPS.md`).
+- The app needs the runtime template to export: `npm run engine:wasm && npm run runtime:template`
+  (CI and the release workflow build it; a local build without it says so when you export).
+- Search, tags and backlinks skip exported pages (`isExportedPage`) — a megabyte of engine would
+  otherwise match every search.
+
+Pieces: `scripts/build-runtime-template.mjs` + `vite.runtime.config.ts` (the template),
+`core/export.ts` (filling it in), `runtime.ts` (the page), `engine/wasm.ts` + `engine/store.ts`
+(the engine and its data). Tests: `core/export.test.ts`, `dev/ui/export.pw.mjs` (export from the
+tree, open from disk with the network off, reload).
+
 ## Examples
 
 `workspace/examples/` — each one is run end to end by `dev/ui/examples.pw.mjs`.

@@ -15,7 +15,46 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # What "Export as HTML…" writes a form into: the runtime page and the WebAssembly engine in one file.
+  # The same on every platform, so it is built once, here, and handed to each desktop build.
+  runtime:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: eeditor-next
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - uses: actions/checkout@v4
+        with:
+          repository: santacroce-tech/eelisp-rs
+          path: eelisp-rs
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: eeditor-next/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: llvm-tools
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen@0.2.126
+      - name: Install app dependencies
+        working-directory: eeditor-next
+        run: npm ci
+      - name: The WebAssembly engine and the runtime template
+        working-directory: eeditor-next
+        run: |
+          npm run engine:wasm
+          npm run runtime:template
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime-template
+          path: eeditor-next/public/runtime/
+
   build:
+    needs: runtime
     permissions:
       contents: write
     strategy:
@@ -68,6 +107,12 @@ jobs:
       - name: Install app dependencies
         working-directory: eeditor-next
         run: npm ci
+
+      # public/ is copied into the app's frontend, so the template ships inside every installer.
+      - uses: actions/download-artifact@v4
+        with:
+          name: runtime-template
+          path: eeditor-next/public/runtime/
 
       - uses: tauri-apps/tauri-action@v0
         env:

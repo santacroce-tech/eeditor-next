@@ -79,10 +79,12 @@ jobs:
         if: hashFiles('eelisp-rs/web/build.sh') != ''
         with:
           tool: wasm-bindgen@0.2.126
-      - name: Build the WebAssembly engine
+      - name: Build the WebAssembly engine, and the template forms are exported into
         if: hashFiles('eelisp-rs/web/build.sh') != ''
         working-directory: eeditor-next
-        run: npm run engine:wasm
+        run: |
+          npm run engine:wasm
+          npm run runtime:template
 
       # `tauri-build` expects frontendDist (../dist) to exist before the crate compiles.
       - name: Build frontend

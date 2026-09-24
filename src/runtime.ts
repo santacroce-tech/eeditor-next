@@ -3,10 +3,14 @@
 // the app's name). Save data… / Open data… move it in and out as a SQLite file.
 //
 // Where things come from, first match wins:
-//   the form    <script type="text/x-eeform"> in the page · ?form=<url>
-//   the engine  <script type="text/x-eelisp-engine"> + <script type="application/x-eelisp-wasm">
+//   the form    <script type="application/x-eeform+json"> (a JSON string — what an export writes)
+//               · <script type="text/x-eeform"> (the source as it is, for a page written by hand)
+//               · ?form=<url>
+//   its images  <script type="application/x-eeform-assets+json">: { "assets/x.png": "data:…" }
+//   the engine  <script type="application/x-eelisp-engine+json"> + <script type="application/x-eelisp-wasm">
 //               (gzipped, base64) in the page · public/engine/ (npm run engine:wasm)
-// An exported page carries all of it inline; the dev server serves the rest.
+// An exported page carries all of it inline (scripts/build-runtime-template.mjs, core/export.ts);
+// the dev server serves the rest.
 
 import "./styles.css";
 import { readFormSpec, type FormSpec } from "./core/form";
@@ -36,9 +40,19 @@ interface Source {
   text: string;
   /** Where it came from, for resolving an image beside it; none for a form carried inline. */
   base?: string;
+  /** Images carried in the page, by the path the form names them with. */
+  assets?: Record<string, string>;
+}
+
+/** A JSON value carried in a <script> of the given type, or undefined when there's none. */
+function carried<T>(type: string): T | undefined {
+  const s = document.querySelector<HTMLScriptElement>(`script[type="${type}"]`);
+  return s ? (JSON.parse(s.textContent ?? "null") as T) : undefined;
 }
 
 async function formSource(): Promise<Source | null> {
+  const exported = carried<string>("application/x-eeform+json");
+  if (typeof exported === "string") return { text: exported, assets: carried<Record<string, string>>("application/x-eeform-assets+json") ?? {} };
   const inline = document.querySelector<HTMLScriptElement>('script[type="text/x-eeform"]');
   if (inline) return { text: inline.textContent ?? "" };
   const at = new URLSearchParams(location.search).get("form");
@@ -56,14 +70,27 @@ async function gunzipBase64(b64: string): Promise<Uint8Array> {
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
+/**
+ * Whether this page may keep data. A page opened from a file (file://) is refused storage by some
+ * browsers; the form still runs, in memory, and Save data… is how its data leaves.
+ */
+async function storageWorks(): Promise<boolean> {
+  try {
+    await indexedDbStore.get("");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** The engine carried in the page, or the one the dev server has in public/engine/. */
-async function engineFor(key: string): Promise<WasmEngine> {
+async function engineFor(key: string, keep: boolean): Promise<WasmEngine> {
   // Written straight after every change, not only on the way out: a tab can be closed, or crash,
   // at any moment, and a form's database is small enough to write whole.
-  const persist = { store: indexedDbStore, key, delay: 0 };
-  const js = document.querySelector<HTMLScriptElement>('script[type="text/x-eelisp-engine"]');
+  const persist = keep ? { store: indexedDbStore, key, delay: 0 } : undefined;
+  const js = carried<string>("application/x-eelisp-engine+json");
   const wasm = document.querySelector<HTMLScriptElement>('script[type="application/x-eelisp-wasm"]');
-  if (js && wasm) return new WasmEngine(loadWasmFromText(js.textContent ?? ""), await gunzipBase64(wasm.textContent ?? ""), persist);
+  if (typeof js === "string" && wasm) return new WasmEngine(loadWasmFromText(js), await gunzipBase64(wasm.textContent ?? ""), persist);
   const at = defaultWasmUrls();
   return new WasmEngine(loadWasmFrom(at.js), at.wasm, persist);
 }
@@ -88,9 +115,9 @@ async function main(): Promise<void> {
 
   // One app, one set of data in this browser — named after the form unless the page says otherwise.
   const key = `eeform:${document.body.dataset.app || spec.title}`;
-  // The database is opened now, so a save as the page leaves doesn't have to wait for it.
-  void indexedDbStore.get("").catch(() => {});
-  const engine = await engineFor(key);
+  // Opening the store now also means a save as the page leaves doesn't have to wait for it.
+  const keep = await storageWorks();
+  const engine = await engineFor(key, keep);
   const forms = createFormClient(engine);
   try {
     await forms.load(src.text);
@@ -108,7 +135,7 @@ async function main(): Promise<void> {
     runner = createFormRunner({
       call: (handler, state) => forms.call(handler, state),
       check: (handler, state) => forms.check(handler, state),
-      imageUrl: async (s) => (src.base ? new URL(s, src.base).href : null),
+      imageUrl: async (s) => src.assets?.[s] ?? (src.base ? new URL(s, src.base).href : null),
       sheetView: () => null,
       onMessage: toast,
       onClose: () => closed(spec),
@@ -171,6 +198,7 @@ async function main(): Promise<void> {
   document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && void engine.save());
 
   await run();
+  if (!keep) toast("This browser won't let the page keep data — use Save data… before closing it");
 }
 
 void main();
