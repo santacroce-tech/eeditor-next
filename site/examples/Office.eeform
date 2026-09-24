@@ -1,0 +1,63 @@
+;; Office.eeform — the other examples as one application: a main form with a list down the left and a
+;; frame where the others run, one screen at a time, the dBASE way.
+;;
+;; Press ▶ run and pick a screen. Every screen you open stays open, with what you typed in it: the
+;; Window menu switches between them (⌃Tab too), and closing one goes back to the one before. The
+;; screen's own menus join Office's while it shows. Office remembers the last screen you used and
+;; opens it again next time — a public variable kept in the database (:persist).
+;;
+;; The screens are the forms beside this one; (ui-open "Books" :in "frmMain") finds Books.eeform
+;; next to Office.eeform, wherever the folder is.
+
+(form "Office" :size (1040 640) :main true :on-load office-load :menu (("Office" ("Books" go-books) ("Orders" go-orders) ("Tables" go-tables) ("Agenda" go-agenda) ("Functions" go-functions) ("-") ("Close" office-close)))
+  (label lblApp :text "Office" :at (16 12) :size (160 28))
+  (listbox lstNav :items ("Books" "Orders" "Tables" "Agenda" "Functions") :at (16 48) :size (160 136) :on-change office-go)
+  (label lblBooks :at (16 200) :size (160 24))
+  (label lblCustomers :at (16 224) :size (160 24))
+  (label lblOrders :at (16 248) :size (160 24))
+  (label lblItems :at (16 272) :size (160 24))
+  (label lblShowing :at (16 600) :size (160 24))
+  (frame frmMain :at (192 8) :size (840 624) :on-change office-switched)
+  (timer tmrCounts :interval 5000 :at (16 560) :size (24 24) :on-tick office-counts))
+
+;; The screen last used — kept between runs, once for this app.
+(public last-screen "" :persist true)
+
+(defn office-open (name) (ui-open name :in "frmMain"))
+
+(defn office-load (f)
+  (office-counts f)
+  (let (last (var "last-screen"))
+    (when (not (= last ""))
+      (ui-set "lstNav" :value last)
+      (office-open last))))
+
+(defn office-go (f)
+  (let (name (ui-get f "lstNav"))
+    (when name (office-open name))))
+
+;; A screen came forward — by the list, the Window menu, ⌃Tab, or one closing: remember it.
+(defn office-switched (f)
+  (let (showing (ui-get f "frmMain"))
+    (ui-set "lblShowing" :text (if showing (str "showing " showing) ""))
+    (when showing
+      (var! "last-screen" showing)
+      (ui-set "lstNav" :value showing))
+    (office-counts f)))
+
+;; How much is stored, table by table — a table a screen hasn't made yet counts as none.
+(defn office-count (table)
+  (if (some? (fn (t) (= (str t) table)) (tables)) (count-records (str table)) 0))
+
+(defn office-counts (f)
+  (ui-set "lblBooks" :text (str (office-count "books") " books"))
+  (ui-set "lblCustomers" :text (str (office-count "customers") " customers"))
+  (ui-set "lblOrders" :text (str (office-count "orders") " orders"))
+  (ui-set "lblItems" :text (str (item-count) " agenda items")))
+
+(defn go-books (f) (office-open "Books"))
+(defn go-orders (f) (office-open "Orders"))
+(defn go-tables (f) (office-open "Tables"))
+(defn go-agenda (f) (office-open "Agenda"))
+(defn go-functions (f) (office-open "Functions"))
+(defn office-close (f) (ui-close))

@@ -218,6 +218,9 @@ data…** loads one back — how data moves between browsers or people.
   public variables and merged menus work as in the editor — both run forms through
   `forms/host.ts`. `Office.html` (about 1.5 MB with its five screens) runs from disk, offline.
 - What doesn't go in yet: a sheet control's `.eesheet`.
+- From the command line, without the editor: `npm run export-app -- path/Main.eeform [--root folder]
+  [-o out.html]` (`scripts/export-app.ts` — the same `collectApp`/`exportAppHtml`; names are matched
+  case-exactly, since macOS and Windows file systems aren't).
 - The app needs the runtime template to export: `npm run engine:wasm && npm run runtime:template`
   (CI and the release workflow build it; a local build without it says so when you export).
 - Search, tags and backlinks skip exported pages (`isExportedPage`) — a megabyte of engine would
