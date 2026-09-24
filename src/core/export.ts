@@ -17,6 +17,8 @@ export interface AppBundle {
   forms: Record<string, string>;
   /** The images the forms show, path → data: URL. */
   assets: Record<string, string>;
+  /** The sheets the forms show, path (`examples/Budget.eesheet`) → the file, in base64. */
+  sheets?: Record<string, string>;
 }
 
 export interface ExportedApp {
@@ -62,6 +64,27 @@ export function formImages(spec: FormSpec): string[] {
   return [...out];
 }
 
+/**
+ * The sheets a form shows: every sheet control's `:file`, as the path the app opens it at — beside
+ * the form, `.eesheet` added; a name starting with `/` is from the top of the workspace.
+ */
+export function formSheets(spec: FormSpec, formPath: string): string[] {
+  const out = new Set<string>();
+  for (const c of spec.controls) {
+    const at = c.type === "sheet" && typeof c.props.file === "string" ? sheetPath(formPath, c.props.file) : null;
+    if (at) out.add(at);
+  }
+  return [...out];
+}
+
+/** The path a sheet control's `:file` names, as the app opens it — null for none. */
+export function sheetPath(formPath: string, file: string): string | null {
+  const raw = file.trim();
+  if (!raw) return null;
+  const rel = /\.eesheet$/i.test(raw) ? raw : raw + ".eesheet";
+  return rel.startsWith("/") ? rel.slice(1) : joinPath(parentDir(formPath), rel);
+}
+
 /** The string literals in a form's code, each once — not its comments. */
 export function codeStrings(src: string): string[] {
   const out = new Set<string>();
@@ -103,10 +126,13 @@ export async function collectApp(
     read: (path: string) => Promise<string>;
     exists: (path: string) => boolean;
     image: (path: string) => Promise<string>;
+    /** A sheet's file, in base64. Left out, sheets aren't carried. */
+    sheet?: (path: string) => Promise<string>;
   },
 ): Promise<{ bundle: AppBundle; missing: string[] }> {
   const forms: Record<string, string> = {};
   const assets: Record<string, string> = {};
+  const sheets: Record<string, string> = {};
   const missing: string[] = [];
   const queue = [main];
   while (queue.length) {
@@ -120,6 +146,16 @@ export async function collectApp(
     }
     const spec = readFormSpec(src);
     if ("error" in spec) continue;
+    if (io.sheet) {
+      for (const at of formSheets(spec.spec, path)) {
+        if (at in sheets) continue;
+        try {
+          sheets[at] = await io.sheet(at);
+        } catch {
+          missing.push(at);
+        }
+      }
+    }
     for (const img of formImages(spec.spec)) {
       const at = resolveNoteRelative(path, img);
       if (!at) continue;
@@ -130,7 +166,7 @@ export async function collectApp(
       }
     }
   }
-  return { bundle: { main, forms, assets }, missing };
+  return { bundle: { main, forms, assets, ...(Object.keys(sheets).length ? { sheets } : {}) }, missing };
 }
 
 /**
@@ -160,7 +196,9 @@ export function readExportedApp(html: string): AppBundle | null {
     const app = script("application/x-eeform-app+json");
     if (app) {
       const b = JSON.parse(app) as AppBundle;
-      if (typeof b.main === "string" && b.forms && typeof b.forms === "object") return { main: b.main, forms: b.forms, assets: b.assets ?? {} };
+      if (typeof b.main === "string" && b.forms && typeof b.forms === "object") {
+        return { main: b.main, forms: b.forms, assets: b.assets ?? {}, ...(b.sheets ? { sheets: b.sheets } : {}) };
+      }
     }
     const one = script("application/x-eeform+json");
     if (one) return { main: "form" + FORM_EXT, forms: { ["form" + FORM_EXT]: JSON.parse(one) as string }, assets: {} };
@@ -175,7 +213,10 @@ export function readExportedApp(html: string): AppBundle | null {
  * to the main form, so the names its forms use still find each other. A file that lived outside the
  * main form's folder lands at the top of `into`, by its name.
  */
-export function unpackPlan(b: AppBundle, into: string): { main: string; forms: [string, string][]; images: [string, string][] } {
+export function unpackPlan(
+  b: AppBundle,
+  into: string,
+): { main: string; forms: [string, string][]; images: [string, string][]; sheets: [string, string][] } {
   const base = parentDir(b.main);
   const place = (p: string): string => {
     const rel = base && p.startsWith(base + "/") ? p.slice(base.length + 1) : base ? (p.split("/").pop() ?? p) : p;
@@ -185,5 +226,6 @@ export function unpackPlan(b: AppBundle, into: string): { main: string; forms: [
     main: place(b.main),
     forms: Object.entries(b.forms).map(([p, src]) => [place(p), src]),
     images: Object.entries(b.assets).map(([p, url]) => [place(p), url]),
+    sheets: Object.entries(b.sheets ?? {}).map(([p, data]) => [place(p), data]),
   };
 }

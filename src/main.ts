@@ -1013,6 +1013,12 @@ function main(): void {
         read,
         exists: (p) => known.has(p),
         image: async (p) => dataUrl(await ws.readImage(p), imageMime(p)),
+        // a sheet is a database file: the engine hands it over as base64
+        sheet: async (p) => {
+          const env = await engine.evalSrc(`(sheet-bytes ${JSON.stringify(p)})`);
+          if (!env.ok || typeof env.result !== "string") throw new Error(env.ok ? "no bytes" : env.error);
+          return env.result;
+        },
       });
       const html = exportAppHtml({ template, bundle, title: r.spec.title, app: basename(path) });
 
@@ -1026,7 +1032,7 @@ function main(): void {
         const choice = await exportPanel({
           title: r.spec.title,
           forms: Object.keys(bundle.forms),
-          images: Object.keys(bundle.assets),
+          images: [...Object.keys(bundle.assets), ...Object.keys(bundle.sheets ?? {})],
           missing,
           bytes: html.length,
           last,
@@ -1075,7 +1081,7 @@ function main(): void {
       const folder = joinPath(parentDir(path), uniqueName(`${stem} forms`, siblings(path)));
       const plan = unpackPlan(bundle, folder);
       const dirs = new Set<string>([folder]);
-      for (const [p] of [...plan.forms, ...plan.images]) {
+      for (const [p] of [...plan.forms, ...plan.images, ...plan.sheets]) {
         for (let d = parentDir(p); d.length > folder.length; d = parentDir(d)) dirs.add(d);
       }
       for (const d of [...dirs].sort((a, b) => a.length - b.length)) await ws.create(d, true);
@@ -1083,6 +1089,11 @@ function main(): void {
       for (const [p, url] of plan.images) {
         const bytes = Uint8Array.from(atob(url.slice(url.indexOf(",") + 1)), (c) => c.charCodeAt(0));
         await ws.saveAsset(parentDir(p), basename(p), bytes);
+      }
+      // a sheet goes back through the engine, which writes the file (the workspace writes text only)
+      for (const [p, data] of plan.sheets) {
+        const env = await engine.evalSrc(`(sheet-from-bytes ${JSON.stringify(p)} ${JSON.stringify(data)})`);
+        if (!env.ok) toast(`${basename(p)}: ${env.error}`);
       }
       await sidebar.refresh();
       await openFile(plan.main);
