@@ -5,7 +5,7 @@ variables with them, and **a runtime** that runs a set of forms as a program on 
 the editor around it. The first is what makes several `.eeform`s one application; the second is how
 that application reaches someone who doesn't use EEditor.
 
-Status: plan, decisions taken (see *Decided* at the end). The WebAssembly spike is done; nothing else is built yet.
+Status: decisions taken (see *Decided* at the end). W0–W2 are done: the engine runs in a browser, the app can use it, and a form runs on its own page keeping its data.
 
 ```
  ┌ Shop ─────────────────────────────────────────────────────────┐
@@ -202,7 +202,7 @@ can be exported on its own — and the main form (A) is what turns several of th
 |---|---|---|
 | ~~**W0**~~ | ~~WebAssembly spike (engine + SQLite in the browser)~~ — done, it holds | — |
 | ~~**W1**~~ | ~~A `wasm` transport for the app's `EngineClient`~~ — done: `src/engine/wasm.ts`; `?engine=wasm` (or `VITE_ENGINE=wasm`) runs the whole app on it. `npm run engine:wasm` builds eelisp-rs `web/` into `public/engine/`, loaded at run time (fetched, imported from a blob — Vite's dev server won't serve a `public/` file to `import()`), so a build without it still builds. `dev/ui/wasm.pw.mjs`: the REPL and Books.eeform on it. Not yet on it: sheets (their `.eesheet` files are on disk, out of the page's reach) and keeping the data (in memory — a reload starts empty) — both W2 | W0 |
-| **W2** | The runtime page: the renderer and one form filling the window, over the wasm engine; data in OPFS | W1 |
+| ~~**W2**~~ | ~~The runtime page~~ — done: `runtime.html` + `src/runtime.ts`. A form runs on its own over the wasm engine (`?form=<url>`, or a `<script type="text/x-eeform">` in the page); its data is kept in IndexedDB (`src/engine/store.ts`) under the app's name, written straight after every change (the engine's `exportDb`/`importDb`/`changes` — rusqlite's serialize, eelisp-rs `feat/wasm-data`); *Save data…* downloads it as a SQLite file, *Open data…* loads one back. The page already reads an engine carried inline (gzipped base64), which W3 writes. `dev/ui/runtime.pw.mjs`. Not in it yet: sheets, `ui-open` of another form (W4), images other than by URL | W1 |
 | **W3** | *Export as HTML…* on a form: one self-contained file (engine gzipped inline, the form, the `lib/` it loads, images) | W2 |
 | **A1** | Scopes — `local`, `public`, `var`, `var!`, `:on-public`; instance ids in `f` | — |
 | **A2** | The `frame` control, `(ui-open … :in …)`, the three modes, `:on-close` | A1 |

@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>EEditor form</title>
+  </head>
+  <body class="runtime">
+    <div id="app"></div>
+    <!--
+      A form runs here on its own: the engine in WebAssembly, in this page, keeping its data in the
+      browser. The form comes from ?form=<url>, or from a <script type="text/x-eeform"> placed in this
+      page — which is how an exported form carries itself.
+    -->
+    <script type="module" src="/src/runtime.ts"></script>
+  </body>
+</html>

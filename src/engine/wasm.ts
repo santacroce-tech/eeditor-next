@@ -6,11 +6,30 @@
 // transports do. `npm run engine:wasm` builds it into `public/engine/`.
 
 import type { EngineClient } from "./client";
+import type { ByteStore } from "./store";
 import type { Envelope } from "./types";
 
 /** One interpreter with its own database, as `eelisp-web` exports it. */
 export interface WasmEngineInstance {
   eval(src: string): string;
+  /** The database as the bytes of a SQLite file. */
+  exportDb(): Uint8Array;
+  /** Replace the database with the bytes of one; throws on bytes that aren't a database. */
+  importDb(bytes: Uint8Array): void;
+  /** Rows changed since the database was opened or imported. */
+  changes(): number;
+}
+
+/** Keeping the engine's data between visits: where, under what name, and how soon after a change. */
+export interface WasmPersistence {
+  store: ByteStore;
+  key: string;
+  /**
+   * Milliseconds to wait after a change before writing, so a burst of edits is one write. 0 writes
+   * straight after the evaluation that changed something — what a page that may be closed at any
+   * moment wants.
+   */
+  delay?: number;
 }
 
 /** The shape of the wasm-bindgen module: an init function as the default export, and `Engine`. */
@@ -55,6 +74,11 @@ export function loadWasmFrom(url: string): WasmLoader {
 
 export class WasmEngine implements EngineClient {
   private ready: Promise<WasmEngineInstance> | null = null;
+  /** `changes()` when the data was last written (or loaded) — a different count means unsaved rows. */
+  private savedAt = 0;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  /** Writes in flight, one after another — two can't overlap and land out of order. */
+  private writing: Promise<void> = Promise.resolve();
 
   /**
    * @param load   how to get the module
@@ -64,6 +88,7 @@ export class WasmEngine implements EngineClient {
   constructor(
     private readonly load: WasmLoader,
     private readonly wasm?: unknown,
+    private readonly persist?: WasmPersistence,
   ) {}
 
   private engine(): Promise<WasmEngineInstance> {
@@ -71,7 +96,21 @@ export class WasmEngine implements EngineClient {
       this.ready = (async () => {
         const m = await this.load();
         await m.default(this.wasm === undefined ? undefined : { module_or_path: this.wasm });
-        return new m.Engine();
+        const engine = new m.Engine();
+        if (this.persist) {
+          // What this page kept last time. Unreadable bytes are left where they are, not
+          // overwritten: the page starts empty and says so, rather than destroying data.
+          const kept = await this.persist.store.get(this.persist.key);
+          if (kept) {
+            try {
+              engine.importDb(kept);
+            } catch (e) {
+              throw new Error(`the data kept for ${this.persist.key} can't be read: ${e instanceof Error ? e.message : String(e)}`);
+            }
+          }
+          this.savedAt = engine.changes();
+        }
+        return engine;
       })();
       // A failed load is not remembered: the next evaluation tries again.
       this.ready.catch(() => (this.ready = null));
@@ -91,6 +130,50 @@ export class WasmEngine implements EngineClient {
     } catch (e) {
       // A Rust panic surfaces here as a JS exception; the engine may not be usable after it.
       return { ok: false, error: `engine: ${e instanceof Error ? e.message : String(e)}` };
+    } finally {
+      if (this.persist && engine.changes() !== this.savedAt) this.scheduleSave();
+    }
+  }
+
+  private scheduleSave(): void {
+    const delay = this.persist?.delay ?? 300;
+    if (delay <= 0) return void this.save();
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = setTimeout(() => void this.save(), delay);
+  }
+
+  /** Write the data now if anything changed since the last write — also what a page leaving calls. */
+  save(): Promise<void> {
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    const persist = this.persist;
+    const ready = this.ready;
+    if (!persist || !ready) return this.writing;
+    this.writing = this.writing
+      .catch(() => {})
+      .then(async () => {
+        const engine = await ready;
+        const at = engine.changes();
+        if (at === this.savedAt) return;
+        const bytes = engine.exportDb();
+        this.savedAt = at; // taken now: a change made while this write is under way writes again
+        await persist.store.put(persist.key, bytes);
+      });
+    return this.writing;
+  }
+
+  /** The database as the bytes of a SQLite file — *Save data…*. */
+  async exportData(): Promise<Uint8Array> {
+    return (await this.engine()).exportDb();
+  }
+
+  /** Replace the database with a SQLite file's bytes — *Open data…* — and keep it. */
+  async importData(bytes: Uint8Array): Promise<void> {
+    const engine = await this.engine();
+    engine.importDb(bytes);
+    if (this.persist) {
+      await this.persist.store.put(this.persist.key, bytes);
+      this.savedAt = engine.changes();
     }
   }
 }
