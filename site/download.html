@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Download EEditor 2.0 — macOS, Windows, Linux, iOS</title>
-<meta name="description" content="Download EEditor 2.0.0 for macOS (Intel and Apple Silicon), Windows 10/11, and Linux. Free, no account required.">
+<meta name="description" content="Download EEditor 2.2.0 for macOS (Intel and Apple Silicon), Windows 10/11, and Linux. Free, no account required.">
 <link rel="icon" type="image/png" href="assets/favicon.png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <link rel="stylesheet" href="assets/style.css">
@@ -28,7 +28,7 @@
 
 <header class="hero" style="padding-bottom:40px">
   <div class="wrap">
-    <p class="eyebrow">Version 2.0.0 · 9 August 2026</p>
+    <p class="eyebrow">Version 2.2.0 · 24 September 2026</p>
     <h1>Download EEditor</h1>
     <p class="lede">Free, no account, no telemetry. Pick your platform.</p>
   </div>
@@ -41,22 +41,22 @@
       <div class="card">
         <h3>macOS</h3>
         <p class="muted"><small>macOS 11 Big Sur or later · Intel &amp; Apple Silicon in one image</small></p>
-        <p><a class="btn" href="https://github.com/santacroce-tech/eeditor-next/releases/download/v2.0.0/eeditor-next_2.0.0_universal.dmg">Download .dmg</a></p>
-        <p><small class="muted">12.5 MB</small></p>
+        <p><a class="btn" href="https://github.com/santacroce-tech/eeditor-next/releases/download/v2.2.0/eeditor-next_2.2.0_universal.dmg">Download .dmg</a></p>
+        <p><small class="muted">17.1 MB</small></p>
       </div>
 
       <div class="card">
         <h3>Windows</h3>
         <p class="muted"><small>Windows 10 or 11, 64-bit</small></p>
-        <p><a class="btn" href="https://github.com/santacroce-tech/eeditor-next/releases/download/v2.0.0/eeditor-next_2.0.0_x64-setup.exe">Download installer</a></p>
-        <p><small class="muted">4.0 MB · or the <a href="https://github.com/santacroce-tech/eeditor-next/releases/download/v2.0.0/eeditor-next_2.0.0_x64_en-US.msi">.msi package</a> (5.6 MB)</small></p>
+        <p><a class="btn" href="https://github.com/santacroce-tech/eeditor-next/releases/download/v2.2.0/eeditor-next_2.2.0_x64-setup.exe">Download installer</a></p>
+        <p><small class="muted">6.2 MB · or the <a href="https://github.com/santacroce-tech/eeditor-next/releases/download/v2.2.0/eeditor-next_2.2.0_x64_en-US.msi">.msi package</a> (7.9 MB)</small></p>
       </div>
 
       <div class="card">
         <h3>Linux</h3>
         <p class="muted"><small>x86-64 · glibc 2.35+ (Ubuntu 22.04 and newer)</small></p>
-        <p><a class="btn" href="https://github.com/santacroce-tech/eeditor-next/releases/download/v2.0.0/eeditor-next_2.0.0_amd64.AppImage">Download AppImage</a></p>
-        <p><small class="muted">79.7 MB · or the <a href="https://github.com/santacroce-tech/eeditor-next/releases/download/v2.0.0/eeditor-next_2.0.0_amd64.deb">.deb package</a> (6.1 MB)</small></p>
+        <p><a class="btn" href="https://github.com/santacroce-tech/eeditor-next/releases/download/v2.2.0/eeditor-next_2.2.0_amd64.AppImage">Download AppImage</a></p>
+        <p><small class="muted">82.6 MB · or the <a href="https://github.com/santacroce-tech/eeditor-next/releases/download/v2.2.0/eeditor-next_2.2.0_amd64.deb">.deb package</a> (8.3 MB)</small></p>
       </div>
 
       <div class="card">
@@ -107,10 +107,10 @@
 
       <h3>Linux</h3>
       <p>The AppImage needs no installation — mark it executable and run it:</p>
-<pre><code>chmod +x eeditor-2.0.0-linux-x86_64.AppImage
-./eeditor-2.0.0-linux-x86_64.AppImage</code></pre>
+<pre><code>chmod +x eeditor-next_2.2.0_amd64.AppImage
+./eeditor-next_2.2.0_amd64.AppImage</code></pre>
       <p>Or install the Debian package:</p>
-<pre><code>sudo apt install ./eeditor-2.0.0-linux-amd64.deb</code></pre>
+<pre><code>sudo apt install ./eeditor-next_2.2.0_amd64.deb</code></pre>
       <p>
         Both need a WebKitGTK runtime, which every mainstream desktop already ships. On a minimal
         install: <code>sudo apt install libwebkit2gtk-4.1-0</code>.
@@ -139,9 +139,18 @@
         GitHub publishes a SHA-256 digest for every asset — open the release, expand the asset list,
         and compare it with what you have:
       </p>
-<pre><code>shasum -a 256 eeditor-next_2.0.0_universal.dmg</code></pre>
+<pre><code>shasum -a 256 eeditor-next_2.2.0_universal.dmg</code></pre>
 
       <h2>Release notes</h2>
+      <p><strong>2.2.0</strong> — forms, sheets, and apps that run anywhere. <a href="https://github.com/santacroce-tech/eeditor-next/releases/tag/v2.2.0">Full notes</a>.</p>
+      <ul>
+        <li><strong>Forms</strong>: a designer in the Visual Basic tradition — draw the controls, attach EELisp to their events, run. <a href="manual.html#forms">Chapter 10</a>.</li>
+        <li><strong>Apps</strong>: a main form runs the others in a frame, the dBASE way; variables shared across them; menus merged.</li>
+        <li><strong>Export as HTML</strong>: an app — its forms, images and spreadsheets, and the EELisp engine — as one file that runs in any browser, offline. <a href="index.html#try">Try one</a>.</li>
+        <li><strong>Sheets</strong>: a grid whose formulas are EELisp, each a file in your workspace.</li>
+        <li><strong>Notes</strong>: images and Mermaid diagrams; ⌘⇧↵ runs the selection.</li>
+        <li>From 2.1, never published on its own: the agenda is saved in your workspace, every text file opens, nothing unsaved is lost on the way out, files from outside the workspace, and a launch the macOS privacy prompt can't hang.</li>
+      </ul>
       <p><strong>2.0.0</strong> — the cross-platform rewrite.</p>
       <ul>
         <li>Windows and Linux builds for the first time; macOS ships as one universal binary.</li>
