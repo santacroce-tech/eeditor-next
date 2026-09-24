@@ -24,6 +24,7 @@
       <a href="manual.html">Manual</a>
       <a href="tutorial.html">Tutorial</a>
       <a href="manual.html#form-examples">Examples</a>
+      <a href="#try">Try it</a>
       <a href="https://eelisp.app">EELisp</a>
       <a href="download.html">Download</a>
     </div>
@@ -42,10 +43,46 @@
     <div class="cta">
       <a class="btn" href="download.html">Download for macOS, Windows &amp; Linux</a>
       <a class="btn btn-ghost" href="tutorial.html">Take the tutorial</a>
+      <a class="btn btn-ghost" href="#try">Try it in your browser</a>
     </div>
     <p style="margin-top:18px"><small class="muted">Free and open source (MIT). Version 2.0.0 · an iPhone and iPad build is in testing.</small></p>
   </div>
 </header>
+
+<section id="try">
+  <div class="wrap">
+    <div class="prose">
+      <h2>Try it now — nothing to install</h2>
+      <p>
+        These are apps built in EEditor and exported as a single HTML file each: the forms, their
+        code, and the EELisp engine itself, compiled to WebAssembly. They run here, in your browser,
+        and keep what you type in it — nothing is sent anywhere. Every one you build can be shared
+        the same way.
+      </p>
+    </div>
+    <div class="grid try-grid" style="margin-top:24px">
+      <a class="card try-card" href="apps/Office.html">
+        <picture>
+          <source srcset="assets/forms/office-dark.png" media="(prefers-color-scheme: dark)">
+          <img src="assets/forms/office-light.png" alt="The Office app: a list of screens, and the Orders screen running inside it" width="1042" loading="lazy">
+        </picture>
+        <h3>Office</h3>
+        <p>Books, orders, any table, the agenda and the language, as the screens of one app — the dBASE way. Pick a screen from the list; <em>Add sample…</em> in its menu fills it.</p>
+        <span class="try-open">Open Office →</span>
+      </a>
+      <a class="card try-card" href="apps/Functions.html">
+        <picture>
+          <source srcset="assets/forms/functions-dark.png" media="(prefers-color-scheme: dark)">
+          <img src="assets/forms/functions-light.png" alt="The Functions app: every EELisp function in a list, one's source, and a call run with typed arguments" width="822" loading="lazy">
+        </picture>
+        <h3>Functions</h3>
+        <p>Every function in EELisp — what it does, its source, and a box to run it with your own arguments. The whole language, in one page.</p>
+        <span class="try-open">Open Functions →</span>
+      </a>
+    </div>
+    <p style="margin-top:18px"><small class="muted">How they're made: <a href="manual.html#export-html">one file that runs anywhere</a> · <a href="manual.html#form-examples">download their source</a> and open it in EEditor.</small></p>
+  </div>
+</section>
 
 <section class="alt">
   <div class="wrap">
