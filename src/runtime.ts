@@ -1,24 +1,29 @@
-// A form running on its own — no editor, no workspace, no bridge. The engine is the WebAssembly one,
-// in this page, and the data it writes is kept in the browser between visits (IndexedDB, keyed by
-// the app's name). Save data… / Open data… move it in and out as a SQLite file.
+// An app running on its own — no editor, no workspace, no bridge. The engine is the WebAssembly one,
+// in this page, and what the app writes is kept in the browser between visits (IndexedDB, under the
+// app's name). Save data… / Open data… move it in and out as a SQLite file.
+//
+// The page runs the app's main form filling the window; what it opens with (ui-open …) runs in its
+// frames, or in windows over the page — through the same host as the editor (forms/host.ts), so
+// public variables, frames and names beside the opener work the same.
 //
 // Where things come from, first match wins:
-//   the form    <script type="application/x-eeform+json"> (a JSON string — what an export writes)
-//               · <script type="text/x-eeform"> (the source as it is, for a page written by hand)
-//               · ?form=<url>
-//   its images  <script type="application/x-eeform-assets+json">: { "assets/x.png": "data:…" }
+//   the app     <script type="application/x-eeform-app+json"> — { main, forms, assets } (an export,
+//               core/export.ts) · <script type="text/x-eeform"> (one form, written by hand) ·
+//               ?form=<url> (the dev server; forms it opens are fetched beside it)
 //   the engine  <script type="application/x-eelisp-engine+json"> + <script type="application/x-eelisp-wasm">
 //               (gzipped, base64) in the page · public/engine/ (npm run engine:wasm)
-// An exported page carries all of it inline (scripts/build-runtime-template.mjs, core/export.ts);
-// the dev server serves the rest.
 
 import "./styles.css";
-import { readFormSpec, type FormSpec } from "./core/form";
-import { createFormClient, identityState, newFormId } from "./engine/form";
+import { FORM_EXT, isFormPath, type FormSpec } from "./core/form";
+import type { AppBundle } from "./core/export";
+import { resolveNoteRelative } from "./core/mdmedia";
+import { createFormClient, type FormIdentity } from "./engine/form";
 import { indexedDbStore } from "./engine/store";
 import { WasmEngine, defaultWasmUrls, loadWasmFrom, loadWasmFromText } from "./engine/wasm";
+import { createFormHost } from "./forms/host";
 import { toast } from "./ui/dialogs";
 import { createFormRunner, type FormRunner } from "./ui/formrun";
+import { createFormWindow, type FormWindow } from "./ui/formwindow";
 
 const app = document.getElementById("app") as HTMLElement;
 
@@ -29,19 +34,19 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
   return e;
 }
 
-/** A page-sized message: what the page shows instead of a form it can't run. */
+/** A page-sized message: what the page shows instead of an app it can't run. */
 function fail(message: string): void {
   app.replaceChildren(el("div", "rt-fail", message));
 }
 
 // ── what to run ─────────────────────────────────────────────────────
 
+/** The app's forms: read by path, and whether a path is one — carried in the page, or fetched. */
 interface Source {
-  text: string;
-  /** Where it came from, for resolving an image beside it; none for a form carried inline. */
-  base?: string;
-  /** Images carried in the page, by the path the form names them with. */
-  assets?: Record<string, string>;
+  main: string;
+  read(path: string): Promise<string>;
+  exists(path: string): boolean;
+  image(path: string): string | null;
 }
 
 /** A JSON value carried in a <script> of the given type, or undefined when there's none. */
@@ -50,17 +55,37 @@ function carried<T>(type: string): T | undefined {
   return s ? (JSON.parse(s.textContent ?? "null") as T) : undefined;
 }
 
-async function formSource(): Promise<Source | null> {
-  const exported = carried<string>("application/x-eeform+json");
-  if (typeof exported === "string") return { text: exported, assets: carried<Record<string, string>>("application/x-eeform-assets+json") ?? {} };
+function fromBundle(b: AppBundle): Source {
+  return {
+    main: b.main,
+    read: async (p) => {
+      if (!(p in b.forms)) throw new Error("it isn't part of this app");
+      return b.forms[p];
+    },
+    exists: (p) => p in b.forms,
+    image: (p) => b.assets[p] ?? null,
+  };
+}
+
+function appSource(): Source | null {
+  const bundle = carried<AppBundle>("application/x-eeform-app+json");
+  if (bundle && typeof bundle.main === "string") return fromBundle(bundle);
   const inline = document.querySelector<HTMLScriptElement>('script[type="text/x-eeform"]');
-  if (inline) return { text: inline.textContent ?? "" };
+  if (inline) return fromBundle({ main: "form" + FORM_EXT, forms: { ["form" + FORM_EXT]: inline.textContent ?? "" }, assets: {} });
   const at = new URLSearchParams(location.search).get("form");
   if (!at) return null;
-  const url = new URL(at, location.href).href;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`${at}: ${res.status} ${res.statusText}`);
-  return { text: await res.text(), base: url };
+  // The dev server: paths are URLs from the site's root; a form opened is fetched beside its opener.
+  const main = new URL(at, location.href).pathname.replace(/^\//, "");
+  return {
+    main,
+    read: async (p) => {
+      const res = await fetch("/" + p);
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      return res.text();
+    },
+    exists: () => true,
+    image: (p) => "/" + p,
+  };
 }
 
 /** Bytes from base64, unzipped with the browser's own gzip. */
@@ -72,7 +97,7 @@ async function gunzipBase64(b64: string): Promise<Uint8Array> {
 
 /**
  * Whether this page may keep data. A page opened from a file (file://) is refused storage by some
- * browsers; the form still runs, in memory, and Save data… is how its data leaves.
+ * browsers; the app still runs, in memory, and Save data… is how its data leaves.
  */
 async function storageWorks(): Promise<boolean> {
   try {
@@ -86,7 +111,7 @@ async function storageWorks(): Promise<boolean> {
 /** The engine carried in the page, or the one the dev server has in public/engine/. */
 async function engineFor(key: string, keep: boolean): Promise<WasmEngine> {
   // Written straight after every change, not only on the way out: a tab can be closed, or crash,
-  // at any moment, and a form's database is small enough to write whole.
+  // at any moment, and an app's database is small enough to write whole.
   const persist = keep ? { store: indexedDbStore, key, delay: 0 } : undefined;
   const js = carried<string>("application/x-eelisp-engine+json");
   const wasm = document.querySelector<HTMLScriptElement>('script[type="application/x-eelisp-wasm"]');
@@ -101,62 +126,96 @@ async function main(): Promise<void> {
   const dark = matchMedia("(prefers-color-scheme: dark)").matches;
   document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
 
-  let src: Source | null;
+  const src = appSource();
+  if (!src) return fail("No form to run. Open this page with ?form=path/to/Some.eeform");
+
+  const keep = await storageWorks();
+  const stage = el("div", "rt-stage");
+  const bar = el("div", "rt-bar");
+  let engine: WasmEngine | null = null;
+  let mainSpec: FormSpec | null = null;
+  let mainRunner: FormRunner | null = null;
+  const windows = new Map<string, { runner: FormRunner; win: FormWindow }>();
+
+  const note = (text: string) => console.log(text);
+  const extras = (p: string) => ({
+    imageUrl: async (s: string) => {
+      const at = resolveNoteRelative(p, s);
+      return at ? src.image(at) : null;
+    },
+    sheetView: () => null,
+    onMessage: toast,
+    onError: (m: string) => toast(m),
+    note,
+  });
+
+  // The main form is read first: its title names the app, and the app's data.
+  let mainText: string;
   try {
-    src = await formSource();
+    mainText = await src.read(src.main);
   } catch (e) {
     return fail(`The form couldn't be read — ${e instanceof Error ? e.message : String(e)}`);
   }
-  if (!src) return fail("No form to run. Open this page with ?form=path/to/Some.eeform");
-  const read = readFormSpec(src.text);
-  if ("error" in read) return fail(`The form can't run: ${read.error}`);
-  const spec = read.spec;
-  document.title = spec.title;
-
-  // One app, one set of data in this browser — named after the form unless the page says otherwise.
-  const key = `eeform:${document.body.dataset.app || spec.title}`;
-  // Opening the store now also means a save as the page leaves doesn't have to wait for it.
-  const keep = await storageWorks();
-  const engine = await engineFor(key, keep);
+  const title = /\(form\s+"((?:[^"\\]|\\.)*)"/.exec(mainText)?.[1] ?? "App";
+  document.title = title;
+  engine = await engineFor(`eeform:${document.body.dataset.app || title}`, keep);
   const forms = createFormClient(engine);
-  try {
-    await forms.load(src.text, spec.title);
-  } catch (e) {
-    return fail(`${spec.title} can't run: ${e instanceof Error ? e.message : String(e)}`);
+
+  const closeWindow = (p: string) => {
+    const w = windows.get(p);
+    if (!w) return;
+    w.runner.destroy();
+    w.win.close();
+    windows.delete(p);
+  };
+
+  const host = createFormHost({
+    forms,
+    read: (p) => src.read(p),
+    exists: (p) => src.exists(p),
+    runnerOptions: extras,
+    say: toast,
+    loadFailed: (p, m) => note(`${p}: ${m}`),
+    // A form opened with no frame: a window over the page, as in the editor.
+    openWindow: (p, opener) => void openWindow(p, opener),
+  });
+
+  async function openWindow(path: string, opener: FormIdentity): Promise<void> {
+    const p = isFormPath(path) ? path : path + FORM_EXT;
+    const open = windows.get(p);
+    if (open) return open.win.raise();
+    const r = await host.prepare(p);
+    if (!r || windows.has(p)) return;
+    const id = host.identity(p, r.spec.title, opener);
+    const runner = createFormRunner({ ...host.wire(id), ...extras(p), onClose: () => closeWindow(p), windowed: true });
+    windows.set(p, { runner, win: createFormWindow(runner.el, runner.handle, `rt:${p}`) });
+    host.track(id, runner);
+    await runner.start(r.spec);
+    runner.focus();
   }
 
-  const stage = el("div", "rt-stage");
-  const bar = el("div", "rt-bar");
+  const r = await host.prepare(src.main);
+  if (!r) return fail(`${title} can't run — see the message above`);
+  mainSpec = r.spec;
   app.replaceChildren(stage, bar);
-  let runner: FormRunner | null = null;
 
   const run = async (): Promise<void> => {
-    runner?.destroy();
-    // Alone on the page, the form is its own main; its title names the app its kept variables belong to.
-    const form = newFormId();
-    const who = identityState({ form, main: form, key: spec.title, app: spec.title });
-    runner = createFormRunner({
-      call: (handler, state) => forms.call(handler, { ...state, ...who }),
-      check: (handler, state) => forms.check(handler, { ...state, ...who }),
-      onDestroy: () => void forms.forget(form).catch(() => {}),
-      imageUrl: async (s) => src.assets?.[s] ?? (src.base ? new URL(s, src.base).href : null),
-      sheetView: () => null,
-      onMessage: toast,
-      onClose: () => closed(spec),
-      onOpen: (other) => toast(`Opening ${other} needs the whole app exported with this form — not yet`),
-      onError: (m) => toast(m),
-      note: (text) => console.log(text),
-      windowed: true,
-    });
-    stage.replaceChildren(runner.el);
-    await runner.start(spec);
-    runner.focus();
+    for (const p of [...windows.keys()]) closeWindow(p);
+    mainRunner?.destroy();
+    const spec = mainSpec as FormSpec;
+    const id = host.identity(src.main, spec.title);
+    mainRunner = createFormRunner({ ...host.wire(id), ...extras(src.main), onClose: () => closed(spec), windowed: true });
+    host.track(id, mainRunner);
+    stage.replaceChildren(mainRunner.el);
+    await mainRunner.start(spec);
+    mainRunner.focus();
   };
 
   const closed = (s: FormSpec): void => {
-    runner?.destroy();
-    runner = null;
-    void engine.save();
+    for (const p of [...windows.keys()]) closeWindow(p);
+    mainRunner?.destroy();
+    mainRunner = null;
+    void engine?.save();
     const again = el("button", "rt-btn", `Open ${s.title} again`);
     again.addEventListener("click", () => void run());
     stage.replaceChildren(el("div", "rt-closed", `${s.title} is closed.`), again);
@@ -164,13 +223,14 @@ async function main(): Promise<void> {
 
   // Save data… — the database as a SQLite file, named after the app.
   const save = el("button", "rt-btn", "Save data…");
-  save.title = "Download everything this form has stored, as a SQLite file";
+  save.title = "Download everything this app has stored, as a SQLite file";
   save.addEventListener("click", async () => {
+    if (!engine) return;
     await engine.save();
     const bytes = await engine.exportData();
     const a = el("a");
     a.href = URL.createObjectURL(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: "application/vnd.sqlite3" }));
-    a.download = `${spec.title}.db`;
+    a.download = `${title}.db`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   });
@@ -183,23 +243,23 @@ async function main(): Promise<void> {
   pick.addEventListener("change", async () => {
     const file = pick.files?.[0];
     pick.value = "";
-    if (!file) return;
+    if (!file || !engine) return;
     try {
       await engine.importData(new Uint8Array(await file.arrayBuffer()));
       toast(`Opened ${file.name}`);
       await run();
     } catch (e) {
-      toast(`${file.name} isn't data this form can open — ${e instanceof Error ? e.message : String(e)}`);
+      toast(`${file.name} isn't data this app can open — ${e instanceof Error ? e.message : String(e)}`);
     }
   });
   const open = el("button", "rt-btn", "Open data…");
-  open.title = "Replace what this form has stored with a file saved before";
+  open.title = "Replace what this app has stored with a file saved before";
   open.addEventListener("click", () => pick.click());
   bar.append(save, open, pick);
 
   // Leaving the page is when an unsaved change would be lost.
-  addEventListener("pagehide", () => void engine.save());
-  document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && void engine.save());
+  addEventListener("pagehide", () => void engine?.save());
+  document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && void engine?.save());
 
   await run();
   if (!keep) toast("This browser won't let the page keep data — use Save data… before closing it");

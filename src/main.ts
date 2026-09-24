@@ -9,8 +9,9 @@ import { dictGet } from "./engine/types";
 import { createSheetClient } from "./engine/sheet";
 import { fromCSV, importedValue, isSheetPath, SHEET_EXT, toCSV, toTableHtml, toTSV, valueRows } from "./core/sheet";
 import { createSheetView, type SheetView } from "./ui/sheet";
-import { createFormClient, identityState, newFormId, type FormIdentity } from "./engine/form";
-import { FORM_EXT, defnRange, handlerStub, isFormPath, layoutRange, newFormSource, printFormSpec, readFormSpec, type FormSpec, type StateValue } from "./core/form";
+import { createFormClient, type FormIdentity } from "./engine/form";
+import { createFormHost } from "./forms/host";
+import { FORM_EXT, defnRange, handlerStub, isFormPath, layoutRange, newFormSource, printFormSpec, readFormSpec } from "./core/form";
 import { createFormDesigner } from "./ui/formdesigner";
 import { createFormRunner, type FormRunner } from "./ui/formrun";
 import { createFormWindow, type FormWindow } from "./ui/formwindow";
@@ -31,7 +32,7 @@ import { createOpenWith } from "./ui/openwith";
 import { exportPdf } from "./ui/pdf";
 import { dataUrl, parseMarkdown, renderMedia } from "./ui/markdown";
 import { imageMime, resolveNoteRelative } from "./core/mdmedia";
-import { FORM_SLOT, exportFormHtml, formImages, isExportedPage } from "./core/export";
+import { FORM_SLOT, collectApp, exportAppHtml, isExportedPage } from "./core/export";
 import { createImages } from "./ui/images";
 import { promptModal, confirmModal, infoModal, showContextMenu, toast, type MenuItem } from "./ui/dialogs";
 import { resolveWikiLink } from "./core/fuzzy";
@@ -528,9 +529,9 @@ function main(): void {
       t.mode = "design";
       if (tabs[activeIdx] === t) showSurface(t);
     };
-    const id = formIdentity(t.path, r.spec.title);
+    const id = formHost.identity(t.path, r.spec.title);
     const runner = createFormRunner({
-      ...runningForm(id),
+      ...formHost.wire(id),
       imageUrl: (src) => formImageUrl(t.path, src),
       sheetView: (file) => formSheetView(t.path, file),
       onMessage: toast,
@@ -546,50 +547,21 @@ function main(): void {
       },
     });
     runners.set(t.path, runner);
-    running.set(id.form, { runner, id });
+    formHost.track(id, runner);
     t.mode = "run";
     showSurface(t);
     await runner.start(r.spec);
     runner.focus();
   }
 
-  /** Every form running now, in a tab or a window, by its id — for public variables and ui-open. */
-  const running = new Map<string, { runner: FormRunner; id: FormIdentity }>();
-
   /**
-   * Who a form about to run is. Opened by another form (`ui-open`), it joins that form's main and
-   * shares its public variables; otherwise it is a main of its own, and its title names the app.
+   * Forms running in tabs, windows and frames — who each is, what ui-open opens, public variables
+   * (src/forms/host.ts, shared with an exported form's page). A form's text comes from its open tab
+   * when there is one, unsaved edits included, and from disk otherwise.
    */
-  function formIdentity(key: string, title: string, opener?: FormIdentity): FormIdentity {
-    const form = newFormId();
-    return opener ? { form, main: opener.main, key, app: opener.app } : { form, main: form, key, app: title };
-  }
-
-  /** What every running form's runner shares: its identity on each call, and the variables' wiring. */
-  function runningForm(id: FormIdentity) {
-    const who = identityState(id);
-    return {
-      call: (handler: string, state: Record<string, StateValue>) => forms.call(handler, { ...state, ...who }),
-      check: (handler: string, state: Record<string, StateValue>) => forms.check(handler, { ...state, ...who }),
-      onOpen: (other: string, how?: { into?: string; copy?: boolean }) => {
-        const p = formPathFor(other, id);
-        void (how?.into ? openInFrame(p, how.into, id, how.copy === true) : runForm(p, id));
-      },
-      // A public variable written here: every other form of the same main hears of it.
-      onPublic: (name: string) => {
-        for (const [other, r] of running) if (other !== id.form && r.id.main === id.main) r.runner.publicChanged(name);
-      },
-      onDestroy: () => {
-        running.delete(id.form);
-        void forms.forget(id.form).catch(() => {});
-      },
-    };
-  }
-
   /**
    * `(ui-open "Orders")` from a form, `(ed-form "Orders")` from a keybinding or the REPL, ⧉ on a
-   * running tab: run that form in a floating window. Its text comes from the open tab when there is
-   * one — unsaved edits included — and from disk otherwise, so no tab has to open for a form to run.
+   * running tab: run that form in a floating window.
    */
   async function runForm(path: string, opener?: FormIdentity): Promise<void> {
     const p = isFormPath(path) ? path : path + FORM_EXT;
@@ -599,120 +571,21 @@ function main(): void {
       open.runner.focus();
       return;
     }
-    const r = await prepareForm(p);
+    const r = await formHost.prepare(p);
     if (!r) return;
     if (windows.has(p)) return; // opened twice at once — the first one won
-    const id = formIdentity(p, r.spec.title, opener);
+    const id = formHost.identity(p, r.spec.title, opener);
     const runner = createFormRunner({
-      ...runningForm(id),
-      imageUrl: (src) => formImageUrl(p, src),
-      sheetView: (file) => formSheetView(p, file),
-      onMessage: toast,
+      ...formHost.wire(id),
+      ...formExtras(p),
       onClose: () => closeWindow(p),
-      onError: (m) => {
-        repl.note(`; ${basename(p)}: ${m}`);
-        toast(m);
-      },
-      note: (text) => repl.note(text),
       windowed: true,
     });
     const win = createFormWindow(runner.el, runner.handle, p);
     windows.set(p, { runner, win });
-    running.set(id.form, { runner, id });
+    formHost.track(id, runner);
     await runner.start(r.spec);
     runner.focus();
-  }
-
-  /**
-   * A form's file, read — from its open tab when there is one, unsaved edits included — checked, and
-   * evaluated so its handlers exist. Null, having said why, when it can't run.
-   */
-  async function prepareForm(p: string): Promise<{ spec: FormSpec } | null> {
-    const tab = tabs.find((t) => t.path === p);
-    let src: string;
-    try {
-      src = tab ? (tabs[activeIdx] === tab ? editor.getDoc() : tab.content) : await ws.read(p);
-    } catch (e) {
-      toast(`Could not open ${p}: ${String(e)}`);
-      return null;
-    }
-    const r = readFormSpec(src);
-    if ("error" in r) {
-      toast(`${basename(p)} can't run: ${r.error}`);
-      return null;
-    }
-    try {
-      await forms.load(src, p);
-    } catch (e) {
-      const m = e instanceof Error ? e.message : String(e);
-      repl.note(`; ${basename(p)}: ${m}`);
-      toast(`${basename(p)} can't run: ${m}`);
-      return null;
-    }
-    return { spec: r.spec };
-  }
-
-  /**
-   * The frame called `name` a form means by `(ui-open … :in name)`: its own, else its main form's, else
-   * any form's under the same main — so a form shown in the frame can open another beside it.
-   */
-  function frameHost(name: string, opener: FormIdentity): FormRunner | undefined {
-    const candidates = [running.get(opener.form), running.get(opener.main), ...running.values()];
-    return candidates.find((r) => r && r.id.main === opener.main && r.runner.hasFrame(name))?.runner;
-  }
-
-  /** `(ui-open "Orders" :in "frmBody")`: run Orders inside that frame, as one more form of the same main. */
-  async function openInFrame(path: string, frame: string, opener: FormIdentity, copy: boolean): Promise<void> {
-    const p = isFormPath(path) ? path : path + FORM_EXT;
-    const host = frameHost(frame, opener);
-    if (!host) return toast(`There is no frame called "${frame}" to open ${basename(p)} in`);
-    if (!copy && host.bringForward(frame, p)) return;
-    const r = await prepareForm(p);
-    if (!r) return;
-    const id = formIdentity(p, r.spec.title, opener);
-    const close = () => {
-      host.unmount(id.form);
-      runner.destroy();
-    };
-    const runner: FormRunner = createFormRunner({
-      ...runningForm(id),
-      imageUrl: (src) => formImageUrl(p, src),
-      sheetView: (file) => formSheetView(p, file),
-      onMessage: toast,
-      onClose: close,
-      onError: (m) => {
-        repl.note(`; ${basename(p)}: ${m}`);
-        toast(m);
-      },
-      note: (text) => repl.note(text),
-      windowed: true,
-    });
-    running.set(id.form, { runner, id });
-    host.mount(frame, {
-      id: id.form,
-      key: p,
-      label: r.spec.title,
-      el: runner.el,
-      handle: runner.handle,
-      focus: () => runner.focus(),
-      close,
-      destroy: () => runner.destroy(),
-      menus: () => runner.menus(),
-    });
-    await runner.start(r.spec);
-    host.refreshMenu(); // its menus exist now, to merge into the main form's bar
-    runner.focus();
-  }
-
-  /**
-   * The file `(ui-open "Orders")` means: beside the form that asked, when there is one there — so an
-   * app's forms can name each other wherever its folder is — else from the top of the workspace.
-   */
-  function formPathFor(ref: string, opener: FormIdentity): string {
-    const name = isFormPath(ref) ? ref : ref + FORM_EXT;
-    const near = joinPath(parentDir(opener.key), name);
-    const known = new Set(sidebar.files().map((f) => f.path));
-    return known.has(near) || !known.has(name) ? near : name;
   }
 
   function closeWindow(path: string): void {
@@ -792,6 +665,31 @@ function main(): void {
   const snippets = createSnippets(watched, repl);
   // A form's handlers may write a sheet, so they go through the same watched engine.
   const forms = createFormClient(watched);
+
+  /** What a runner of the form at `p` needs from the app: its images and sheets, where messages go. */
+  const formExtras = (p: string) => ({
+    imageUrl: (src: string) => formImageUrl(p, src),
+    sheetView: (file: string) => formSheetView(p, file),
+    onMessage: toast,
+    onError: (m: string) => {
+      repl.note(`; ${basename(p)}: ${m}`);
+      toast(m);
+    },
+    note: (text: string) => repl.note(text),
+  });
+  const formHost = createFormHost({
+    forms,
+    read: async (p) => {
+      const tab = tabs.find((t) => t.path === p);
+      return tab ? (tabs[activeIdx] === tab ? editor.getDoc() : tab.content) : ws.read(p);
+    },
+    exists: (p) => sidebar.files().some((f) => f.path === p),
+    runnerOptions: formExtras,
+    say: toast,
+    loadFailed: (p, m) => repl.note(`; ${basename(p)}: ${m}`),
+    openWindow: (p, opener) => void runForm(p, opener),
+  });
+
   snippetsBtn.addEventListener("click", () => snippets.open());
 
   const editor = createEditor(editorHost, "", {
@@ -1075,15 +973,18 @@ function main(): void {
   }
 
   /**
-   * A form as one HTML file beside it, that runs on its own in any browser, offline: the runtime
-   * template (the runtime page and the WebAssembly engine, built by `npm run runtime:template`) with
-   * the form's source and its images put in. A new name each time, never over an existing file.
+   * A form — and every form it opens, and theirs — as one HTML file beside it, that runs on its own in
+   * any browser, offline: the runtime template (the runtime page and the WebAssembly engine, built by
+   * `npm run runtime:template`) with the app put in (core/export.ts). Exported from a main form, that
+   * is the whole app. A new name each time, never over an existing file.
    */
   async function exportFormAsHtml(path: string): Promise<void> {
     try {
-      const tab = tabs.find((t) => t.path === path);
-      const source = tab ? (tabs[activeIdx] === tab ? editor.getDoc() : tab.content) : await ws.read(path);
-      const r = readFormSpec(source);
+      const read = async (p: string) => {
+        const tab = tabs.find((t) => t.path === p);
+        return tab ? (tabs[activeIdx] === tab ? editor.getDoc() : tab.content) : ws.read(p);
+      };
+      const r = readFormSpec(await read(path));
       if ("error" in r) return toast(`${basename(path)} can't be exported: ${r.error}`);
       const res = await fetch(`${import.meta.env.BASE_URL}runtime/eeform-runtime.html`);
       // A dev server answers a missing file with the app's own page, so look for the form's slot.
@@ -1091,25 +992,22 @@ function main(): void {
       if (!template.includes(FORM_SLOT)) {
         return toast("Exporting needs the runtime, which this build doesn't have — npm run engine:wasm && npm run runtime:template");
       }
-      const assets: Record<string, string> = {};
-      const missing: string[] = [];
-      for (const src of formImages(r.spec)) {
-        const rel = resolveNoteRelative(path, src);
-        try {
-          if (!rel) throw new Error("outside the workspace");
-          assets[src] = await dataUrl(await ws.readImage(rel), imageMime(rel));
-        } catch {
-          missing.push(src);
-        }
-      }
-      const html = exportFormHtml({ template, source, title: r.spec.title, app: basename(path), assets });
+      const known = new Set(sidebar.files().map((f) => f.path));
+      const { bundle, missing } = await collectApp(path, {
+        read,
+        exists: (p) => known.has(p),
+        image: async (p) => dataUrl(await ws.readImage(p), imageMime(p)),
+      });
+      const html = exportAppHtml({ template, bundle, title: r.spec.title, app: basename(path) });
       const name = uniqueName(basename(path).replace(/\.eeform$/i, "") + ".html", siblings(path));
       await ws.write(joinPath(parentDir(path), name), html);
       await sidebar.refresh();
+      const count = Object.keys(bundle.forms).length;
+      const what = count > 1 ? ` with ${count - 1} more form${count > 2 ? "s" : ""} (${Object.keys(bundle.forms).filter((p) => p !== path).map(basename).join(", ")})` : "";
       toast(
         missing.length
-          ? `Exported ${name} — without ${missing.join(", ")}, which couldn't be read`
-          : `Exported ${name} — open it in a browser; it runs on its own`,
+          ? `Exported ${name}${what} — without ${missing.join(", ")}, which couldn't be read`
+          : `Exported ${name}${what} — open it in a browser; it runs on its own`,
       );
     } catch (e) {
       toast(`Could not export: ${String(e instanceof Error ? e.message : e)}`);

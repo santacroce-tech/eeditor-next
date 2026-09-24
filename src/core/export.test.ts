@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FORM_SLOT, exportFormHtml, formImages, isExportedPage, jsonInScript } from "./export";
+import { FORM_SLOT, codeStrings, collectApp, exportAppHtml, formImages, formNamed, isExportedPage, jsonInScript } from "./export";
 import { readFormSpec } from "./form";
 
 const TEMPLATE = `<!doctype html><html><head><title>EEditor form</title></head>
@@ -13,38 +13,78 @@ function carried(html: string, type: string): unknown {
   return m ? JSON.parse(m[1]) : undefined;
 }
 
-describe("exportFormHtml", () => {
-  it("puts the form, its title and its data name into the template", () => {
-    const html = exportFormHtml({ template: TEMPLATE, source: '(form "Books")', title: "Books", app: "Books.eeform" });
+const bundle = (main: string, forms: Record<string, string>, assets: Record<string, string> = {}) => ({ main, forms, assets });
+
+describe("exportAppHtml", () => {
+  it("puts the app, its title and its data name into the template", () => {
+    const b = bundle("Books.eeform", { "Books.eeform": '(form "Books")' });
+    const html = exportAppHtml({ template: TEMPLATE, bundle: b, title: "Books", app: "Books.eeform" });
     expect(html).toContain("<title>Books</title>");
     expect(html).toContain('<body class="runtime" data-app="Books.eeform">');
-    expect(carried(html, "application/x-eeform+json")).toBe('(form "Books")');
+    expect(carried(html, "application/x-eeform-app+json")).toEqual(b);
     expect(html).not.toContain(FORM_SLOT);
-    expect(html).not.toContain("x-eeform-assets"); // no images, no assets script
   });
 
   it("carries a form that says </script> without the page breaking", () => {
     const source = '(form "X")\n;; a note: </script><script>alert(1)</script>\n(defn f (x) (str "$& $1" x))';
-    const html = exportFormHtml({ template: TEMPLATE, source, title: "X", app: "X" });
-    // only the template's own closing tags remain, plus the one that ends the form's script
+    const html = exportAppHtml({ template: TEMPLATE, bundle: bundle("X.eeform", { "X.eeform": source }), title: "X", app: "X" });
     expect(html.match(/<\/script>/g)?.length).toBe(2);
-    expect(carried(html, "application/x-eeform+json")).toBe(source);
+    expect((carried(html, "application/x-eeform-app+json") as { forms: Record<string, string> }).forms["X.eeform"]).toBe(source);
   });
 
   it("escapes a title and a name, and never reads a $ in them as a pattern", () => {
-    const html = exportFormHtml({ template: TEMPLATE, source: "", title: 'Q&A <"$1">', app: '"$&"' });
+    const html = exportAppHtml({ template: TEMPLATE, bundle: bundle("a", {}), title: 'Q&A <"$1">', app: '"$&"' });
     expect(html).toContain("<title>Q&amp;A &lt;&quot;$1&quot;&gt;</title>");
     expect(html).toContain('data-app="&quot;$&amp;&quot;"');
   });
 
-  it("carries images by the path the form names them with", () => {
-    const assets = { "assets/logo.png": "data:image/png;base64,iVBOR" };
-    const html = exportFormHtml({ template: TEMPLATE, source: "", title: "T", app: "T", assets });
-    expect(carried(html, "application/x-eeform-assets+json")).toEqual(assets);
+  it("refuses a template with no place for the app", () => {
+    expect(() => exportAppHtml({ template: "<html></html>", bundle: bundle("a", {}), title: "", app: "" })).toThrow(/runtime template/);
+  });
+});
+
+describe("collectApp", () => {
+  const files: Record<string, string> = {
+    "apps/Office.eeform": `(form "Office" :main true :size (300 200)
+  (listbox lstNav :items ("Books" "Orders") :at (0 0) :size (10 10))
+  (image imgLogo :src "logo.png" :at (0 0) :size (10 10)))
+;; "Ghost" is only in a comment, so it doesn't count
+(defn go (f) (ui-open (ui-get f "lstNav") :in "frmMain"))`,
+    "apps/Books.eeform": `(form "Books" :size (100 100))\n(defn more (f) (ui-open "Shared"))`,
+    "apps/Orders.eeform": `(form "Orders" :size (100 100))\n(defn back (f) (ui-open "Books"))`,
+    "Shared.eeform": `(form "Shared" :size (100 100))`,
+    "apps/Ghost.eeform": `(form "Ghost" :size (100 100))`,
+  };
+  const io = {
+    read: async (p: string) => files[p],
+    exists: (p: string) => p in files,
+    image: async (p: string) => (p === "apps/logo.png" ? "data:image/png;base64,AA" : Promise.reject(new Error("no"))),
+  };
+
+  it("takes every form named from the main one, and from those, beside them first — not what a comment mentions", async () => {
+    const { bundle: b, missing } = await collectApp("apps/Office.eeform", io);
+    expect(b.main).toBe("apps/Office.eeform");
+    expect(Object.keys(b.forms).sort()).toEqual(["Shared.eeform", "apps/Books.eeform", "apps/Office.eeform", "apps/Orders.eeform"]);
+    expect(b.assets).toEqual({ "apps/logo.png": "data:image/png;base64,AA" });
+    expect(missing).toEqual([]);
   });
 
-  it("refuses a template with no place for the form", () => {
-    expect(() => exportFormHtml({ template: "<html></html>", source: "", title: "", app: "" })).toThrow(/runtime template/);
+  it("says which images it couldn't read", async () => {
+    const { missing } = await collectApp("apps/Office.eeform", { ...io, image: async () => Promise.reject(new Error("gone")) });
+    expect(missing).toEqual(["apps/logo.png"]);
+  });
+});
+
+describe("codeStrings and formNamed", () => {
+  it("reads the strings in code, not in comments, with their escapes", () => {
+    expect(codeStrings(';; "not me"\n(f "a" "b\\"c" "a")')).toEqual(["a", 'b"c']);
+  });
+
+  it("finds a form beside the one naming it, then at the top, and nothing for a plain string", () => {
+    const exists = (p: string) => ["x/A.eeform", "B.eeform"].includes(p);
+    expect(formNamed("A", "x/Main.eeform", exists)).toBe("x/A.eeform");
+    expect(formNamed("B", "x/Main.eeform", exists)).toBe("B.eeform");
+    expect(formNamed("Saved!", "x/Main.eeform", exists)).toBeNull();
   });
 });
 

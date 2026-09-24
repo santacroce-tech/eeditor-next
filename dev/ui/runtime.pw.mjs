@@ -57,7 +57,7 @@ test("Save data… downloads a SQLite file, and Open data… brings it back", as
 
   // something that isn't a database is refused, and the data stays
   await page.locator(".rt-bar input[type=file]").setInputFiles({ name: "x.db", mimeType: "application/octet-stream", buffer: Buffer.from("not a database, only text") });
-  await expect(page.locator(".toast").last()).toContainText("isn't data this form can open");
+  await expect(page.locator(".toast").last()).toContainText("isn't data this app can open");
   await expect(ctl(page, "lblPos")).toHaveText("Record 1 of 3");
 });
 

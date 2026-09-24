@@ -201,15 +201,23 @@ locals go (`ui-forget`). An undeclared name gives a message naming it, and nil. 
 ## Export as HTML
 
 Right-click a form in the tree → **Export as HTML…** (or the `export-html` command on the open form)
-writes `Name.html` beside it — `Name-1.html` if that's taken; nothing is overwritten. The file runs
+writes `Name.html` beside it — `Name-1.html` if that's taken; nothing is overwritten. **Exported from
+a main form, that is the whole app**: every form reached from it goes in the same file — any string
+in a form's code that names a form (`(ui-open "Books" …)`, a list of screens, `(office-open
+"Orders")`), found beside it first as `ui-open` finds it, and the same again in those forms
+(`collectApp` in `core/export.ts`). A name only put together while the app runs (`(str "Bo" "oks")`)
+can't be seen; writing it out anywhere in the code is enough. The toast says which forms went in. The file runs
 on its own in any browser, offline, opened straight from disk: the EELisp engine is inside it,
 compiled to WebAssembly (about 1.5 MB, most of it the engine). What the form writes is kept in that
 browser, per exported app; **Save data…** under the form downloads it as a SQLite file and **Open
 data…** loads one back — how data moves between browsers or people.
 
-- What goes in: the form's source and the images its image controls show (as `data:` URLs).
-- What doesn't yet: a sheet control, and `ui-open` of another form — whole-app export comes with the
-  main form (`docs/FORM-APPS.md`).
+- What goes in: the forms' sources and the images their image controls show (as `data:` URLs), as
+  `{ main, forms, assets }` keyed by workspace path — so names resolve in the page as in the app.
+- The page runs the main form filling the window; its frames, windows over the page, `ui-open`,
+  public variables and merged menus work as in the editor — both run forms through
+  `forms/host.ts`. `Office.html` (about 1.5 MB with its five screens) runs from disk, offline.
+- What doesn't go in yet: a sheet control's `.eesheet`.
 - The app needs the runtime template to export: `npm run engine:wasm && npm run runtime:template`
   (CI and the release workflow build it; a local build without it says so when you export).
 - Search, tags and backlinks skip exported pages (`isExportedPage`) — a megabyte of engine would

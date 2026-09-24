@@ -5,7 +5,7 @@ variables with them, and **a runtime** that runs a set of forms as a program on 
 the editor around it. The first is what makes several `.eeform`s one application; the second is how
 that application reaches someone who doesn't use EEditor.
 
-Status: decisions taken (see *Decided* at the end). W0–W3 and A1–A3 are done: a form exports as one HTML file that runs anywhere, offline; forms share variables, and a main form runs the others in a frame. Next: W4, exporting a whole app.
+Status: decisions taken (see *Decided* at the end). Done: W0–W4 and A1–A3. An app — a main form and the forms it opens, sharing variables — exports as one HTML file that runs anywhere, offline, keeping its data. Left for later: `:on-close`, sheets in an exported app, and the B series.
 
 ```
  ┌ Shop ─────────────────────────────────────────────────────────┐
@@ -207,7 +207,7 @@ can be exported on its own — and the main form (A) is what turns several of th
 | ~~**A1**~~ | ~~Scopes~~ — done: `local`, `public` (`:persist`), `var`, `var!`, `:on-public`; `$form`/`$main`/`$key`/`$app` in `f`. Until the frame exists, a form's *main* is the one that opened it with `ui-open` (windows), or itself — see docs/FORMS.md, *Variables* | — |
 | ~~**A2**~~ | ~~The `frame` control~~ — done: `(ui-open … :in …)` (`:new true`), screens (default) / tabs / windows, the Window menu, ⌃Tab, back to the previous on close, `:value`/`:on-change`. `:on-close` (refusing to close) is left for later | A1 |
 | ~~**A3**~~ | ~~`:main`, menu merge, the example~~ — done: `:main true` (designer: *Main form*), menus merged into the main form's bar while a form shows in a frame, `ui-open` names resolved beside the opener, **Office.eeform** | A2 |
-| **W4** | Export of a whole app — the main form and every form it reaches — as one HTML file; *Save data / Open data* | W3, A3 |
+| ~~**W4**~~ | ~~Export of a whole app~~ — done: exported from a main form, every form reached from it (by the strings in its code that name one) goes into the one file; the page hosts them through `forms/host.ts`, shared with the editor. *Save data / Open data* came with W2 | W3, A3 |
 | B1–B4 | The `.eeapp` folder, the desktop runtime, the served app — later, if the HTML file leaves a need |  |
 
 ## Decided

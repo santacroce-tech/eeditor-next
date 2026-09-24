@@ -72,3 +72,35 @@ test("the Functions browser runs exported too — the whole language is in the f
   await expect(ctl(p, "txtResult").locator("textarea")).toHaveValue(/^a-b/);
   await ctx.close();
 });
+
+test("Office exports as a whole app: every screen inside one file, run from disk, offline", async ({ page, browser }) => {
+  const file = await exportFromTree(page, "Office");
+  await expect(page.locator(".toast").last()).toContainText("with 5 more forms (");
+
+  const ctx = await browser.newContext();
+  await ctx.setOffline(true);
+  const p = await ctx.newPage();
+  const outside = [];
+  p.on("request", (r) => !/^(file|blob|data):/.test(r.url()) && outside.push(r.url()));
+  await p.goto("file://" + file);
+  await expect(p).toHaveTitle("Office");
+  const bar = p.locator(".formrun-menubar").first();
+  const frame = ctl(p, "frmMain");
+
+  await ctl(p, "lstNav").locator(".formrun-item", { hasText: "Books" }).click();
+  await expect(frame.locator(".formrun-ctl[data-name=lblPos]")).toHaveText("No records");
+  await expect(bar.locator(".formrun-menu")).toHaveText(["Office", "Record", "Go", "Window"]);
+  await bar.locator(".formrun-menu", { hasText: "Record" }).click();
+  await p.locator(".formrun-menulist .formrun-menuitem", { hasText: "Add sample books" }).click();
+  await expect(frame.locator(".formrun-ctl[data-name=lblPos]")).toHaveText("Record 1 of 3");
+
+  await ctl(p, "lstNav").locator(".formrun-item", { hasText: "Agenda" }).click();
+  await expect(frame.locator(".formrun-ctl[data-name=tabMain]")).toBeVisible();
+
+  // reload: the books are kept, and Office opens the last screen again
+  await p.reload();
+  await expect(ctl(p, "lblShowing")).toHaveText("showing Agenda");
+  await expect(ctl(p, "lblBooks")).toHaveText("3 books");
+  expect(outside).toEqual([]);
+  await ctx.close();
+});
