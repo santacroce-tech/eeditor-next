@@ -17,7 +17,14 @@
 (defn ui-message (text) (ui-queue (list "message" text)))       ;; a toast
 (defn ui-focus (ctl) (ui-queue (list "focus" ctl)))             ;; put the caret in a control
 (defn ui-close () (ui-queue (list "close")))                    ;; stop the form, back to the designer
-(defn ui-open (path) (ui-queue (list "open" path)))             ;; open and run another form
+;; Open and run another form: in a window of its own, or (ui-open "Orders" :in "frmBody") inside a
+;; frame of the main form — where opening one already there brings it forward, unless :new true.
+(defn ui-opt (opts key)
+  (loop (o opts)
+    (cond (empty? o) nil
+          (= (first o) key) (second o)
+          true (recur (tail o)))))
+(defn ui-open (path . opts) (ui-queue (list "open" path (ui-opt opts :in) (ui-opt opts :new))))
 
 ;; ── Variables: local to one open form, public to a main form and the forms it opens ──
 ;;

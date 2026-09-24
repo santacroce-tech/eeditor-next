@@ -234,7 +234,12 @@ export function defnRange(src: string, name: string): Range | undefined {
 
 // ── the layout ────────────────────────────────────────────────────────────
 
-export type ControlType = "label" | "textbox" | "button" | "checkbox" | "radio" | "dropdown" | "listbox" | "grid" | "date" | "image" | "timer" | "tabs" | "sheet";
+export type ControlType = "label" | "textbox" | "button" | "checkbox" | "radio" | "dropdown" | "listbox" | "grid" | "date" | "image" | "timer" | "tabs" | "sheet" | "frame";
+
+/** How a frame shows the forms opened in it. `screens` — one at a time, the dBASE way — is the default. */
+export const FRAME_MODES = ["screens", "tabs", "windows"] as const;
+export type FrameMode = (typeof FRAME_MODES)[number];
+export const frameMode = (v: unknown): FrameMode => (FRAME_MODES as readonly unknown[]).includes(v) ? (v as FrameMode) : "screens";
 
 /** `scalar`: a number or a string, kept as whichever it was — `:min 0` stays a number, `:min "2026-01-01"` a string. */
 export type PropKind = "text" | "number" | "bool" | "items" | "scalar";
@@ -402,6 +407,19 @@ export const CONTROLS: Record<ControlType, ControlDef> = {
     events: ["change"],
     initial: { pages: ["General", "Details"] },
   },
+  // Where the forms this one opens with (ui-open "X" :in "frmBody") are drawn — VB's MDI client area.
+  frame: {
+    label: "Frame",
+    prefix: "frm",
+    w: 480,
+    h: 320,
+    props: [
+      { key: "mode", kind: "text", label: "Mode: screens, tabs or windows", default: "screens" },
+      { key: "value", kind: "text", label: "Showing", default: "" },
+    ],
+    events: ["change"],
+    initial: {},
+  },
   sheet: {
     label: "Sheet",
     prefix: "sht",
@@ -441,7 +459,7 @@ export const CONTROLS: Record<ControlType, ControlDef> = {
 };
 
 /** The toolbox order: the everyday controls first, containers and the odd ones last. */
-export const CONTROL_TYPES: ControlType[] = ["label", "textbox", "button", "checkbox", "radio", "dropdown", "listbox", "grid", "date", "image", "tabs", "sheet", "timer"];
+export const CONTROL_TYPES: ControlType[] = ["label", "textbox", "button", "checkbox", "radio", "dropdown", "listbox", "grid", "date", "image", "tabs", "sheet", "frame", "timer"];
 export const isControlType = (s: string): s is ControlType => s in CONTROLS;
 
 export interface Control {

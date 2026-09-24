@@ -10,7 +10,7 @@ import { createSheetClient } from "./engine/sheet";
 import { fromCSV, importedValue, isSheetPath, SHEET_EXT, toCSV, toTableHtml, toTSV, valueRows } from "./core/sheet";
 import { createSheetView, type SheetView } from "./ui/sheet";
 import { createFormClient, identityState, newFormId, type FormIdentity } from "./engine/form";
-import { FORM_EXT, defnRange, handlerStub, isFormPath, layoutRange, newFormSource, printFormSpec, readFormSpec, type StateValue } from "./core/form";
+import { FORM_EXT, defnRange, handlerStub, isFormPath, layoutRange, newFormSource, printFormSpec, readFormSpec, type FormSpec, type StateValue } from "./core/form";
 import { createFormDesigner } from "./ui/formdesigner";
 import { createFormRunner, type FormRunner } from "./ui/formrun";
 import { createFormWindow, type FormWindow } from "./ui/formwindow";
@@ -571,7 +571,8 @@ function main(): void {
     return {
       call: (handler: string, state: Record<string, StateValue>) => forms.call(handler, { ...state, ...who }),
       check: (handler: string, state: Record<string, StateValue>) => forms.check(handler, { ...state, ...who }),
-      onOpen: (other: string) => void runForm(other, id),
+      onOpen: (other: string, how?: { into?: string; copy?: boolean }) =>
+        void (how?.into ? openInFrame(other, how.into, id, how.copy === true) : runForm(other, id)),
       // A public variable written here: every other form of the same main hears of it.
       onPublic: (name: string) => {
         for (const [other, r] of running) if (other !== id.form && r.id.main === id.main) r.runner.publicChanged(name);
@@ -596,27 +597,8 @@ function main(): void {
       open.runner.focus();
       return;
     }
-    const tab = tabs.find((t) => t.path === p);
-    let src: string;
-    try {
-      src = tab ? (tabs[activeIdx] === tab ? editor.getDoc() : tab.content) : await ws.read(p);
-    } catch (e) {
-      toast(`Could not open ${p}: ${String(e)}`);
-      return;
-    }
-    const r = readFormSpec(src);
-    if ("error" in r) {
-      toast(`${basename(p)} can't run: ${r.error}`);
-      return;
-    }
-    try {
-      await forms.load(src, p);
-    } catch (e) {
-      const m = e instanceof Error ? e.message : String(e);
-      repl.note(`; ${basename(p)}: ${m}`);
-      toast(`${basename(p)} can't run: ${m}`);
-      return;
-    }
+    const r = await prepareForm(p);
+    if (!r) return;
     if (windows.has(p)) return; // opened twice at once — the first one won
     const id = formIdentity(p, r.spec.title, opener);
     const runner = createFormRunner({
@@ -635,6 +617,85 @@ function main(): void {
     const win = createFormWindow(runner.el, runner.handle, p);
     windows.set(p, { runner, win });
     running.set(id.form, { runner, id });
+    await runner.start(r.spec);
+    runner.focus();
+  }
+
+  /**
+   * A form's file, read — from its open tab when there is one, unsaved edits included — checked, and
+   * evaluated so its handlers exist. Null, having said why, when it can't run.
+   */
+  async function prepareForm(p: string): Promise<{ spec: FormSpec } | null> {
+    const tab = tabs.find((t) => t.path === p);
+    let src: string;
+    try {
+      src = tab ? (tabs[activeIdx] === tab ? editor.getDoc() : tab.content) : await ws.read(p);
+    } catch (e) {
+      toast(`Could not open ${p}: ${String(e)}`);
+      return null;
+    }
+    const r = readFormSpec(src);
+    if ("error" in r) {
+      toast(`${basename(p)} can't run: ${r.error}`);
+      return null;
+    }
+    try {
+      await forms.load(src, p);
+    } catch (e) {
+      const m = e instanceof Error ? e.message : String(e);
+      repl.note(`; ${basename(p)}: ${m}`);
+      toast(`${basename(p)} can't run: ${m}`);
+      return null;
+    }
+    return { spec: r.spec };
+  }
+
+  /**
+   * The frame called `name` a form means by `(ui-open … :in name)`: its own, else its main form's, else
+   * any form's under the same main — so a form shown in the frame can open another beside it.
+   */
+  function frameHost(name: string, opener: FormIdentity): FormRunner | undefined {
+    const candidates = [running.get(opener.form), running.get(opener.main), ...running.values()];
+    return candidates.find((r) => r && r.id.main === opener.main && r.runner.hasFrame(name))?.runner;
+  }
+
+  /** `(ui-open "Orders" :in "frmBody")`: run Orders inside that frame, as one more form of the same main. */
+  async function openInFrame(path: string, frame: string, opener: FormIdentity, copy: boolean): Promise<void> {
+    const p = isFormPath(path) ? path : path + FORM_EXT;
+    const host = frameHost(frame, opener);
+    if (!host) return toast(`There is no frame called "${frame}" to open ${basename(p)} in`);
+    if (!copy && host.bringForward(frame, p)) return;
+    const r = await prepareForm(p);
+    if (!r) return;
+    const id = formIdentity(p, r.spec.title, opener);
+    const close = () => {
+      host.unmount(id.form);
+      runner.destroy();
+    };
+    const runner: FormRunner = createFormRunner({
+      ...runningForm(id),
+      imageUrl: (src) => formImageUrl(p, src),
+      sheetView: (file) => formSheetView(p, file),
+      onMessage: toast,
+      onClose: close,
+      onError: (m) => {
+        repl.note(`; ${basename(p)}: ${m}`);
+        toast(m);
+      },
+      note: (text) => repl.note(text),
+      windowed: true,
+    });
+    running.set(id.form, { runner, id });
+    host.mount(frame, {
+      id: id.form,
+      key: p,
+      label: r.spec.title,
+      el: runner.el,
+      handle: runner.handle,
+      focus: () => runner.focus(),
+      close,
+      destroy: () => runner.destroy(),
+    });
     await runner.start(r.spec);
     runner.focus();
   }

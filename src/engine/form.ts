@@ -14,7 +14,7 @@ export type UiChange =
   | { kind: "message"; text: string }
   | { kind: "focus"; control: string }
   | { kind: "close" }
-  | { kind: "open"; path: string }
+  | { kind: "open"; path: string; into?: string; copy?: boolean }
   /** A public variable was written: the host tells the other forms of the same main. */
   | { kind: "public"; name: string };
 
@@ -74,8 +74,11 @@ export function parseChange(v: JsonValue): UiChange | undefined {
       return { kind: "focus", control: text(v[1]) };
     case "close":
       return { kind: "close" };
-    case "open":
-      return { kind: "open", path: text(v[1]) };
+    case "open": {
+      // ("open" path into copy) — into: a frame's name, or nil for a window of its own
+      const into = typeof v[2] === "string" && v[2] !== "" ? v[2] : undefined;
+      return { kind: "open", path: text(v[1]), ...(into ? { into } : {}), ...(v[3] === true ? { copy: true } : {}) };
+    }
     case "public":
       return { kind: "public", name: text(v[1]) };
     default:

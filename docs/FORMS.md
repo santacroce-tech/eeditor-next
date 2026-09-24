@@ -115,7 +115,7 @@ timer), `:on-load` (the form), `:on-public` (the form — another form of its ma
 | `(ui-message "…")` | A toast. |
 | `(ui-focus "ctl")` | Put the caret there. |
 | `(ui-close)` | Back to *Design*. |
-| `(ui-open "Other.eeform")` | Open and run another form. It joins this form's *main* and shares its public variables. |
+| `(ui-open "Other.eeform")` | Open and run another form — in a window, or `:in "frmBody"` inside a frame. It joins this form's *main* and shares its public variables. |
 | `(var "pos")` · `(var! "pos" 3)` | Read and write a variable declared with `local` or `public` (below). |
 
 `f` is the whole form as a dict, keyed by control name, so a handler is a function of plain data.
@@ -127,6 +127,32 @@ over the app, so it stays usable beside the note you are writing; no tab has to 
 tab's unsaved text counts). ⧉ on a running tab moves it into a window; ✕ closes one. Asking for a
 form already in a window raises it. The `form-run`, `form-design` and `form-code` commands switch
 the active form tab's mode.
+
+## Frames: forms inside a form
+
+```lisp
+(frame frmBody :at (176 8) :size (776 624))          ;; :mode "screens" (the default), "tabs", "windows"
+(ui-open "Orders" :in "frmBody")                     ;; run Orders inside it
+(ui-open "Orders" :in "frmBody" :new true)           ;; …a second copy, rather than the one already there
+```
+
+A `frame` is where the forms a form opens are drawn — VB's MDI client area. A form in a frame
+belongs to the same main as the form that has the frame, so it shares its public variables; it can
+`ui-open … :in` the same frame too (the name is looked up on the opener, then on its main).
+
+- **screens** — the dBASE way: one form fills the frame at a time. Opening another doesn't close
+  the last: every form opened stays alive with what was typed in it. A **Window** menu appears on the
+  bar while the frame has forms (✓ on the one showing, Next/Previous — ⌃Tab/⌃⇧Tab — and Close).
+  `(ui-close)` in a form, or Window → Close, goes back to the one shown before it.
+- **tabs** — the same, with a tab per form across the top of the frame; × closes one.
+- **windows** — every form shows, in a small window inside the frame, dragged by its title bar.
+
+The frame's value (`(ui-get f "frmBody")`) is the title of the form showing; `(ui-set "frmBody"
+:value "Orders")` brings one forward; `:on-change` runs when the one showing changes. Opening a form
+that is already in the frame brings it forward. Stopping the main form stops everything in its
+frames. Keys pressed in a form inside the frame are that form's: Enter doesn't press the main
+form's `:default` button. Runner: `mount`/`unmount`/`bringForward`/`hasFrame`; the host
+(`openInFrame` in main.ts) makes the child. Tests: `dev/ui/frames.pw.mjs`.
 
 ## Variables: local and public
 
