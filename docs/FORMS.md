@@ -200,8 +200,13 @@ locals go (`ui-forget`). An undeclared name gives a message naming it, and nil. 
 
 ## Export as HTML
 
-Right-click a form in the tree → **Export as HTML…** (or the `export-html` command on the open form)
-writes `Name.html` beside it — `Name-1.html` if that's taken; nothing is overwritten. **Exported from
+**⇪ export** in a form tab's head (or right-click a form in the tree → **Export as HTML…**, or the
+`export-html` command) opens the export panel: the forms going in (the main one first), the images,
+the size, and where it goes — *replace the last export* (the default when `Name.html` beside the form
+is an earlier export) or *a new file* (`Name-1.html`). A file that isn't an earlier export — a page
+of your own called `Name.html` — is never offered for replacing. `(ed-export "examples/Office")` —
+from the REPL or a keybinding; `(ed-export)` is the form in front — exports straight away with the
+panel's defaults. The toast offers *Reveal in Finder* where the app can reveal files. **Exported from
 a main form, that is the whole app**: every form reached from it goes in the same file — any string
 in a form's code that names a form (`(ui-open "Books" …)`, a list of screens, `(office-open
 "Orders")`), found beside it first as `ui-open` finds it, and the same again in those forms

@@ -50,6 +50,8 @@ export interface KeybindingsOptions {
   createFile: (path: string, content: string) => Promise<void>;
   /** Open a form's tab and run it (the `ed-form` command). */
   runForm?: (path: string) => Promise<void>;
+  /** Export a form — "" for the one in front — as one HTML file (the `ed-export` command). */
+  exportForm?: (path: string) => Promise<void>;
   /** Where errors and `println` output from a binding go (the REPL scrollback). */
   note: (text: string) => void;
   /** Put focus back on the document after a binding ran — the grid, when a sheet is showing. */
@@ -72,6 +74,7 @@ const COMMANDS = new Set([
   "open",
   "new",
   "form",
+  "export",
   "message",
 ]);
 
@@ -196,6 +199,9 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
         return false;
       case "form":
         void opts.runForm?.(text(args[0]));
+        return false;
+      case "export":
+        void opts.exportForm?.(text(args[0]));
         return false;
       case "insert": {
         const at = view.state.selection.main.head;
