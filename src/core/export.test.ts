@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FORM_SLOT, codeStrings, collectApp, exportAppHtml, formImages, formNamed, isExportedPage, jsonInScript } from "./export";
+import { FORM_SLOT, codeStrings, collectApp, exportAppHtml, formImages, formNamed, isExportedPage, jsonInScript, readExportedApp, unpackPlan } from "./export";
 import { readFormSpec } from "./form";
 
 const TEMPLATE = `<!doctype html><html><head><title>EEditor form</title></head>
@@ -114,5 +114,36 @@ describe("isExportedPage", () => {
     expect(isExportedPage("<!doctype html>\n<html>\n<head><title>my page</title>")).toBe(false);
     expect(isExportedPage("# notes\n<!-- made with EEditor -->")).toBe(false);
     expect(isExportedPage("")).toBe(false);
+  });
+});
+
+describe("readExportedApp and unpackPlan — an exported page back into files", () => {
+  const b = {
+    main: "apps/Office.eeform",
+    forms: { "apps/Office.eeform": '(form "Office" :main true)', "apps/sub/Books.eeform": '(form "Books")', "Shared.eeform": '(form "S")' },
+    assets: { "apps/logo.png": "data:image/png;base64,AA" },
+  };
+
+  it("reads back exactly the app that was exported — a </script> in a form included", () => {
+    const tricky = { ...b, forms: { ...b.forms, "apps/Office.eeform": '(form "Office")\n;; </script> in a comment' } };
+    const html = exportAppHtml({ template: TEMPLATE, bundle: tricky, title: "Office", app: "Office.eeform" });
+    expect(readExportedApp(html)).toEqual(tricky);
+  });
+
+  it("is null for a page that isn't an export, and reads an old one-form export as an app of one", () => {
+    expect(readExportedApp("<!doctype html><title>mine</title>")).toBeNull();
+    const old = `<html><script type="application/x-eeform+json">${jsonInScript('(form "Old")')}</script></html>`;
+    expect(readExportedApp(old)).toEqual({ main: "form.eeform", forms: { "form.eeform": '(form "Old")' }, assets: {} });
+  });
+
+  it("keeps each file's place relative to the main form, inside the new folder", () => {
+    const plan = unpackPlan(b, "imported/Office forms");
+    expect(plan.main).toBe("imported/Office forms/Office.eeform");
+    expect(plan.forms.map(([p]) => p).sort()).toEqual([
+      "imported/Office forms/Office.eeform",
+      "imported/Office forms/Shared.eeform", // it lived outside apps/: by its name, at the top
+      "imported/Office forms/sub/Books.eeform",
+    ]);
+    expect(plan.images).toEqual([["imported/Office forms/logo.png", "data:image/png;base64,AA"]]);
   });
 });

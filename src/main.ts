@@ -32,7 +32,7 @@ import { createOpenWith } from "./ui/openwith";
 import { exportPdf } from "./ui/pdf";
 import { dataUrl, parseMarkdown, renderMedia } from "./ui/markdown";
 import { imageMime, resolveNoteRelative } from "./core/mdmedia";
-import { FORM_SLOT, collectApp, exportAppHtml, isExportedPage } from "./core/export";
+import { FORM_SLOT, collectApp, exportAppHtml, isExportedPage, readExportedApp, unpackPlan } from "./core/export";
 import { exportPanel } from "./ui/exportdialog";
 import { createImages } from "./ui/images";
 import { promptModal, confirmModal, infoModal, showContextMenu, toast, type MenuItem } from "./ui/dialogs";
@@ -1063,6 +1063,37 @@ function main(): void {
   }
 
   /**
+   * An exported page back into forms you can edit: its app unpacked into a new folder beside it
+   * (`Office forms`), each file in its place relative to the main form, then the main form opened.
+   * For a page someone sent without its .eeform files. Nothing existing is written over.
+   */
+  async function importAppFromHtml(path: string): Promise<void> {
+    try {
+      const bundle = readExportedApp(await ws.read(path));
+      if (!bundle) return toast(`${basename(path)} isn't a page exported from EEditor`);
+      const stem = basename(path).replace(/\.html?$/i, "");
+      const folder = joinPath(parentDir(path), uniqueName(`${stem} forms`, siblings(path)));
+      const plan = unpackPlan(bundle, folder);
+      const dirs = new Set<string>([folder]);
+      for (const [p] of [...plan.forms, ...plan.images]) {
+        for (let d = parentDir(p); d.length > folder.length; d = parentDir(d)) dirs.add(d);
+      }
+      for (const d of [...dirs].sort((a, b) => a.length - b.length)) await ws.create(d, true);
+      for (const [p, src] of plan.forms) await ws.write(p, src);
+      for (const [p, url] of plan.images) {
+        const bytes = Uint8Array.from(atob(url.slice(url.indexOf(",") + 1)), (c) => c.charCodeAt(0));
+        await ws.saveAsset(parentDir(p), basename(p), bytes);
+      }
+      await sidebar.refresh();
+      await openFile(plan.main);
+      const n = plan.forms.length;
+      toast(`Unpacked ${n} form${n > 1 ? "s" : ""}${plan.images.length ? ` and ${plan.images.length} image${plan.images.length > 1 ? "s" : ""}` : ""} into ${basename(folder)}`);
+    } catch (e) {
+      toast(`Could not import: ${String(e instanceof Error ? e.message : e)}`);
+    }
+  }
+
+  /**
    * A .csv as a new sheet beside it. The cells arrive as values — a field that reads as a number
    * becomes one, and everything else stays text, so a spreadsheet formula smuggled into a CSV is
    * text here rather than something this machine runs.
@@ -1137,6 +1168,9 @@ function main(): void {
     }
     if (isFormPath(node.path)) {
       items.push({ label: "Export as HTML…", action: () => void exportFormAsHtml(node.path, true) });
+    }
+    if (/\.html?$/i.test(node.path)) {
+      items.push({ label: "Import forms from this page…", action: () => void importAppFromHtml(node.path) });
     }
     if (/\.csv$/i.test(node.path)) {
       items.push({ label: "Import as sheet", action: () => void importCsvAsSheet(node.path) });

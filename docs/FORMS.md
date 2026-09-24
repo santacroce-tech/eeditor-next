@@ -226,6 +226,10 @@ data…** loads one back — how data moves between browsers or people.
   public variables and merged menus work as in the editor — both run forms through
   `forms/host.ts`. `Office.html` (about 1.5 MB with its five screens) runs from disk, offline.
 - What doesn't go in yet: a sheet control's `.eesheet`.
+- **Back again**: right-click an exported page → **Import forms from this page…** unpacks its app
+  into a new folder beside it (`Office forms`), each form in its place relative to the main one, and
+  opens the main form — for a page that arrived without its `.eeform` files (`readExportedApp`,
+  `unpackPlan` in `core/export.ts`). Nothing existing is written over.
 - From the command line, without the editor: `npm run export-app -- path/Main.eeform [--root folder]
   [-o out.html]` (`scripts/export-app.ts` — the same `collectApp`/`exportAppHtml`; names are matched
   case-exactly, since macOS and Windows file systems aren't).
