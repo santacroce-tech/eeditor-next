@@ -46,7 +46,7 @@
         <li><a href="#outside">7. Files from outside</a></li>
         <li><a href="#agenda">8. The agenda</a></li>
         <li><a href="#sheets">9. Sheets</a></li>
-        <li><a href="#forms">10. Forms</a> · <a href="#form-examples">examples</a></li>
+        <li><a href="#forms">10. Forms</a> · <a href="#form-examples">examples</a> · <a href="#export-html">export</a></li>
         <li><a href="#repl">11. The REPL</a></li>
         <li><a href="#keybindings">12. Keybindings</a></li>
         <li><a href="#mobile">13. iPhone and iPad</a></li>
@@ -738,13 +738,22 @@ sequenceDiagram
 
     <h3 id="form-examples">Example forms</h3>
     <p>
-      Six forms to download, run and take apart. Save one into your workspace — any folder — and it
+      Seven forms to download, run and take apart. Save one into your workspace — any folder — and it
       appears in the tree; press <strong>▶ run</strong>, then switch to <strong>code</strong> to see
       how it's done. Each file opens with a comment saying what it shows, and every handler has a
       line above it saying what it does. They write to your workspace's database, into tables of
       their own (<code>books</code>, <code>customers</code>, <code>orders</code>…), and the ones that
       start empty have a menu item that adds sample rows.
     </p>
+    <div class="note">
+      <p>
+        <strong>Try them first, with nothing installed:</strong>
+        <a href="apps/Office.html">Office</a> runs five of them as one app, and
+        <a href="apps/Functions.html">Functions</a> browses the whole language — right here, in your
+        browser. Each is a single HTML file exported from EEditor, the EELisp engine inside it; what you
+        type into them stays in this browser.
+      </p>
+    </div>
 
     <h4>Contacts — the first one to read</h4>
     <p>
@@ -877,6 +886,53 @@ sequenceDiagram
 <pre><code>(eval (parse (str <span class="st">"(defrule "</span> name
                   <span class="st">" :when (str-contains (str-lower text) "</span> (json-stringify word) <span class="st">")"</span>
                   <span class="st">" :assign "</span> (json-stringify category) <span class="st">")"</span>)))</code></pre>
+
+    <h4>Office — the others as one app</h4>
+    <picture>
+        <source srcset="assets/forms/office-dark.png" media="(prefers-color-scheme: dark)">
+        <img class="shot" src="assets/forms/office-light.png" alt="The Office app: a list of screens on the left, counts of what is stored, and the Orders screen running inside it with its menu on Office's bar" width="1042" loading="lazy">
+      </picture>
+    <p>
+      <a href="examples/Office.eeform" download>Office.eeform</a> ·
+      <a href="apps/Office.html">run it in your browser</a> · Books, Orders, Tables, Agenda and
+      Functions as the screens of one application, the dBASE way: pick one from the list and it fills
+      the <em>frame</em> on the right; open another and the first stays open, with what you typed in it.
+      The <strong>Window</strong> menu switches between them (<kbd>⌃Tab</kbd> too), closing one goes back
+      to the one before, and the screen's own menus join Office's while it shows. Office remembers the
+      last screen you used and opens it again next time. Download it with the five it opens, into one
+      folder.
+    </p>
+<pre><code>(form <span class="st">"Office"</span> :main true :size (1040 640) …
+  (listbox lstNav :items (<span class="st">"Books"</span> <span class="st">"Orders"</span> <span class="st">"Tables"</span> <span class="st">"Agenda"</span> <span class="st">"Functions"</span>) … :on-change office-go)
+  (frame frmMain :at (192 8) :size (840 624) :on-change office-switched))
+
+(public last-screen <span class="st">""</span> :persist true)    <span class="cm">; kept between runs</span>
+
+(defn office-go (f)
+  (ui-open (ui-get f <span class="st">"lstNav"</span>) :in <span class="st">"frmMain"</span>))   <span class="cm">; Books.eeform, beside Office</span></code></pre>
+    <p>
+      Three things make several forms one app. A <code>frame</code> is where the forms a form opens
+      run — one at a time (<code>:mode "screens"</code>), as tabs, or as windows inside it. A variable
+      declared <code>(public …)</code> is shared by a form and every form it opens, and a form with
+      <code>:on-public</code> hears when another changes it; <code>(local …)</code> is one open form's
+      own, so two copies of Books keep their own place. And a name in <code>ui-open</code> is found
+      beside the form that asks, so the app's folder can go anywhere.
+    </p>
+
+    <h3 id="export-html">One file that runs anywhere</h3>
+    <p>
+      Right-click a form in the tree and choose <strong>Export as HTML…</strong>. EEditor writes one
+      file beside it — <code>Office.html</code> — that runs in any browser, offline, opened straight
+      from disk: the EELisp engine is inside it, compiled to WebAssembly, with the form and every form
+      it opens. Nothing to install, nothing to host; e-mail it, put it on a USB stick or a web page.
+      That is what the two links above are.
+    </p>
+    <p>
+      What the app stores is kept in the browser that runs it, between visits. <strong>Save
+      data…</strong> under the app downloads it all as a SQLite file, and <strong>Open data…</strong>
+      loads one back — how data moves to another computer or another person. Change the forms in
+      EEditor and export again: the new file finds the data the old one kept, in the same browser.
+    </p>
   </div></div>
 </section>
 

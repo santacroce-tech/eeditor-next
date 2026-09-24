@@ -11,7 +11,7 @@ export interface TagsPanel {
 
 export function createTagsPanel(
   parent: HTMLElement,
-  ws: WorkspaceClient,
+  ws: Pick<WorkspaceClient, "read">,
   getFiles: () => FileEntry[],
   onSelect?: (tag: string) => void,
 ): TagsPanel {

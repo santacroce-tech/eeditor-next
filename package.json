@@ -16,7 +16,10 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "smoke": "node dev/smoke.mjs",
-    "test:ui": "playwright test"
+    "test:ui": "playwright test",
+    "engine:wasm": "scripts/build-wasm-engine.sh",
+    "runtime:template": "node scripts/build-runtime-template.mjs",
+    "export-app": "vite-node scripts/export-app.ts --"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.0",

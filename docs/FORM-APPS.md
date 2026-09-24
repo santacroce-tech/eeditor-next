@@ -5,7 +5,7 @@ variables with them, and **a runtime** that runs a set of forms as a program on 
 the editor around it. The first is what makes several `.eeform`s one application; the second is how
 that application reaches someone who doesn't use EEditor.
 
-Status: plan, decisions taken (see *Decided* at the end). Nothing here is built yet.
+Status: decisions taken (see *Decided* at the end). Done: W0–W4 and A1–A3. An app — a main form and the forms it opens, sharing variables — exports as one HTML file that runs anywhere, offline, keeping its data. Left for later: `:on-close`, sheets in an exported app, and the B series.
 
 ```
  ┌ Shop ─────────────────────────────────────────────────────────┐
@@ -154,21 +154,36 @@ engine serves the runtime page and answers its calls over HTTP, which is what th
 today for the whole editor. One engine per connection, or one shared engine with a lock; a small
 office's shared order book is the case it fits. Needs a login before it faces a network.
 
-**3. One HTML file, the engine in WebAssembly — the real "standalone", and the most work.**
-eelisp-rs compiled to `wasm32-unknown-unknown`, the renderer bundled with it by Vite, the app's
-files inlined: a single `Shop.html` that runs anywhere, offline. What stands in the way, from the
-engine's `Cargo.toml`:
+**3. One HTML file, the engine in WebAssembly — the chosen path.** eelisp-rs compiled to
+`wasm32-unknown-unknown`, the renderer bundled with it by Vite, the app's files inlined: a single
+`Shop.html` that runs anywhere, offline, with nothing installed.
 
-| Dependency | In WebAssembly |
+**The spike (W0) is done and it holds** — eelisp-rs branch `spike/wasm`, `web/README.md`:
+
+| | |
 |---|---|
-| `regex`, `serde_json` | work as they are |
-| `ureq` (`http-get`/`http-post`) | doesn't — behind a cargo feature; the web build calls `fetch` through the host instead |
-| `rusqlite` (`bundled`, C SQLite) | the hard one. Candidates: rusqlite's wasm32 support via `sqlite-wasm-rs`; or the official SQLite WASM build called from JS through a host trait. Storage in the browser's OPFS, or in memory with export/import of the `.db`. **Needs a spike** before committing to a date. |
-| `std::fs` (2 files), threads (`EngineHandle`) | a web host trait; the web build runs the interpreter on the page's thread (or a Web Worker) |
+| builds | the whole engine, SQLite included: `rusqlite` 0.40 switches to `sqlite-wasm-rs` on this target by itself |
+| size | 2.7 MB `.wasm`, **1.06 MB gzipped** |
+| start | ~21 ms to load and create an engine |
+| SQLite | 10,000 inserts ~51 ms; a filtered, sorted query over them ~2 ms |
+| forms | the forms prelude and `Books.eeform` load, and its handlers return the same UI queue as in the app |
+| changes to the engine | `ureq` behind an `http` feature (on by default; off in the browser, where `http-get` says it isn't available); every clock read through `dates::now_epoch`, which uses `Date.now()` in a browser; the thread-backed `server` module native-only |
+| one snag | macOS `ar` silently drops WebAssembly objects from an archive, so SQLite's symbols went missing at link time; `web/build.sh` uses the `llvm-ar` that ships with Rust |
 
-The spike: build the engine for wasm32 with `http` off and SQLite on `sqlite-wasm-rs`, run the
-engine's test suite under `wasm-bindgen-test`, and time `(query …)` on 10k rows. If it holds, the
-rest is packaging.
+What's left is packaging, and one real decision — **where the data lives between visits**:
+
+- **In the browser (OPFS)** — `sqlite-wasm-rs` has an OPFS storage backend: the database persists
+  per browser and per page address, invisibly. Right for "open the file, use it like an app".
+- **In a file the user keeps** — the database in memory, with *Save data…* / *Open data…* writing
+  and reading an `.db` (or the app itself re-exported with its data inside). Right for handing
+  a copy to someone else.
+
+Both can exist; OPFS as the default with an explicit export is the likely answer.
+
+**How a single file carries a 2.7 MB engine.** The `.wasm` goes in gzipped and base64-encoded
+(~1.4 MB of text) and is unpacked on load with the browser's own `DecompressionStream`; the
+renderer's JS and CSS, the forms, `lib/` code and images are inlined next to it. An export is a
+little over 1.5 MB before the app's own content.
 
 ### Security
 
@@ -180,18 +195,20 @@ own; one app can't read another's database.
 
 ## Milestones
 
+The single HTML file comes first. Its first steps (W1–W3) don't wait for the main form — any form
+can be exported on its own — and the main form (A) is what turns several of them into one app.
+
 | | What | Depends on |
 |---|---|---|
-| **A1** | Scopes in the prelude — `local`, `public`, `var`, `var!`, `:on-public`; instance ids in `f` | — |
-| **A2** | The `frame` control, `(ui-open … :in …)`, the three modes, `:on-close` | A1 |
-| **A3** | `:main`, menu merge, **Shop.eeform** example; *Run app* runs the main form filling the pane | A2 |
-| **B1** | The `.eeapp` format, `app.eelisp`, *Export app…* | A3 |
-| **B1½** | The runtime page — `runtime.html`/`runtime.ts`, the renderer and a main form filling the window, over a small host interface (read a bundle file, call the engine) | B1 |
-| **B2** | EEditor Runtime (Tauri, desktop): the runtime page over the native engine; opens `.eeapp` | B1½ |
-| **B3** | *Export → macOS app* (runtime + bundle, one `.app`) | B2 |
-| **B4** | `eelisp serve-app`: the same runtime page over HTTP | B1½ — in parallel with B2 |
-| **W0** | WebAssembly spike (engine + SQLite in the browser) | — (can run in parallel) |
-| **W1** | Single-file HTML export | W0, B1 |
+| ~~**W0**~~ | ~~WebAssembly spike (engine + SQLite in the browser)~~ — done, it holds | — |
+| ~~**W1**~~ | ~~A `wasm` transport for the app's `EngineClient`~~ — done: `src/engine/wasm.ts`; `?engine=wasm` (or `VITE_ENGINE=wasm`) runs the whole app on it. `npm run engine:wasm` builds eelisp-rs `web/` into `public/engine/`, loaded at run time (fetched, imported from a blob — Vite's dev server won't serve a `public/` file to `import()`), so a build without it still builds. `dev/ui/wasm.pw.mjs`: the REPL and Books.eeform on it. Not yet on it: sheets (their `.eesheet` files are on disk, out of the page's reach) and keeping the data (in memory — a reload starts empty) — both W2 | W0 |
+| ~~**W2**~~ | ~~The runtime page~~ — done: `runtime.html` + `src/runtime.ts`. A form runs on its own over the wasm engine (`?form=<url>`, or a `<script type="text/x-eeform">` in the page); its data is kept in IndexedDB (`src/engine/store.ts`) under the app's name, written straight after every change (the engine's `exportDb`/`importDb`/`changes` — rusqlite's serialize, eelisp-rs `feat/wasm-data`); *Save data…* downloads it as a SQLite file, *Open data…* loads one back. The page already reads an engine carried inline (gzipped base64), which W3 writes. `dev/ui/runtime.pw.mjs`. Not in it yet: sheets, `ui-open` of another form (W4), images other than by URL | W1 |
+| ~~**W3**~~ | ~~*Export as HTML…*~~ — done: the tree menu on a form and the `export-html` command write one self-contained file beside it (`core/export.ts` into the template from `npm run runtime:template`); the form and its images inside, runs offline from disk — checked in Chromium (with the network off) and WebKit. The release workflow builds the template once and puts it in every installer | W2 |
+| ~~**A1**~~ | ~~Scopes~~ — done: `local`, `public` (`:persist`), `var`, `var!`, `:on-public`; `$form`/`$main`/`$key`/`$app` in `f`. Until the frame exists, a form's *main* is the one that opened it with `ui-open` (windows), or itself — see docs/FORMS.md, *Variables* | — |
+| ~~**A2**~~ | ~~The `frame` control~~ — done: `(ui-open … :in …)` (`:new true`), screens (default) / tabs / windows, the Window menu, ⌃Tab, back to the previous on close, `:value`/`:on-change`. `:on-close` (refusing to close) is left for later | A1 |
+| ~~**A3**~~ | ~~`:main`, menu merge, the example~~ — done: `:main true` (designer: *Main form*), menus merged into the main form's bar while a form shows in a frame, `ui-open` names resolved beside the opener, **Office.eeform** | A2 |
+| ~~**W4**~~ | ~~Export of a whole app~~ — done: exported from a main form, every form reached from it (by the strings in its code that name one) goes into the one file; the page hosts them through `forms/host.ts`, shared with the editor. *Save data / Open data* came with W2 | W3, A3 |
+| B1–B4 | The `.eeapp` folder, the desktop runtime, the served app — later, if the HTML file leaves a need |  |
 
 ## Decided
 
@@ -199,5 +216,5 @@ own; one app can't read another's database.
   not per user. A served app (B4) therefore shares them between everyone using it.
 - **The frame works the dBASE way, with several screens**: `:mode "screens"` is the default — one
   screen at a time from the menu, but the others stay open and a Window menu switches between them.
-- **Both standalones**: the desktop runtime (B2) and the served app (B4) are built together on one
-  runtime page (B1½); the WebAssembly spike (W0) can start at any time.
+- **The standalone is the single HTML file** (W). The desktop runtime and the served app (B) stay
+  in the plan as possible later work, not now.

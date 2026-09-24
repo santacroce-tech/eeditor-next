@@ -29,6 +29,7 @@ import {
   validName,
   type Control,
   type ControlType,
+  frameMode,
   type FormSpec,
   type PropDef,
   type PropValue,
@@ -93,6 +94,7 @@ const ICONS: Record<ControlType | "select", IconPart[]> = {
   tabs: [["rect", 2, 5, 12, 8], ["path", "M2 5V3h5v2M7 5V3"]],
   sheet: [["rect", 2, 3, 12, 10], ["path", "M2 6.5h12M6 3v10"], ["rect", 6.8, 7.3, 2.6, 2.4, ]],
   timer: [["circle", 8, 8.5, 5.5], ["path", "M8 5.5v3l2 1.5M6.5 1.5h3"]],
+  frame: [["rect", 1.5, 2.5, 13, 11], ["rect", 4, 6, 8, 5.5], ["path", "M1.5 4.5h13"]],
 };
 
 function svgIcon(parts: IconPart[]): SVGSVGElement {
@@ -249,6 +251,8 @@ export function createFormDesigner(opts: FormDesignerOptions): FormDesigner {
       }
       case "timer":
         return el("span", "fd-p-timer", "⏱");
+      case "frame":
+        return el("div", "fd-p-frame", `forms open here · ${frameMode(p.mode)}`);
       case "checkbox":
         return el("span", "fd-p-check", `${p.value ? "☑" : "☐"} ${text}`);
       case "radio": {
@@ -426,8 +430,10 @@ export function createFormDesigner(opts: FormDesignerOptions): FormDesigner {
       field("Title", textInput(spec.title, (v) => ((spec.title = v), commit()))),
       field("Width", numberInput(spec.w, (v) => ((spec.w = clamp(snap(v), MIN_FORM, MAX_FORM)), commit()))),
       field("Height", numberInput(spec.h, (v) => ((spec.h = clamp(snap(v), MIN_FORM, MAX_FORM)), commit()))),
+      field("Main form", boolInput(spec.main === true, (v) => ((spec.main = v || undefined), commit()))),
       el("div", "fd-props-sub", "Events"),
       eventRow("load", spec.onLoad ?? "", null, (fn) => ((spec.onLoad = fn || undefined), commit())),
+      eventRow("public", spec.onPublic ?? "", null, (fn) => ((spec.onPublic = fn || undefined), commit())),
       el("div", "fd-props-sub", "Menu"),
     );
     const menu = el("textarea", "fd-input fd-items fd-menutext");

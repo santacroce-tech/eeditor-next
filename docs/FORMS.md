@@ -104,7 +104,7 @@ file is the Tab order when the form runs (the *Order* buttons in the properties 
 **Events**: `:on-click` (button), `:on-change` (anything with a value — a
 textbox when editing ends, a checkbox, a radio group, a dropdown, a date, a listbox or grid when the
 selection moves), `:on-dblclick` (a listbox or grid row), `:on-validate` (a button), `:on-tick` (a
-timer), `:on-load` (the form).
+timer), `:on-load` (the form), `:on-public` (the form — another form of its main wrote a public variable).
 
 **The handler's world** (`src/forms/prelude.eelisp`, loaded once before the first event):
 
@@ -115,7 +115,8 @@ timer), `:on-load` (the form).
 | `(ui-message "…")` | A toast. |
 | `(ui-focus "ctl")` | Put the caret there. |
 | `(ui-close)` | Back to *Design*. |
-| `(ui-open "Other.eeform")` | Open and run another form. |
+| `(ui-open "Other.eeform")` | Open and run another form — in a window, or `:in "frmBody"` inside a frame. It joins this form's *main* and shares its public variables. |
+| `(var "pos")` · `(var! "pos" 3)` | Read and write a variable declared with `local` or `public` (below). |
 
 `f` is the whole form as a dict, keyed by control name, so a handler is a function of plain data.
 
@@ -127,6 +128,109 @@ tab's unsaved text counts). ⧉ on a running tab moves it into a window; ✕ clo
 form already in a window raises it. The `form-run`, `form-design` and `form-code` commands switch
 the active form tab's mode.
 
+## Frames: forms inside a form
+
+```lisp
+(frame frmBody :at (176 8) :size (776 624))          ;; :mode "screens" (the default), "tabs", "windows"
+(ui-open "Orders" :in "frmBody")                     ;; run Orders inside it
+(ui-open "Orders" :in "frmBody" :new true)           ;; …a second copy, rather than the one already there
+```
+
+A `frame` is where the forms a form opens are drawn — VB's MDI client area. A form in a frame
+belongs to the same main as the form that has the frame, so it shares its public variables; it can
+`ui-open … :in` the same frame too (the name is looked up on the opener, then on its main).
+
+- **screens** — the dBASE way: one form fills the frame at a time. Opening another doesn't close
+  the last: every form opened stays alive with what was typed in it. A **Window** menu appears on the
+  bar while the frame has forms (✓ on the one showing, Next/Previous — ⌃Tab/⌃⇧Tab — and Close).
+  `(ui-close)` in a form, or Window → Close, goes back to the one shown before it.
+- **tabs** — the same, with a tab per form across the top of the frame; × closes one.
+- **windows** — every form shows, in a small window inside the frame, dragged by its title bar.
+
+The frame's value (`(ui-get f "frmBody")`) is the title of the form showing; `(ui-set "frmBody"
+:value "Orders")` brings one forward; `:on-change` runs when the one showing changes. Opening a form
+that is already in the frame brings it forward. Stopping the main form stops everything in its
+frames. Keys pressed in a form inside the frame are that form's: Enter doesn't press the main
+form's `:default` button. Runner: `mount`/`unmount`/`bringForward`/`hasFrame`; the host
+(`openInFrame` in main.ts) makes the child. Tests: `dev/ui/frames.pw.mjs`.
+
+### A main form, and an app
+
+`:main true` on a form (*Main form* in the designer's form properties) says it is an app's entry —
+the one the others are reached from. Running one is running the app. Two things make several forms
+one application:
+
+- **Menus merge**, as in VB: while a form shows in a screens or tabs frame, its menus join the main
+  form's bar — the main form's own first, then the showing form's, then Window — and its own bar is
+  hidden. A form in windows mode keeps its bar.
+- **Names are found beside the form that asks**: `(ui-open "Books" :in "frmMain")` from
+  `examples/Office.eeform` opens `examples/Books.eeform` — so an app's folder can move, and (W4) be
+  exported whole. A name that isn't beside it is taken from the top of the workspace.
+
+`Office.eeform` in the examples is the worked one: the other examples as screens of one app, the
+counts of what they store down the side, and the last screen used reopened next run
+(`(public last-screen "" :persist true)`).
+
+## Variables: local and public
+
+```lisp
+(local pos 0)                      ;; each open copy of this form has its own
+(public cart '())                  ;; shared by a form and every form it opens with ui-open
+(public visits 0 :persist true)    ;; …and kept in the database between runs, once per app
+
+(var "pos")   (var! "pos" (+ (var "pos") 1))
+```
+
+Declarations sit in the file beside the handlers. A form that nothing opened is a **main** form;
+what it opens with `(ui-open …)` belongs to the same main, and so does what *those* open. A public
+variable is one per main: two forms under one main see the same `cart`, a second main has its own.
+Writing one is an event — every *other* open form of that main with `:on-public` runs it, with the
+variable's name in `(ui-get f "$changed")` — so a label counting the cart keeps up without being
+asked. A `:persist` public variable is stored (as JSON, in the `_ui_public` table) under the main
+form's title, and read back the next time. A plain `(def …)` is still what it was: one binding for
+the whole engine, shared by every form and the REPL.
+
+How: the host hands every handler which open form it runs for — `$form`, `$main`, `$key` (its file,
+where its `local`s were recorded when it loaded) and `$app` (the main form's title) — in `f`;
+`ui-run` keeps that `f` while the handler runs, so `var` needs only the name. All in
+`forms/prelude.eelisp`; the runner turns the queued `("public" name)` into `onPublic`, and
+main.ts's `running` registry passes it to the other forms of that main. A form closing lets its
+locals go (`ui-forget`). An undeclared name gives a message naming it, and nil. Tests:
+`dev/ui/vars.pw.mjs`. `Books.eeform` keeps its place in a `local`, so two copies move apart.
+
+## Export as HTML
+
+Right-click a form in the tree → **Export as HTML…** (or the `export-html` command on the open form)
+writes `Name.html` beside it — `Name-1.html` if that's taken; nothing is overwritten. **Exported from
+a main form, that is the whole app**: every form reached from it goes in the same file — any string
+in a form's code that names a form (`(ui-open "Books" …)`, a list of screens, `(office-open
+"Orders")`), found beside it first as `ui-open` finds it, and the same again in those forms
+(`collectApp` in `core/export.ts`). A name only put together while the app runs (`(str "Bo" "oks")`)
+can't be seen; writing it out anywhere in the code is enough. The toast says which forms went in. The file runs
+on its own in any browser, offline, opened straight from disk: the EELisp engine is inside it,
+compiled to WebAssembly (about 1.5 MB, most of it the engine). What the form writes is kept in that
+browser, per exported app; **Save data…** under the form downloads it as a SQLite file and **Open
+data…** loads one back — how data moves between browsers or people.
+
+- What goes in: the forms' sources and the images their image controls show (as `data:` URLs), as
+  `{ main, forms, assets }` keyed by workspace path — so names resolve in the page as in the app.
+- The page runs the main form filling the window; its frames, windows over the page, `ui-open`,
+  public variables and merged menus work as in the editor — both run forms through
+  `forms/host.ts`. `Office.html` (about 1.5 MB with its five screens) runs from disk, offline.
+- What doesn't go in yet: a sheet control's `.eesheet`.
+- From the command line, without the editor: `npm run export-app -- path/Main.eeform [--root folder]
+  [-o out.html]` (`scripts/export-app.ts` — the same `collectApp`/`exportAppHtml`; names are matched
+  case-exactly, since macOS and Windows file systems aren't).
+- The app needs the runtime template to export: `npm run engine:wasm && npm run runtime:template`
+  (CI and the release workflow build it; a local build without it says so when you export).
+- Search, tags and backlinks skip exported pages (`isExportedPage`) — a megabyte of engine would
+  otherwise match every search.
+
+Pieces: `scripts/build-runtime-template.mjs` + `vite.runtime.config.ts` (the template),
+`core/export.ts` (filling it in), `runtime.ts` (the page), `engine/wasm.ts` + `engine/store.ts`
+(the engine and its data). Tests: `core/export.test.ts`, `dev/ui/export.pw.mjs` (export from the
+tree, open from disk with the network off, reload).
+
 ## Examples
 
 `workspace/examples/` — each one is run end to end by `dev/ui/examples.pw.mjs`.
@@ -137,6 +241,7 @@ the active form tab's mode.
 | `Books.eeform` | One record at a time, dBASE-style: \|◀ ◀ ▶ ▶\|, *Record n of m*, find, and New / Edit / Save / Cancel / Delete with the boxes locked while browsing (`:enabled` from the handlers). |
 | `Tables.eeform` | Any table: pick it from `(tables)`, a WHERE / order / limit that shows the `(query …)` it ran, cells edited in place, new row, delete, pack. The table is named by an expression — `(query (str name))`. |
 | `Orders.eeform` | Master–detail: customers, the picked one's orders (`:where "customer = ?"`), a worked-out amount column and a total. |
+| `Office.eeform` | The others as one app: a `:main` form with a screens frame, their menus merged into its bar, and the last screen remembered in a `:persist` public variable. |
 | `Agenda.eeform` | The agenda PIM through most of the controls: tabs, menu, datagrid, date, radio, dropdowns, checkbox, timer. Items by due date, an editor for one (`item->dict` reads it), quick add with a `smart-parse` preview, categories, rules, saved views. |
 
 `defcategory`, `defrule` and `defview` take their arguments unevaluated, so the Agenda form writes

@@ -1,7 +1,7 @@
 // A form, running: real controls at the positions the designer gave them. An event reads the whole
 // form into a dict, hands it to the handler, and applies the changes the handler queued.
 
-import { humanName, onOpenPage, openPages, type Control, type FormSpec, type StateValue } from "../core/form";
+import { frameMode, humanName, onOpenPage, openPages, type Control, type FormSpec, type FrameMode, type StateValue } from "../core/form";
 import { rowsOf, stateValue, type Row, type UiChange } from "../engine/form";
 import type { JsonValue } from "../engine/types";
 
@@ -15,6 +15,43 @@ export interface FormRunner {
   state(): Record<string, StateValue>;
   focus(): void;
   destroy(): void;
+  /** Another form of the same main wrote the public variable `name`: run `:on-public`, if it has one. */
+  publicChanged(name: string): void;
+  /** Whether this form has a frame control called `name`. */
+  hasFrame(name: string): boolean;
+  /** Put a form into the frame `frame` and show it. False when there is no such frame. */
+  mount(frame: string, child: FrameChild): boolean;
+  /** Show the form open in `frame` from the file `key` — true if there is one, false to open it. */
+  bringForward(frame: string, key: string): boolean;
+  /** A form in one of the frames closed: take it out, and show the one before it. */
+  unmount(childId: string): void;
+  /** Its own menus, each item running its handler — what it lends the main form's bar while it shows in a frame. */
+  menus(): FrameMenu[];
+  /** Draw the menu bar again — a form in a frame has started, and has menus to lend. */
+  refreshMenu(): void;
+}
+
+/** A menu as a frame's host draws it: items that run something, or a separator (`-`). */
+export interface FrameMenu {
+  title: string;
+  items: { label: string; run?: () => void }[];
+}
+
+/** A form running inside another's frame — made by the host, shown and ordered by the frame. */
+export interface FrameChild {
+  id: string;
+  /** Its file: opening the same one again brings this forward instead of a second copy. */
+  key: string;
+  /** Its title: the tab, the Window menu entry, what `(ui-get f "frmBody")` gives. */
+  label: string;
+  el: HTMLElement;
+  handle: HTMLElement;
+  focus(): void;
+  /** Asked to close — as if it had called (ui-close): the Window menu's Close, a tab's ×. */
+  close(): void;
+  destroy(): void;
+  /** Its menus, merged into the main form's bar while it shows (screens and tabs). */
+  menus(): FrameMenu[];
 }
 
 export interface FormRunnerOptions {
@@ -29,8 +66,12 @@ export interface FormRunnerOptions {
   onMessage: (text: string) => void;
   /** `(ui-close)` or the Stop button. */
   onClose: () => void;
-  /** `(ui-open "Other.eeform")`. */
-  onOpen: (path: string) => void;
+  /** `(ui-open "Other.eeform")` — with `:in "frmBody"` into a frame, `:new true` as another copy. */
+  onOpen: (path: string, how?: { into?: string; copy?: boolean }) => void;
+  /** A handler wrote the public variable `name` — for the host to tell the other forms. */
+  onPublic?: (name: string) => void;
+  /** The runner was destroyed: the form is gone. */
+  onDestroy?: () => void;
   onError: (message: string) => void;
   /** Where a handler's `println` output goes. */
   note: (text: string) => void;
@@ -119,10 +160,42 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
   const canvas = el("div", "formrun-canvas");
   window_.append(title, menuBar, canvas);
 
+  /** A menu as drawn: the form's own items name handlers; the Window menu's run code of the runner's. */
+  type LiveItem = { label: string; handler?: string; run?: () => void };
+  type LiveMenu = { title: string; items: LiveItem[] };
+
+  /**
+   * The form's menus; then, as VB merged them, the menus of the form showing in each frame (screens
+   * and tabs — a window in windows mode keeps its own bar); then a Window menu for each frame.
+   */
+  function menus(): LiveMenu[] {
+    const out: LiveMenu[] = current.menu.map((m) => ({ title: m.title, items: m.items }));
+    for (const fr of frames.values()) {
+      if (fr.mode !== "windows" && fr.showing) out.push(...fr.showing.menus());
+    }
+    for (const fr of frames.values()) {
+      if (!fr.children.length) continue;
+      const items: LiveItem[] = fr.children.map((ch) => ({
+        label: (ch === fr.showing ? "✓ " : "\u2003 ") + ch.label,
+        run: () => show(fr, ch, true),
+      }));
+      items.push(
+        { label: "-" },
+        { label: "Next  ⌃Tab", run: () => cycle(fr, 1) },
+        { label: "Previous  ⌃⇧Tab", run: () => cycle(fr, -1) },
+      );
+      const ch = fr.showing;
+      if (ch) items.push({ label: "-" }, { label: `Close ${ch.label}`, run: () => ch.close() });
+      out.push({ title: frames.size > 1 ? `Window: ${fr.name}` : "Window", items });
+    }
+    return out;
+  }
+
   /** The menu bar: a button per menu, a dropdown of its items; one open at a time, closed by a click elsewhere or Escape. */
-  function drawMenu(spec: FormSpec): void {
+  function drawMenu(): void {
+    const all = menus();
     menuBar.replaceChildren();
-    menuBar.style.display = spec.menu.length ? "" : "none";
+    menuBar.style.display = all.length ? "" : "none";
     let openList: HTMLElement | null = null;
     const closeMenu = () => {
       openList?.remove();
@@ -137,7 +210,7 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
     const onEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape") closeMenu();
     };
-    for (const m of spec.menu) {
+    for (const m of all) {
       const b = el("button", "formrun-menu", m.title);
       b.type = "button";
       b.addEventListener("click", () => {
@@ -153,10 +226,11 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
           }
           const item = el("button", "formrun-menuitem", it.label);
           item.type = "button";
-          if (!it.handler) item.disabled = true;
+          if (!it.handler && !it.run) item.disabled = true;
           item.addEventListener("click", () => {
             closeMenu();
-            void fire(it.handler);
+            if (it.run) it.run();
+            else void fire(it.handler);
           });
           list.append(item);
         }
@@ -182,6 +256,96 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
   let current: FormSpec = { title: "", w: 0, h: 0, menu: [], controls: [], extra: [] };
   /** Which page each tabs control has open. */
   const openPage = new Map<string, string>();
+
+  // ── frames: forms running inside this one ──
+  interface Frame {
+    name: string;
+    mode: FrameMode;
+    control: Control;
+    head: HTMLElement;
+    body: HTMLElement;
+    /** In the order they were opened — the tabs, the Window menu. */
+    children: FrameChild[];
+    /** Most recently shown last: closing one goes back to the one before. */
+    recent: FrameChild[];
+    showing: FrameChild | null;
+  }
+  let frames = new Map<string, Frame>();
+
+  /** Show `ch` in its frame: the only one in screens and tabs, the front one in windows. */
+  function show(fr: Frame, ch: FrameChild | null, user: boolean): void {
+    const was = fr.showing;
+    fr.showing = ch;
+    if (ch) fr.recent = [...fr.recent.filter((x) => x !== ch), ch];
+    for (const x of fr.children) {
+      if (fr.mode === "windows") x.el.style.zIndex = String(fr.recent.indexOf(x) + 1);
+      else x.el.style.display = x === ch ? "" : "none";
+      x.el.classList.toggle("front", x === ch);
+    }
+    drawFrameHead(fr);
+    drawMenu();
+    if (ch && user) ch.focus();
+    if (was !== ch && user) void fire(fr.control.events.change);
+  }
+
+  function cycle(fr: Frame, step: number): void {
+    if (fr.children.length < 2) return;
+    const at = fr.showing ? fr.children.indexOf(fr.showing) : -1;
+    show(fr, fr.children[(at + step + fr.children.length) % fr.children.length], true);
+  }
+
+  function drawFrameHead(fr: Frame): void {
+    if (fr.mode !== "tabs") {
+      fr.head.replaceChildren();
+      fr.head.style.display = "none";
+      return;
+    }
+    fr.head.style.display = "";
+    fr.head.replaceChildren(
+      ...fr.children.map((ch) => {
+        const t = el("span", "formrun-frametab" + (ch === fr.showing ? " active" : ""));
+        const label = el("button", "formrun-frametab-label", ch.label);
+        label.type = "button";
+        label.addEventListener("click", () => show(fr, ch, true));
+        const x = el("button", "formrun-frametab-close", "×");
+        x.type = "button";
+        x.title = `Close ${ch.label}`;
+        x.addEventListener("click", () => ch.close());
+        t.append(label, x);
+        return t;
+      }),
+    );
+  }
+
+  /** A child in windows mode: dragged by its title bar inside the frame, raised when pressed. */
+  function floatInFrame(fr: Frame, ch: FrameChild): void {
+    const n = fr.children.length - 1;
+    ch.el.style.left = `${8 + (n % 8) * 24}px`;
+    ch.el.style.top = `${8 + (n % 8) * 24}px`;
+    ch.el.addEventListener("pointerdown", () => fr.showing !== ch && show(fr, ch, false), true);
+    ch.handle.addEventListener("pointerdown", (e) => {
+      if ((e.target as HTMLElement).closest("button")) return;
+      e.preventDefault();
+      const x0 = e.clientX - ch.el.offsetLeft;
+      const y0 = e.clientY - ch.el.offsetTop;
+      const move = (m: PointerEvent) => {
+        ch.el.style.left = `${Math.max(0, m.clientX - x0)}px`;
+        ch.el.style.top = `${Math.max(0, m.clientY - y0)}px`;
+      };
+      const up = () => {
+        removeEventListener("pointermove", move);
+        removeEventListener("pointerup", up);
+      };
+      addEventListener("pointermove", move);
+      addEventListener("pointerup", up);
+    });
+  }
+
+  /** Every form in every frame closes with this one. */
+  function dropFrames(): void {
+    for (const fr of frames.values()) for (const ch of [...fr.children]) ch.destroy();
+    frames = new Map();
+  }
   /** Show the controls on open pages, hide the rest — `:visible false` still wins. */
   const showPages = () => {
     const open = openPages(current, openPage);
@@ -205,12 +369,24 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
   canvas.addEventListener("keydown", (e) => {
     if (e.key !== "Enter" && e.key !== "Escape") return;
     const target = e.target as HTMLElement;
+    // A key pressed in a form running inside one of this form's frames is that form's business.
+    if (target.closest(".formrun") !== root) return;
     if (e.key === "Enter" && (target.tagName === "TEXTAREA" || target.tagName === "BUTTON")) return;
     const key = e.key === "Enter" ? "default" : "cancel";
     const b = [...live.values()].find((l) => l.spec.type === "button" && l.spec.props[key] === true && l.box.style.visibility !== "hidden");
     if (!b) return;
     e.preventDefault();
     b.box.querySelector("button")?.click();
+  });
+
+  // ⌃Tab / ⌃⇧Tab: the next or previous form in the frame — the first frame that has more than one.
+  root.addEventListener("keydown", (e) => {
+    if (e.key !== "Tab" || !e.ctrlKey || e.metaKey || e.altKey) return;
+    const fr = [...frames.values()].find((f) => f.children.length > 1);
+    if (!fr) return;
+    e.preventDefault();
+    e.stopPropagation();
+    cycle(fr, e.shiftKey ? -1 : 1);
   });
 
   function state(): Record<string, StateValue> {
@@ -235,18 +411,26 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
    * button first checks every control's rules, then asks its `:on-validate` handler, and refuses
    * with a message when either objects.
    */
-  function fire(handler: string | undefined, gate?: { submit: boolean; validate?: string }): Promise<void> {
+  function fire(
+    handler: string | undefined,
+    gate?: { submit: boolean; validate?: string },
+    extra?: Record<string, StateValue>,
+  ): Promise<void> {
     if (!handler && !gate?.submit && !gate?.validate) return Promise.resolve();
     pending++;
     root.classList.add("busy");
-    const job = queue.then(() => runEvent(handler, gate));
+    const job = queue.then(() => runEvent(handler, gate, extra));
     queue = job.catch(() => {}).finally(() => {
       if (--pending === 0) root.classList.remove("busy");
     });
     return job;
   }
 
-  async function runEvent(handler: string | undefined, gate?: { submit: boolean; validate?: string }): Promise<void> {
+  async function runEvent(
+    handler: string | undefined,
+    gate?: { submit: boolean; validate?: string },
+    extra?: Record<string, StateValue>,
+  ): Promise<void> {
     if (gate?.submit) {
       const bad = problem();
       if (bad) {
@@ -270,7 +454,7 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
     }
     if (!handler) return;
     try {
-      const { changes, output } = await opts.call(handler, state());
+      const { changes, output } = await opts.call(handler, extra ? { ...state(), ...extra } : state());
       if (output) opts.note(output.replace(/\n$/, ""));
       for (const ch of changes) apply(ch);
     } catch (e) {
@@ -297,7 +481,9 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
       case "close":
         return opts.onClose();
       case "open":
-        return opts.onOpen(ch.path);
+        return opts.onOpen(ch.path, { into: ch.into, copy: ch.copy });
+      case "public":
+        return opts.onPublic?.(ch.name);
     }
   }
 
@@ -443,6 +629,36 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
             showPages();
           },
           focus: () => head.querySelector("button")?.focus(),
+        };
+        break;
+      }
+      case "frame": {
+        const fr: Frame = {
+          name: c.name,
+          mode: frameMode(p.mode),
+          control: c,
+          head: el("div", "formrun-framehead"),
+          body: el("div", "formrun-framebody"),
+          children: [],
+          recent: [],
+          showing: null,
+        };
+        box.classList.add(`mode-${fr.mode}`);
+        box.append(fr.head, fr.body);
+        drawFrameHead(fr);
+        frames.set(c.name, fr);
+        out = {
+          spec: c,
+          box,
+          // what it holds is the title of the form showing
+          value: () => fr.showing?.label ?? null,
+          set: (k, v) => {
+            if (k !== "value") return;
+            const want = asText(v);
+            const ch = fr.children.find((x) => x.label === want || x.key === want);
+            if (ch) show(fr, ch, false);
+          },
+          focus: () => fr.showing?.focus(),
         };
         break;
       }
@@ -784,7 +1000,8 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
       current = spec;
       openPage.clear();
       title.replaceChildren(el("span", "formrun-name", spec.title || "Form"), buttons);
-      drawMenu(spec);
+      dropFrames();
+      drawMenu();
       canvas.style.width = `${spec.w}px`;
       canvas.style.height = `${spec.h}px`;
       canvas.replaceChildren();
@@ -802,11 +1019,50 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
       first?.focus();
     },
     destroy: () => {
+      dropFrames();
       stopTimers();
       for (const s of sheets) void s.commit();
       dropSheets();
       live = new Map();
       root.remove();
+      opts.onDestroy?.();
+    },
+    publicChanged: (name) => void fire(current.onPublic, undefined, { $changed: name }),
+    hasFrame: (name) => frames.has(name),
+    refreshMenu: () => drawMenu(),
+    menus: () =>
+      current.menu.map((m) => ({
+        title: m.title,
+        items: m.items.map((it) => (it.handler ? { label: it.label, run: () => void fire(it.handler) } : { label: it.label })),
+      })),
+    mount(frame, ch) {
+      const fr = frames.get(frame);
+      if (!fr) return false;
+      ch.el.classList.add("in-frame");
+      fr.body.append(ch.el);
+      fr.children.push(ch);
+      if (fr.mode === "windows") floatInFrame(fr, ch);
+      show(fr, ch, true);
+      return true;
+    },
+    bringForward(frame, key) {
+      const fr = frames.get(frame);
+      const ch = fr?.children.find((x) => x.key === key);
+      if (!fr || !ch) return false;
+      show(fr, ch, true);
+      return true;
+    },
+    unmount(childId) {
+      for (const fr of frames.values()) {
+        const ch = fr.children.find((x) => x.id === childId);
+        if (!ch) continue;
+        fr.children = fr.children.filter((x) => x !== ch);
+        fr.recent = fr.recent.filter((x) => x !== ch);
+        ch.el.remove();
+        // back to the one shown before it
+        show(fr, fr.showing === ch ? (fr.recent[fr.recent.length - 1] ?? null) : fr.showing, true);
+        return;
+      }
     },
   };
 }

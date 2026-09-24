@@ -694,3 +694,41 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-s
   border-radius: 3px; padding: 1px 4px; font: 12px system-ui, sans-serif; outline: none; }
 .formrun-grid tbody tr:hover { background: var(--bg-2); }
 .formrun-grid tr.selected td { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+
+/* ── a form on its own (runtime.html) ── */
+body.runtime { margin: 0; min-height: 100vh; background: var(--bg-2); color: var(--fg); font: 13px system-ui, sans-serif; }
+body.runtime #app { min-height: 100vh; display: flex; flex-direction: column; }
+.rt-stage { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px 16px 8px; }
+.rt-stage > .formrun { flex: none; max-width: 100%; overflow: auto; }
+.rt-bar { display: flex; gap: 8px; justify-content: center; padding: 8px 16px 16px; }
+.rt-btn { background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; padding: 4px 12px; font: inherit; cursor: pointer; }
+.rt-btn:hover { border-color: var(--accent); }
+.rt-closed, .rt-fail { color: var(--fg-dim, var(--fg)); }
+.rt-fail { margin: auto; padding: 24px; max-width: 60ch; }
+
+/* ── a frame: forms running inside a form (screens · tabs · windows) ── */
+.fd-p-frame { width: 100%; height: 100%; box-sizing: border-box; border: 1px dashed var(--border); border-radius: 4px;
+  display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; }
+.formrun-ctl.frame { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; background: var(--bg-2); }
+.formrun-framehead { display: flex; gap: 2px; padding: 4px 4px 0; border-bottom: 1px solid var(--border); flex: none; overflow-x: auto; }
+.formrun-frametab { display: inline-flex; align-items: center; border: 1px solid var(--border); border-bottom: none;
+  border-radius: 4px 4px 0 0; background: var(--bg-2); }
+.formrun-frametab.active { background: var(--bg); }
+.formrun-frametab button { background: none; border: 0; color: var(--muted); font: 12px system-ui, sans-serif; padding: 3px 8px; cursor: pointer; }
+.formrun-frametab.active button { color: var(--fg); }
+.formrun-frametab-close { padding: 3px 6px 3px 0 !important; }
+.formrun-frametab-close:hover { color: var(--err) !important; }
+.formrun-framebody { flex: 1; min-height: 0; position: relative; overflow: auto; }
+/* In screens and tabs a child fills the frame, top left, with no title bar of its own — the frame
+   and the Window menu name it. In windows it keeps its title bar and floats. */
+.formrun-framebody > .formrun.in-frame { position: absolute; inset: 0; overflow: auto; }
+.formrun-framebody > .formrun.in-frame .formrun-stage { padding: 0; overflow: visible; }
+.formrun-framebody > .formrun.in-frame .formrun-window { border: 0; border-radius: 0; box-shadow: none; }
+.formrun-ctl.frame:not(.mode-windows) .formrun.in-frame .formrun-title { display: none; }
+/* …and its menus are on the main form's bar, merged, while it shows */
+.formrun-ctl.frame:not(.mode-windows) .formrun.in-frame .formrun-menubar { display: none !important; }
+.formrun-ctl.frame.mode-windows .formrun.in-frame { inset: auto; overflow: visible; }
+.formrun-ctl.frame.mode-windows .formrun.in-frame .formrun-window { border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .18); }
+.formrun-ctl.frame.mode-windows .formrun.in-frame .formrun-title { cursor: move; }
+.formrun-ctl.frame.mode-windows .formrun.in-frame.front .formrun-title { color: var(--fg); }

@@ -9,7 +9,8 @@ import { dictGet } from "./engine/types";
 import { createSheetClient } from "./engine/sheet";
 import { fromCSV, importedValue, isSheetPath, SHEET_EXT, toCSV, toTableHtml, toTSV, valueRows } from "./core/sheet";
 import { createSheetView, type SheetView } from "./ui/sheet";
-import { createFormClient } from "./engine/form";
+import { createFormClient, type FormIdentity } from "./engine/form";
+import { createFormHost } from "./forms/host";
 import { FORM_EXT, defnRange, handlerStub, isFormPath, layoutRange, newFormSource, printFormSpec, readFormSpec } from "./core/form";
 import { createFormDesigner } from "./ui/formdesigner";
 import { createFormRunner, type FormRunner } from "./ui/formrun";
@@ -31,6 +32,7 @@ import { createOpenWith } from "./ui/openwith";
 import { exportPdf } from "./ui/pdf";
 import { dataUrl, parseMarkdown, renderMedia } from "./ui/markdown";
 import { imageMime, resolveNoteRelative } from "./core/mdmedia";
+import { FORM_SLOT, collectApp, exportAppHtml, isExportedPage } from "./core/export";
 import { createImages } from "./ui/images";
 import { promptModal, confirmModal, infoModal, showContextMenu, toast, type MenuItem } from "./ui/dialogs";
 import { resolveWikiLink } from "./core/fuzzy";
@@ -512,7 +514,7 @@ function main(): void {
       return;
     }
     try {
-      await forms.load(doc);
+      await forms.load(doc, t.path);
     } catch (e) {
       const m = e instanceof Error ? e.message : String(e);
       repl.note(`; ${basename(t.path)}: ${m}`);
@@ -527,14 +529,13 @@ function main(): void {
       t.mode = "design";
       if (tabs[activeIdx] === t) showSurface(t);
     };
+    const id = formHost.identity(t.path, r.spec.title);
     const runner = createFormRunner({
-      call: (handler, state) => forms.call(handler, state),
-      check: (handler, state) => forms.check(handler, state),
+      ...formHost.wire(id),
       imageUrl: (src) => formImageUrl(t.path, src),
       sheetView: (file) => formSheetView(t.path, file),
       onMessage: toast,
       onClose: backToDesign,
-      onOpen: (p) => void runForm(p),
       onError: (m) => {
         repl.note(`; ${basename(t.path)}: ${m}`);
         toast(m);
@@ -546,6 +547,7 @@ function main(): void {
       },
     });
     runners.set(t.path, runner);
+    formHost.track(id, runner);
     t.mode = "run";
     showSurface(t);
     await runner.start(r.spec);
@@ -553,11 +555,15 @@ function main(): void {
   }
 
   /**
-   * `(ui-open "Orders")` from a form, `(ed-form "Orders")` from a keybinding or the REPL, ⧉ on a
-   * running tab: run that form in a floating window. Its text comes from the open tab when there is
-   * one — unsaved edits included — and from disk otherwise, so no tab has to open for a form to run.
+   * Forms running in tabs, windows and frames — who each is, what ui-open opens, public variables
+   * (src/forms/host.ts, shared with an exported form's page). A form's text comes from its open tab
+   * when there is one, unsaved edits included, and from disk otherwise.
    */
-  async function runForm(path: string): Promise<void> {
+  /**
+   * `(ui-open "Orders")` from a form, `(ed-form "Orders")` from a keybinding or the REPL, ⧉ on a
+   * running tab: run that form in a floating window.
+   */
+  async function runForm(path: string, opener?: FormIdentity): Promise<void> {
     const p = isFormPath(path) ? path : path + FORM_EXT;
     const open = windows.get(p);
     if (open) {
@@ -565,45 +571,19 @@ function main(): void {
       open.runner.focus();
       return;
     }
-    const tab = tabs.find((t) => t.path === p);
-    let src: string;
-    try {
-      src = tab ? (tabs[activeIdx] === tab ? editor.getDoc() : tab.content) : await ws.read(p);
-    } catch (e) {
-      toast(`Could not open ${p}: ${String(e)}`);
-      return;
-    }
-    const r = readFormSpec(src);
-    if ("error" in r) {
-      toast(`${basename(p)} can't run: ${r.error}`);
-      return;
-    }
-    try {
-      await forms.load(src);
-    } catch (e) {
-      const m = e instanceof Error ? e.message : String(e);
-      repl.note(`; ${basename(p)}: ${m}`);
-      toast(`${basename(p)} can't run: ${m}`);
-      return;
-    }
+    const r = await formHost.prepare(p);
+    if (!r) return;
     if (windows.has(p)) return; // opened twice at once — the first one won
+    const id = formHost.identity(p, r.spec.title, opener);
     const runner = createFormRunner({
-      call: (handler, state) => forms.call(handler, state),
-      check: (handler, state) => forms.check(handler, state),
-      imageUrl: (src) => formImageUrl(p, src),
-      sheetView: (file) => formSheetView(p, file),
-      onMessage: toast,
+      ...formHost.wire(id),
+      ...formExtras(p),
       onClose: () => closeWindow(p),
-      onOpen: (other) => void runForm(other),
-      onError: (m) => {
-        repl.note(`; ${basename(p)}: ${m}`);
-        toast(m);
-      },
-      note: (text) => repl.note(text),
       windowed: true,
     });
     const win = createFormWindow(runner.el, runner.handle, p);
     windows.set(p, { runner, win });
+    formHost.track(id, runner);
     await runner.start(r.spec);
     runner.focus();
   }
@@ -685,6 +665,31 @@ function main(): void {
   const snippets = createSnippets(watched, repl);
   // A form's handlers may write a sheet, so they go through the same watched engine.
   const forms = createFormClient(watched);
+
+  /** What a runner of the form at `p` needs from the app: its images and sheets, where messages go. */
+  const formExtras = (p: string) => ({
+    imageUrl: (src: string) => formImageUrl(p, src),
+    sheetView: (file: string) => formSheetView(p, file),
+    onMessage: toast,
+    onError: (m: string) => {
+      repl.note(`; ${basename(p)}: ${m}`);
+      toast(m);
+    },
+    note: (text: string) => repl.note(text),
+  });
+  const formHost = createFormHost({
+    forms,
+    read: async (p) => {
+      const tab = tabs.find((t) => t.path === p);
+      return tab ? (tabs[activeIdx] === tab ? editor.getDoc() : tab.content) : ws.read(p);
+    },
+    exists: (p) => sidebar.files().some((f) => f.path === p),
+    runnerOptions: formExtras,
+    say: toast,
+    loadFailed: (p, m) => repl.note(`; ${basename(p)}: ${m}`),
+    openWindow: (p, opener) => void runForm(p, opener),
+  });
+
   snippetsBtn.addEventListener("click", () => snippets.open());
 
   const editor = createEditor(editorHost, "", {
@@ -799,7 +804,7 @@ function main(): void {
       entries.map((f) =>
         contentCache.has(f.path)
           ? Promise.resolve()
-          : ws.read(f.path).then((c) => contentCache.set(f.path, c)).catch(() => contentCache.set(f.path, "")),
+          : readIndexed(f.path).then((c) => contentCache.set(f.path, c)).catch(() => contentCache.set(f.path, "")),
       ),
     );
     const files = entries.map((f) => ({ path: f.path, content: contentCache.get(f.path) ?? "" }));
@@ -968,6 +973,48 @@ function main(): void {
   }
 
   /**
+   * A form — and every form it opens, and theirs — as one HTML file beside it, that runs on its own in
+   * any browser, offline: the runtime template (the runtime page and the WebAssembly engine, built by
+   * `npm run runtime:template`) with the app put in (core/export.ts). Exported from a main form, that
+   * is the whole app. A new name each time, never over an existing file.
+   */
+  async function exportFormAsHtml(path: string): Promise<void> {
+    try {
+      const read = async (p: string) => {
+        const tab = tabs.find((t) => t.path === p);
+        return tab ? (tabs[activeIdx] === tab ? editor.getDoc() : tab.content) : ws.read(p);
+      };
+      const r = readFormSpec(await read(path));
+      if ("error" in r) return toast(`${basename(path)} can't be exported: ${r.error}`);
+      const res = await fetch(`${import.meta.env.BASE_URL}runtime/eeform-runtime.html`);
+      // A dev server answers a missing file with the app's own page, so look for the form's slot.
+      const template = res.ok ? await res.text() : "";
+      if (!template.includes(FORM_SLOT)) {
+        return toast("Exporting needs the runtime, which this build doesn't have — npm run engine:wasm && npm run runtime:template");
+      }
+      const known = new Set(sidebar.files().map((f) => f.path));
+      const { bundle, missing } = await collectApp(path, {
+        read,
+        exists: (p) => known.has(p),
+        image: async (p) => dataUrl(await ws.readImage(p), imageMime(p)),
+      });
+      const html = exportAppHtml({ template, bundle, title: r.spec.title, app: basename(path) });
+      const name = uniqueName(basename(path).replace(/\.eeform$/i, "") + ".html", siblings(path));
+      await ws.write(joinPath(parentDir(path), name), html);
+      await sidebar.refresh();
+      const count = Object.keys(bundle.forms).length;
+      const what = count > 1 ? ` with ${count - 1} more form${count > 2 ? "s" : ""} (${Object.keys(bundle.forms).filter((p) => p !== path).map(basename).join(", ")})` : "";
+      toast(
+        missing.length
+          ? `Exported ${name}${what} — without ${missing.join(", ")}, which couldn't be read`
+          : `Exported ${name}${what} — open it in a browser; it runs on its own`,
+      );
+    } catch (e) {
+      toast(`Could not export: ${String(e instanceof Error ? e.message : e)}`);
+    }
+  }
+
+  /**
    * A .csv as a new sheet beside it. The cells arrive as values — a field that reads as a number
    * becomes one, and everything else stays text, so a spreadsheet formula smuggled into a CSV is
    * text here rather than something this machine runs.
@@ -1040,6 +1087,9 @@ function main(): void {
     if (isSheetPath(node.path)) {
       items.push({ label: "Export as CSV", action: () => void exportSheetCsv(node.path) });
     }
+    if (isFormPath(node.path)) {
+      items.push({ label: "Export as HTML…", action: () => void exportFormAsHtml(node.path) });
+    }
     if (/\.csv$/i.test(node.path)) {
       items.push({ label: "Import as sheet", action: () => void importCsvAsSheet(node.path) });
     }
@@ -1054,13 +1104,18 @@ function main(): void {
   const sidebar = createSidebar(filesSec.body, ws, (p) => void openFile(p), fileMenu);
   /** The files whose text search, tags and backlinks read — a sheet is a database, not text. */
   const textFiles = () => sidebar.files().filter((f) => !isSheetPath(f.path));
+  /** A file's text as search, tags and backlinks see it: an exported form's page reads as empty. */
+  const readIndexed = async (p: string): Promise<string> => {
+    const text = await ws.read(p);
+    return isExportedPage(text) ? "" : text;
+  };
   newBtn.addEventListener("click", () => void newFile(""));
   newFolderBtn.addEventListener("click", () => void newFolder(""));
   const quickOpen = createQuickOpen(() => sidebar.files(), (p) => void openFile(p));
   // Search reads a sheet as its values — a row per line — so a match points at a cell.
   const search = createSearch(
     () => sidebar.files(),
-    async (p) => (isSheetPath(p) ? toTSV(valueRows((await sheets.open(p)).cells)) : ws.read(p)),
+    async (p) => (isSheetPath(p) ? toTSV(valueRows((await sheets.open(p)).cells)) : readIndexed(p)),
     (p, line, cell) =>
       void openFile(p).then(() => {
         if (cell) activeSheet()?.goto(cell);
@@ -1069,7 +1124,7 @@ function main(): void {
     isSheetPath,
   );
   // clicking a tag opens full-text search filtered to that tag
-  const tags = createTagsPanel(tagsBody, ws, textFiles, (tag) => search.open("#" + tag));
+  const tags = createTagsPanel(tagsBody, { read: readIndexed }, textFiles, (tag) => search.open("#" + tag));
 
   // What opens at launch when the config has no (on-start …): welcome.md while it's still there —
   // the intro is worth reading once — and after that today's note, created if it doesn't exist yet.
@@ -1349,6 +1404,11 @@ function main(): void {
     "form-design": () => void setFormMode("design"),
     "form-code": () => void setFormMode("code"),
     "form-run": () => void setFormMode("run"),
+    "export-html": () => {
+      const t = activeForm();
+      if (t) void exportFormAsHtml(t.path);
+      else toast("Open a form to export it");
+    },
     "open-keys": () => void keys.openConfig(),
     "reload-keys": () => void keys.reload(),
     "toggle-repl": toggleRepl,

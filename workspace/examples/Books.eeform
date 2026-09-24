@@ -30,27 +30,28 @@
 (deftable books (title:string author:string year:number notes:string))
 
 ;; Where we are: an index into the table in id order, and whether the boxes are being edited.
-(def bk-pos 0)
-(def bk-mode "browse")    ;; "browse", "edit" or "new"
+;; Local: each open copy of Books has its own — open two and move them apart.
+(local pos 0)
+(local mode "browse")    ;; "browse", "edit" or "new"
 
 (defn bk-all () (records (query books :order "_id")))
 
 (defn bk-load (f)
-  (set! bk-pos 0)
+  (var! "pos" 0)
   (bk-show f))
 
-;; The record at bk-pos into the boxes, then the buttons to match.
+;; The record at pos into the boxes, then the buttons to match.
 (defn bk-show (f)
   (let (rows (bk-all)
         n (length rows))
-    (when (>= bk-pos n) (set! bk-pos (max 0 (- n 1))))
+    (when (>= (var "pos") n) (var! "pos" (max 0 (- n 1))))
     (if (= n 0)
       (do
         (bk-fill nil)
         (ui-set "lblPos" :text "No records"))
       (do
-        (bk-fill (nth rows bk-pos))
-        (ui-set "lblPos" :text (str "Record " (+ bk-pos 1) " of " n))))
+        (bk-fill (nth rows (var "pos")))
+        (ui-set "lblPos" :text (str "Record " (+ (var "pos") 1) " of " n))))
     (bk-mode! "browse" n)))
 
 (defn bk-fill (r)
@@ -61,7 +62,7 @@
 
 ;; Browsing: the boxes locked, moving allowed. Editing: the other way round.
 (defn bk-mode! (mode n)
-  (set! bk-mode mode)
+  (var! "mode" mode)
   (let (editing (not (= mode "browse")))
     (for-each c '("txtTitle" "txtAuthor" "txtYear" "txtNotes" "btnSave" "btnCancel")
       (ui-set c :enabled editing))
@@ -69,17 +70,17 @@
     (ui-set "txtFind" :enabled (not editing))
     (ui-set "btnEdit" :enabled (and (not editing) (> n 0)))
     (ui-set "btnDelete" :enabled (and (not editing) (> n 0)))
-    (ui-set "btnFirst" :enabled (and (not editing) (> bk-pos 0)))
-    (ui-set "btnPrev" :enabled (and (not editing) (> bk-pos 0)))
-    (ui-set "btnNext" :enabled (and (not editing) (< bk-pos (- n 1))))
-    (ui-set "btnLast" :enabled (and (not editing) (< bk-pos (- n 1))))))
+    (ui-set "btnFirst" :enabled (and (not editing) (> (var "pos") 0)))
+    (ui-set "btnPrev" :enabled (and (not editing) (> (var "pos") 0)))
+    (ui-set "btnNext" :enabled (and (not editing) (< (var "pos") (- n 1))))
+    (ui-set "btnLast" :enabled (and (not editing) (< (var "pos") (- n 1))))))
 
 ;; ── moving ──
 
-(defn bk-first (f) (set! bk-pos 0) (bk-show f))
-(defn bk-prev (f) (set! bk-pos (max 0 (- bk-pos 1))) (bk-show f))
-(defn bk-next (f) (set! bk-pos (+ bk-pos 1)) (bk-show f))
-(defn bk-last (f) (set! bk-pos (- (length (bk-all)) 1)) (bk-show f))
+(defn bk-first (f) (var! "pos" 0) (bk-show f))
+(defn bk-prev (f) (var! "pos" (max 0 (- (var "pos") 1))) (bk-show f))
+(defn bk-next (f) (var! "pos" (+ (var "pos") 1)) (bk-show f))
+(defn bk-last (f) (var! "pos" (- (length (bk-all)) 1)) (bk-show f))
 
 ;; Find: the first record, from the top, whose title or author contains the text.
 (defn bk-find (f)
@@ -91,7 +92,7 @@
           (>= i (length rows)) (ui-set "lblStatus" :text (str "Nothing matches \"" text "\""))
           (or (str-contains (str-lower (str (field-get (nth rows i) :title))) text)
               (str-contains (str-lower (str (field-get (nth rows i) :author))) text))
-            (do (set! bk-pos i) (ui-set "lblStatus" :text "") (bk-show f))
+            (do (var! "pos" i) (ui-set "lblStatus" :text "") (bk-show f))
           true (recur (+ i 1)))))))
 
 ;; ── changing ──
@@ -112,11 +113,11 @@
 (defn bk-save (f)
   (let (title (str-trim (ui-get f "txtTitle"))
         data {:title title :author (str-trim (or (ui-get f "txtAuthor") "")) :year (ui-get f "txtYear") :notes (ui-get f "txtNotes")})
-    (if (= bk-mode "new")
+    (if (= (var "mode") "new")
       (do
         (insert books data)
-        (set! bk-pos (- (length (bk-all)) 1)))
-      (update books (record-id (nth (bk-all) bk-pos)) data))
+        (var! "pos" (- (length (bk-all)) 1)))
+      (update books (record-id (nth (bk-all) (var "pos"))) data))
     (ui-set "lblStatus" :text (str "Saved " title))
     (bk-show f)))
 
@@ -127,7 +128,7 @@
 (defn bk-delete (f)
   (let (rows (bk-all))
     (when (> (length rows) 0)
-      (let (r (nth rows bk-pos))
+      (let (r (nth rows (var "pos")))
         (delete books (record-id r))
         (ui-set "lblStatus" :text (str "Deleted " (field-get r :title)))
         (bk-show f)))))

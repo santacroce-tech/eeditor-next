@@ -234,7 +234,12 @@ export function defnRange(src: string, name: string): Range | undefined {
 
 // ── the layout ────────────────────────────────────────────────────────────
 
-export type ControlType = "label" | "textbox" | "button" | "checkbox" | "radio" | "dropdown" | "listbox" | "grid" | "date" | "image" | "timer" | "tabs" | "sheet";
+export type ControlType = "label" | "textbox" | "button" | "checkbox" | "radio" | "dropdown" | "listbox" | "grid" | "date" | "image" | "timer" | "tabs" | "sheet" | "frame";
+
+/** How a frame shows the forms opened in it. `screens` — one at a time, the dBASE way — is the default. */
+export const FRAME_MODES = ["screens", "tabs", "windows"] as const;
+export type FrameMode = (typeof FRAME_MODES)[number];
+export const frameMode = (v: unknown): FrameMode => (FRAME_MODES as readonly unknown[]).includes(v) ? (v as FrameMode) : "screens";
 
 /** `scalar`: a number or a string, kept as whichever it was — `:min 0` stays a number, `:min "2026-01-01"` a string. */
 export type PropKind = "text" | "number" | "bool" | "items" | "scalar";
@@ -402,6 +407,19 @@ export const CONTROLS: Record<ControlType, ControlDef> = {
     events: ["change"],
     initial: { pages: ["General", "Details"] },
   },
+  // Where the forms this one opens with (ui-open "X" :in "frmBody") are drawn — VB's MDI client area.
+  frame: {
+    label: "Frame",
+    prefix: "frm",
+    w: 480,
+    h: 320,
+    props: [
+      { key: "mode", kind: "text", label: "Mode: screens, tabs or windows", default: "screens" },
+      { key: "value", kind: "text", label: "Showing", default: "" },
+    ],
+    events: ["change"],
+    initial: {},
+  },
   sheet: {
     label: "Sheet",
     prefix: "sht",
@@ -441,7 +459,7 @@ export const CONTROLS: Record<ControlType, ControlDef> = {
 };
 
 /** The toolbox order: the everyday controls first, containers and the odd ones last. */
-export const CONTROL_TYPES: ControlType[] = ["label", "textbox", "button", "checkbox", "radio", "dropdown", "listbox", "grid", "date", "image", "tabs", "sheet", "timer"];
+export const CONTROL_TYPES: ControlType[] = ["label", "textbox", "button", "checkbox", "radio", "dropdown", "listbox", "grid", "date", "image", "tabs", "sheet", "frame", "timer"];
 export const isControlType = (s: string): s is ControlType => s in CONTROLS;
 
 export interface Control {
@@ -474,6 +492,10 @@ export interface FormSpec {
   w: number;
   h: number;
   onLoad?: string;
+  /** `:on-public` — runs when another form of the same main writes a public variable; its name is `$changed`. */
+  onPublic?: string;
+  /** `:main true` — this form is an app's entry: the one Export as HTML takes the other forms along from. */
+  main?: boolean;
   /** `:menu (("File" ("New" new-item) ("-") ("Quit" quit)) …)` — a menu bar under the title. */
   menu: Menu[];
   controls: Control[];
@@ -644,6 +666,8 @@ export function parseFormSpec(x: Sx): FormSpec | { error: string } {
     if (size) [spec.w, spec.h] = size;
     else if (k === "title" && v.t === "str") spec.title = v.v;
     else if (k === "on-load" && fnName(v) !== undefined) spec.onLoad = fnName(v);
+    else if (k === "on-public" && fnName(v) !== undefined) spec.onPublic = fnName(v);
+    else if (k === "main" && v.t === "bool") spec.main = v.v || undefined;
     else if (k === "menu") spec.menu = parseMenu(v);
     else spec.extra.push([k, v]);
   }
@@ -699,6 +723,8 @@ function controlSx(c: Control): Sx {
 export function printFormSpec(spec: FormSpec): string {
   const head: Sx[] = [sym("form"), str(spec.title), kw("size"), list(num(spec.w), num(spec.h))];
   if (spec.onLoad) head.push(kw("on-load"), sym(spec.onLoad));
+  if (spec.main) head.push(kw("main"), { t: "bool", v: true });
+  if (spec.onPublic) head.push(kw("on-public"), sym(spec.onPublic));
   if (spec.menu.length) head.push(kw("menu"), menuSx(spec.menu));
   for (const [k, v] of spec.extra) head.push(kw(k), v);
   const lines = [printSx(list(...head)).slice(0, -1), ...spec.controls.map((c) => "  " + printSx(controlSx(c)))];
@@ -795,8 +821,9 @@ export function lispLiteral(v: StateValue): string {
   if (typeof v === "number") return Number.isFinite(v) ? String(v) : "nil";
   if (typeof v === "boolean") return v ? "true" : "false";
   if (Array.isArray(v)) return "(" + v.map(lispLiteral).join(" ") + ")";
-  const entries = Object.entries(v).filter(([k]) => validName(k));
-  return "{" + entries.map(([k, x]) => `:${k} ${lispLiteral(x)}`).join(" ") + "}";
+  // A key that reads as a keyword is written as one (`:txtName`); any other — `$form`, a column
+  // called "unit price" — as a string. The engine files both under the same string key.
+  return "{" + Object.entries(v).map(([k, x]) => `${validName(k) ? ":" + k : lispString(k)} ${lispLiteral(x)}`).join(" ") + "}";
 }
 
 /** The whole form as a quoted dict keyed by control name — the `f` every handler receives. */

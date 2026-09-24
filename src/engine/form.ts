@@ -14,11 +14,44 @@ export type UiChange =
   | { kind: "message"; text: string }
   | { kind: "focus"; control: string }
   | { kind: "close" }
-  | { kind: "open"; path: string };
+  | { kind: "open"; path: string; into?: string; copy?: boolean }
+  /** A public variable was written: the host tells the other forms of the same main. */
+  | { kind: "public"; name: string };
+
+/**
+ * Which open form a handler runs for — handed to it in `f` as `$form`, `$main`, `$key` and `$app`,
+ * which is how `(var …)` finds the right local and public variables (see the prelude).
+ */
+export interface FormIdentity {
+  /** This open copy of the form. */
+  form: string;
+  /** The form that opened it — or itself, for one nothing opened: whose public variables it shares. */
+  main: string;
+  /** Its file: where its `(local …)` declarations were recorded when it was loaded. */
+  key: string;
+  /** The main form's name: what a kept (`:persist`) public variable is filed under. */
+  app: string;
+}
+
+let formCount = 0;
+/** A fresh id for an open form. */
+export function newFormId(): string {
+  return `form-${Date.now().toString(36)}-${(++formCount).toString(36)}`;
+}
+
+/** The identity as the entries a handler's `f` carries. */
+export function identityState(id: FormIdentity): Record<string, StateValue> {
+  return { $form: id.form, $main: id.main, $key: id.key, $app: id.app };
+}
 
 export interface FormClient {
-  /** Evaluate the file — defines its handlers. Rejects with the engine's error. */
-  load(src: string): Promise<void>;
+  /**
+   * Evaluate the file — defines its handlers. Its `(local …)` declarations are filed under `key`, the
+   * `$key` its handlers will be called with. Rejects with the engine's error.
+   */
+  load(src: string, key?: string): Promise<void>;
+  /** An open form closed: let its local variables go (and its public ones, if it was a main form). */
+  forget(formId: string): Promise<void>;
   /** Run `handler` with the form's state; the changes it queued, in order. */
   call(handler: string, state: Record<string, StateValue>): Promise<{ changes: UiChange[]; output: string }>;
   /** Ask `handler` whether the form may go ahead: the message it returned, or null for yes. */
@@ -41,8 +74,13 @@ export function parseChange(v: JsonValue): UiChange | undefined {
       return { kind: "focus", control: text(v[1]) };
     case "close":
       return { kind: "close" };
-    case "open":
-      return { kind: "open", path: text(v[1]) };
+    case "open": {
+      // ("open" path into copy) — into: a frame's name, or nil for a window of its own
+      const into = typeof v[2] === "string" && v[2] !== "" ? v[2] : undefined;
+      return { kind: "open", path: text(v[1]), ...(into ? { into } : {}), ...(v[3] === true ? { copy: true } : {}) };
+    }
+    case "public":
+      return { kind: "public", name: text(v[1]) };
     default:
       return undefined;
   }
@@ -93,9 +131,18 @@ export function createFormClient(engine: EngineClient): FormClient {
   }
 
   return {
-    async load(src) {
+    async load(src, key = "") {
       await ensurePrelude();
-      await ev(src);
+      await ev(`(set! ui-loading ${JSON.stringify(key)})`);
+      try {
+        await ev(src);
+      } finally {
+        await ev('(set! ui-loading "")').catch(() => {});
+      }
+    },
+    async forget(formId) {
+      await ensurePrelude();
+      await ev(`(ui-forget ${JSON.stringify(formId)})`);
     },
     async call(handler, state) {
       await ensurePrelude();
@@ -105,7 +152,7 @@ export function createFormClient(engine: EngineClient): FormClient {
     },
     async check(handler, state) {
       await ensurePrelude();
-      const { result } = await ev(`(${handler} ${formState(state)})`);
+      const { result } = await ev(`(ui-check ${handler} ${formState(state)})`);
       return typeof result === "string" && result !== "" ? result : null;
     },
   };

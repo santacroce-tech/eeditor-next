@@ -26,6 +26,18 @@ first — `../../eelisp-rs/target/release/eelisp yourfile.eelisp` — because se
 forms are wrong (`insert` takes a dict, not keyword arguments; a rule condition uses `str-matches`,
 while `match` returns capture groups).
 
+## The live apps
+
+`apps/Office.html` and `apps/Functions.html` are forms exported from `workspace/examples/` — rebuild
+them after changing the examples or the runtime, and refresh the downloadable copies:
+
+```bash
+npm run engine:wasm && npm run runtime:template
+npm run export-app -- workspace/examples/Office.eeform -o site/apps/Office.html
+npm run export-app -- workspace/examples/Functions.eeform -o site/apps/Functions.html
+cp workspace/examples/*.eeform site/examples/
+```
+
 ## Deploying
 
 ```bash

@@ -15,3 +15,9 @@ workspace/.eeditor/eeditor.db*
 .ui-workspace/
 playwright-report/
 test-results/
+
+# the WebAssembly engine, built by `npm run engine:wasm` from ../eelisp-rs/web
+public/engine/
+# …and the template an exported form is written from (npm run runtime:template)
+public/runtime/
+dist-runtime/

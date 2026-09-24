@@ -1,9 +1,11 @@
-// The single point the whole app talks to the engine through. Two transports:
+// The single point the whole app talks to the engine through. Three transports:
 //   • Tauri  — `invoke("eelisp_eval", { src })` against the in-process EngineHandle (native app)
 //   • HTTP   — POST /eval to the dev bridge, which drives `eelisp --serve` (browser dev)
-// Both return the same JSON envelope (eelisp-rs host boundary).
+//   • wasm   — the engine compiled to WebAssembly, in this page (`?engine=wasm`; see ./wasm.ts)
+// All return the same JSON envelope (eelisp-rs host boundary).
 
 import type { Envelope } from "./types";
+import { WasmEngine, defaultWasmUrls, loadWasmFrom } from "./wasm";
 
 export interface EngineClient {
   evalSrc(src: string): Promise<Envelope>;
@@ -54,8 +56,22 @@ function inTauri(): boolean {
   return typeof window !== "undefined" && ("__TAURI_INTERNALS__" in w || "__TAURI__" in w);
 }
 
+/**
+ * Which engine a browser page asked for: `?engine=wasm` in its address, or `VITE_ENGINE=wasm` at
+ * build time. Anything else means the dev bridge.
+ */
+export function requestedEngine(search: string, buildTime: string | undefined): "wasm" | "bridge" {
+  const asked = new URLSearchParams(search).get("engine") ?? buildTime ?? "";
+  return asked.toLowerCase() === "wasm" ? "wasm" : "bridge";
+}
+
 export function createEngineClient(): EngineClient {
   if (inTauri()) return new TauriEngine();
+  const search = typeof location === "undefined" ? "" : location.search;
+  if (requestedEngine(search, import.meta.env.VITE_ENGINE as string | undefined) === "wasm") {
+    const at = defaultWasmUrls();
+    return new WasmEngine(loadWasmFrom(at.js), at.wasm);
+  }
   const url = (import.meta.env.VITE_BRIDGE_URL as string | undefined) ?? "http://localhost:8787";
   return new HttpEngine(url);
 }
