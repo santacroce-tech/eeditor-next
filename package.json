@@ -1,6 +1,6 @@
 {
   "name": "eeditor-next",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": true,
   "description": "EEditor — a notes editor with a database and a Lisp inside",
   "author": "Roberto Santacroce Martins <roberto@santacroce.xyz>",
