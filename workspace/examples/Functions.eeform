@@ -1,0 +1,65 @@
+;; Functions.eeform — every function the engine knows, its source, and a place to try it.
+;;
+;; Press ▶ run. The grid lists what (functions) prints — builtins, special forms, macros, and every
+;; function defined so far: the prelude, the snippets you've loaded, your notes' ```eelisp blocks,
+;; this form's own handlers. Type in the grid's filter box to narrow it; pick a kind above it.
+;; Click a row for its source; type arguments and press Run (or Enter) to call it.
+;; Double-click a row to start the arguments from its parameter list.
+
+(form "Functions" :size (820 560) :on-load fns-load :menu (("Functions" ("Reload" fns-load) ("-") ("Close" fns-close)) ("Help" ("About" fns-about)))
+  (label lblKind :text "Kind" :at (16 16) :size (40 24))
+  (dropdown cboKind :items ("all" "builtin" "special" "macro" "function") :value "all" :at (56 12) :size (120 28) :on-change fns-load)
+  (label lblCount :at (188 16) :size (180 24))
+  (grid grdFns :columns ("name" "kind" "summary") :sortable true :filter true :at (16 48) :size (352 496) :on-change fns-pick :on-dblclick fns-template)
+  (label lblSig :text "Pick a function" :at (384 16) :size (420 24))
+  (textbox txtSource :multiline true :readonly true :mono true :at (384 48) :size (420 280))
+  (label lblArgs :text "Arguments" :at (384 342) :size (80 24))
+  (textbox txtArgs :mono true :placeholder "\"hello\" 3" :at (464 338) :size (252 28))
+  (button btnRun :text "Run" :default true :at (724 336) :size (80 32) :on-click fns-run)
+  (label lblCall :at (384 376) :size (420 24))
+  (textbox txtResult :multiline true :readonly true :mono true :at (384 404) :size (420 140)))
+
+;; The listing, as data: one dict per name — name, kind, sig, summary.
+(defn fns-rows (kind)
+  (let (rows (function-list ""))
+    (if (or (nil? kind) (= kind "all"))
+      rows
+      (filter (fn (r) (= (dict-get r "kind") kind)) rows))))
+
+(defn fns-load (f)
+  (let (rows (fns-rows (ui-get f "cboKind")))
+    (ui-set "grdFns" :rows rows)
+    (ui-set "lblCount" :text (str (length rows) " functions"))))
+
+;; A row picked: its signature on top, its definition below — the comments written above a defn
+;; come with it, so a function documented in a note reads the same here.
+(defn fns-pick (f)
+  (let (row (ui-get f "grdFns"))
+    (when row
+      (ui-set "lblSig" :text (dict-get row "sig"))
+      (ui-set "txtSource" :value (source-text (dict-get row "name")))
+      (ui-set "lblCall" :text "")
+      (ui-set "txtResult" :value ""))))
+
+;; Double-click: the parameter list as a starting point for the arguments.
+(defn fns-template (f)
+  (let (row (ui-get f "grdFns")
+        sig (dict-get row "sig")
+        name (dict-get row "name"))
+    (fns-pick f)
+    (ui-set "txtArgs" :value (str-trim (str-replace (str-replace (first (str-split sig ")")) (str "(" name) "") "…" "")))
+    (ui-focus "txtArgs")))
+
+;; Run: the call is built as text and read back, so the arguments are written exactly as at the
+;; REPL — "strings" in quotes, '(quoted lists), even (nested calls).
+(defn fns-run (f)
+  (let (row (ui-get f "grdFns"))
+    (if (nil? row)
+      (ui-message "Pick a function in the list first")
+      (let (call (str "(" (dict-get row "name") " " (str-trim (or (ui-get f "txtArgs") "")) ")")
+            result (eval (parse call)))
+        (ui-set "lblCall" :text (str "λ " call))
+        (ui-set "txtResult" :value (str (->string result) "\n\n; " (type result)))))))
+
+(defn fns-close (f) (ui-close))
+(defn fns-about (f) (ui-message "Functions — (function-list) and (source-text), browsed"))

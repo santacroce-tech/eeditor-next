@@ -69,7 +69,7 @@ async function openSheet(page) {
 
 test("a new sheet takes values and formulas, and dependents follow", async ({ page }) => {
   await page.goto("/");
-  await page.locator(".tree-dir").click({ button: "right" });
+  await page.locator(".tree-dir").first().click({ button: "right" });
   await page.locator(".ctx-item", { hasText: "New sheet…" }).click();
   await page.locator(".dlg-input").fill("Budget");
   await page.locator(".dlg-input").press("Enter");

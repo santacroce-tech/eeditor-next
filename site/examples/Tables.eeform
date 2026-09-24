@@ -1,0 +1,111 @@
+;; Tables.eeform — any table in the workspace database, the dBASE way: pick one, narrow it with a
+;; WHERE, sort it, edit a cell in place (double-click it), add a row, delete one, PACK.
+;;
+;; Press ▶ run. The tables are the ones (tables) lists — Books and Contacts make theirs the first
+;; time they run, and so does a (deftable …) typed at the REPL. The line above the grid is the
+;; query exactly as it ran: copy it into the REPL and you get the same rows.
+
+(form "Tables" :size (760 528) :on-load tb-load :menu (("Table" ("Reload" tb-load) ("-") ("New row" tb-new) ("Delete row" tb-delete) ("Pack" tb-pack) ("-") ("Close" tb-close)))
+  (label lblTable :text "Table" :at (16 16) :size (48 24))
+  (dropdown cboTable :at (64 12) :size (180 28) :on-change tb-open)
+  (label lblFields :at (256 16) :size (488 24))
+  (label lblWhere :text "Where" :at (16 52) :size (48 24))
+  (textbox txtWhere :mono true :placeholder "age > 30 and name like 'A%'" :at (64 48) :size (300 28))
+  (label lblOrder :text "Order" :at (376 52) :size (44 24))
+  (dropdown cboOrder :at (420 48) :size (132 28))
+  (checkbox chkDesc :text "desc" :at (560 52) :size (60 24))
+  (textbox txtLimit :number true :min 1 :placeholder "limit" :at (620 48) :size (60 28))
+  (button btnQuery :text "Query" :default true :at (688 46) :size (56 32) :on-click tb-query)
+  (label lblQuery :at (16 88) :size (728 24))
+  (grid grdRows :editable true :sortable true :filter true :page-size 12 :at (16 116) :size (728 356) :on-edit tb-save-cell)
+  (button btnNew :text "New row" :at (16 484) :size (96 30) :on-click tb-new)
+  (button btnDelete :text "Delete row" :at (120 484) :size (104 30) :on-click tb-delete)
+  (button btnPack :text "Pack" :at (232 484) :size (72 30) :on-click tb-pack)
+  (label lblCount :at (320 488) :size (424 24)))
+
+;; The open table's name and its fields, e.g. "books" and ("title" "author" "year" "notes").
+(def tb-table nil)
+(def tb-fields '())
+
+;; Yours, not the agenda's: the engine keeps its own tables under names starting with _.
+(defn tb-user-tables () (filter (fn (t) (not (str-starts-with t "_"))) (map str (tables))))
+
+;; A table's fields, read off how it prints: #<table books (title:string year:number …)>.
+(defn tb-fields-of (name)
+  (let (shown (->string (describe (str name)))
+        inside (first (str-split (second (str-split shown "(")) ")")))
+    (map (fn (spec) (first (str-split spec ":")))
+         (filter (fn (s) (not (= s ""))) (str-split inside " ")))))
+
+(defn tb-load (f)
+  (let (names (tb-user-tables))
+    (ui-set "cboTable" :items names)
+    (if (empty? names)
+      (do
+        (ui-set "lblFields" :text "No tables yet — run Books or Contacts, or (deftable …) at the REPL")
+        (ui-set "grdRows" :rows '()))
+      (let (pick (if (and tb-table (some? (fn (n) (= n tb-table)) names)) tb-table (first names)))
+        (ui-set "cboTable" :value pick)
+        (tb-open-named pick)))))
+
+(defn tb-open (f) (tb-open-named (ui-get f "cboTable")))
+
+(defn tb-open-named (name)
+  (set! tb-table name)
+  (set! tb-fields (tb-fields-of name))
+  (ui-set "lblFields" :text (->string (describe (str name))))
+  (ui-set "cboOrder" :items (cons "" tb-fields))
+  (ui-set "cboOrder" :value "")
+  (ui-set "txtWhere" :value "")
+  (ui-set "grdRows" :columns tb-fields)
+  (tb-run (str "(query " name ")")))
+
+;; Query: the call written out as text — the same thing you'd type at the REPL — then evaluated.
+(defn tb-query (f)
+  (let (where (str-trim (or (ui-get f "txtWhere") ""))
+        order (or (ui-get f "cboOrder") "")
+        limit (ui-get f "txtLimit"))
+    (tb-run (str "(query " tb-table
+                 (if (= where "") "" (str " :where " (json-stringify where)))
+                 (if (= order "") "" (str " :order " (json-stringify order)))
+                 (if (and (not (= order "")) (ui-get f "chkDesc")) " :desc true" "")
+                 (if limit (str " :limit " limit) "")
+                 ")"))))
+
+(defn tb-run (call)
+  (let (rs (eval (parse call)))
+    (ui-set "lblQuery" :text (str "λ " call))
+    (ui-set "grdRows" :rows rs)
+    (ui-set "lblCount" :text (str (length (records rs)) " shown · " (count-records (str tb-table)) " in " tb-table))))
+
+;; A cell typed into: the grid's value is its row as edited — the id plus every field.
+(defn tb-save-cell (f)
+  (let (row (ui-get f "grdRows"))
+    (update (str tb-table) (dict-get row "id")
+            (reduce (fn (d k) (dict-set d k (dict-get row k))) {} tb-fields))
+    (ui-set "lblCount" :text (str "Saved row " (dict-get row "id")))))
+
+;; A new, empty row at the end — double-click its cells to fill it in.
+(defn tb-new (f)
+  (if (nil? tb-table)
+    (ui-message "Pick a table first")
+    (let (r (insert (str tb-table) (dict-set {} (first tb-fields) "")))
+      (tb-query f)
+      (ui-message (str "Row " (record-id r) " added — double-click a cell to fill it in")))))
+
+;; Delete marks the row, as dBASE did; Pack removes the marked rows for good.
+(defn tb-delete (f)
+  (let (row (ui-get f "grdRows"))
+    (if (nil? row)
+      (ui-message "Pick a row first")
+      (do
+        (delete (str tb-table) (dict-get row "id"))
+        (tb-query f)))))
+
+(defn tb-pack (f)
+  (when tb-table
+    (pack (str tb-table))
+    (ui-message (str tb-table " packed"))
+    (tb-query f)))
+
+(defn tb-close (f) (ui-close))

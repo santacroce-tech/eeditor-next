@@ -18,6 +18,7 @@
       <a href="index.html#features">Features</a>
       <a href="manual.html" aria-current="page">Manual</a>
       <a href="tutorial.html">Tutorial</a>
+      <a href="manual.html#form-examples">Examples</a>
       <a href="https://eelisp.app">EELisp</a>
       <a href="download.html">Download</a>
     </div>
@@ -45,7 +46,7 @@
         <li><a href="#outside">7. Files from outside</a></li>
         <li><a href="#agenda">8. The agenda</a></li>
         <li><a href="#sheets">9. Sheets</a></li>
-        <li><a href="#forms">10. Forms</a></li>
+        <li><a href="#forms">10. Forms</a> · <a href="#form-examples">examples</a></li>
         <li><a href="#repl">11. The REPL</a></li>
         <li><a href="#keybindings">12. Keybindings</a></li>
         <li><a href="#mobile">13. iPhone and iPad</a></li>
@@ -664,7 +665,7 @@ sequenceDiagram
     <div class="table-wrap"><table>
       <tr><th>Control</th><th>Holds</th><th>Of note</th></tr>
       <tr><td><code>label</code></td><td><code>:text</code></td><td></td></tr>
-      <tr><td><code>textbox</code></td><td><code>:value</code>, text</td><td><code>:multiline</code>; <code>:number</code> makes it worth a number, or nil while empty; <code>:placeholder</code>, <code>:pattern</code>, <code>:min</code>, <code>:max</code></td></tr>
+      <tr><td><code>textbox</code></td><td><code>:value</code>, text</td><td><code>:multiline</code>; <code>:number</code> makes it worth a number, or nil while empty; <code>:placeholder</code>, <code>:pattern</code>, <code>:min</code>, <code>:max</code>; <code>:readonly</code> to show text that can be copied but not typed over, <code>:mono</code> for code</td></tr>
       <tr><td><code>button</code></td><td><code>:text</code></td><td><code>:submit</code> checks the form first; <code>:default</code> is pressed by <kbd>↵</kbd> in a box, <code>:cancel</code> by <kbd>Esc</kbd></td></tr>
       <tr><td><code>checkbox</code></td><td><code>:value</code>, true or false</td><td></td></tr>
       <tr><td><code>radio</code></td><td>the chosen one of <code>:items</code></td><td></td></tr>
@@ -735,14 +736,147 @@ sequenceDiagram
       <code>sheet-set</code>, and the grid follows.
     </p>
 
-    <div class="note">
-      <p>
-        The worked example, <code>Contacts.eeform</code>, ships in the sample workspace and uses
-        nearly all of this: required and number boxes, a submit button with its own check, an
-        editable grid with sorting, a filter and pages, a menu. Its <em>code</em> view is the best
-        second read after this chapter.
-      </p>
-    </div>
+    <h3 id="form-examples">Example forms</h3>
+    <p>
+      Six forms to download, run and take apart. Save one into your workspace — any folder — and it
+      appears in the tree; press <strong>▶ run</strong>, then switch to <strong>code</strong> to see
+      how it's done. Each file opens with a comment saying what it shows, and every handler has a
+      line above it saying what it does. They write to your workspace's database, into tables of
+      their own (<code>books</code>, <code>customers</code>, <code>orders</code>…), and the ones that
+      start empty have a menu item that adds sample rows.
+    </p>
+
+    <h4>Contacts — the first one to read</h4>
+    <p>
+      <a href="examples/Contacts.eeform" download>Contacts.eeform</a> · A table, a grid, and boxes
+      to fill it. Required and number boxes, a submit button with its own check, an editable grid
+      with sorting, a filter and pages, and a menu — nearly everything in this chapter, in sixty lines.
+    </p>
+
+    <h4>Books — one record at a time</h4>
+    <picture>
+        <source srcset="assets/forms/books-dark.png" media="(prefers-color-scheme: dark)">
+        <img class="shot" src="assets/forms/books-light.png"  alt="The Books form: title, author, year and notes boxes, record navigation buttons, and New, Edit, Save, Cancel, Delete" width="522" loading="lazy">
+      </picture>
+    <p>
+      <a href="examples/Books.eeform" download>Books.eeform</a> · The dBASE way of working through a
+      table: <strong>|◀ ◀ ▶ ▶|</strong> move record by record, <em>Record 2 of 3</em> says where you
+      are, and a find box jumps to the first title or author that matches. <strong>New</strong>,
+      <strong>Edit</strong>, <strong>Save</strong>, <strong>Cancel</strong> (or <kbd>Esc</kbd>) and
+      <strong>Delete</strong> do what they say. While you browse, the boxes are locked; while you
+      edit, moving is. That is one function setting <code>:enabled</code> on every control, and it
+      is the part worth copying:
+    </p>
+<pre><code><span class="cm">;; Browsing: the boxes locked, moving allowed. Editing: the other way round.</span>
+(defn bk-mode! (mode n)
+  (set! bk-mode mode)
+  (let (editing (not (= mode <span class="st">"browse"</span>)))
+    (for-each c '(<span class="st">"txtTitle"</span> <span class="st">"txtAuthor"</span> <span class="st">"txtYear"</span> <span class="st">"txtNotes"</span> <span class="st">"btnSave"</span> <span class="st">"btnCancel"</span>)
+      (ui-set c :enabled editing))
+    (ui-set <span class="st">"btnNew"</span> :enabled (not editing))
+    (ui-set <span class="st">"btnPrev"</span> :enabled (and (not editing) (&gt; bk-pos 0)))
+    <span class="cm">…</span>))</code></pre>
+    <p>
+      Where you are is a variable, <code>bk-pos</code>, defined in the file with <code>def</code>
+      and moved with <code>set!</code>. The file is evaluated when the form runs, so it starts at
+      the first record every time.
+    </p>
+
+    <h4>Functions — the language, browsed</h4>
+    <picture>
+        <source srcset="assets/forms/functions-dark.png" media="(prefers-color-scheme: dark)">
+        <img class="shot" src="assets/forms/functions-light.png"  alt="The Functions form: a filtered list of functions, the source of take, arguments typed in and the result of running it" width="822" loading="lazy">
+      </picture>
+    <p>
+      <a href="examples/Functions.eeform" download>Functions.eeform</a> · Every function in scope in
+      a grid you can filter: the builtins, the special forms, the macros, the snippets you've
+      loaded, the functions in your notes, and the form's own handlers. Pick one and its source
+      appears — for anything written in EELisp, the definition as it was written, comments and all.
+      Type arguments the way you would at the REPL and press <strong>Run</strong>. Double-click a
+      row to start from its parameter names.
+    </p>
+    <p>
+      It is built on two functions that return what <code>(functions)</code> and
+      <code>(source …)</code> print, as data a program can use:
+    </p>
+<pre><code>(function-list <span class="st">"str-j"</span>)
+<span class="cm">; → ({:name "str-join" :kind "builtin" :sig "(str-join sep parts) → string" :summary "Joins a list…"})</span>
+
+(source-text <span class="st">"take"</span>)   <span class="cm">; → the text (source take) prints</span>
+
+<span class="cm">;; Run: the call is written out as text and read back, so arguments are typed as at the REPL.</span>
+(eval (parse (str <span class="st">"("</span> name <span class="st">" "</span> args <span class="st">")"</span>)))</code></pre>
+
+    <h4>Tables — any table, dBASE-style</h4>
+    <picture>
+        <source srcset="assets/forms/tables-dark.png" media="(prefers-color-scheme: dark)">
+        <img class="shot" src="assets/forms/tables-light.png"  alt="The Tables form: the books table filtered by year and ordered, with the query it ran shown above the grid" width="762" loading="lazy">
+      </picture>
+    <p>
+      <a href="examples/Tables.eeform" download>Tables.eeform</a> · Pick any table in the
+      workspace. Narrow it with a <em>where</em> — plain SQL, <code>year &lt; 1985</code> — choose
+      an order and a limit, and press <strong>Query</strong>. The line above the grid is the query
+      exactly as it ran; paste it into the REPL and you get the same rows. Double-click a cell to
+      change it, add an empty row, delete one, and <strong>Pack</strong> to remove deleted rows for
+      good.
+    </p>
+    <p>
+      The table is picked while the form runs, so its name is in a variable. Any database function
+      takes the table as a bare name — <code>(query books)</code> — or as an expression that
+      works one out:
+    </p>
+<pre><code>(query (str tb-table) :where <span class="st">"year &lt; ?"</span> :params (list 1985))
+(update (str tb-table) id {:title <span class="st">"…"</span>})</code></pre>
+
+    <h4>Orders — master and detail</h4>
+    <picture>
+        <source srcset="assets/forms/orders-dark.png" media="(prefers-color-scheme: dark)">
+        <img class="shot" src="assets/forms/orders-light.png"  alt="The Orders form: customers on the left, the picked customer's orders on the right with an amount column and a total" width="762" loading="lazy">
+      </picture>
+    <p>
+      <a href="examples/Orders.eeform" download>Orders.eeform</a> · Two tables tied by a field —
+      <code>orders.customer</code> holds a customer's id. Pick a customer and their orders appear,
+      each with its amount worked out and a total underneath. Add an order, change one in place,
+      delete one; the total follows.
+    </p>
+<pre><code>(query orders :where <span class="st">"customer = ?"</span> :params (list or-customer))</code></pre>
+
+    <h4>Agenda — the agenda, as a form</h4>
+    <picture>
+        <source srcset="assets/forms/agenda-dark.png" media="(prefers-color-scheme: dark)">
+        <img class="shot" src="assets/forms/agenda-light.png"  alt="The Agenda form: tabs for items, quick add, categories and rules, and views; a grid of items and an editor for the picked one" width="762" loading="lazy">
+      </picture>
+    <p>
+      <a href="examples/Agenda.eeform" download>Agenda.eeform</a> · The agenda from
+      <a href="#agenda">chapter 8</a>, and nearly every kind of control: a menu bar, tabs, a grid
+      that sorts and pages, a date box, a radio group, dropdowns, a checkbox, and a timer that
+      refreshes the list every minute.
+    </p>
+    <ul>
+      <li><strong>Items</strong> — what's due today, in the next seven days, overdue, or all of it,
+        or a search. Pick one to edit it — text, date, priority, category, notes — or double-click
+        to mark it done.</li>
+      <li><strong>Quick add</strong> — type it the way you'd say it; the box below shows what was
+        understood before you add it.</li>
+      <li><strong>Categories &amp; rules</strong> — the category tree; define one; add a rule that
+        files an item when its text contains a word; apply the rules now, or as items arrive.</li>
+      <li><strong>Views</strong> — saved filters: overdue, text containing a word, or in a
+        category.</li>
+    </ul>
+    <p>
+      An item read by id comes back whole with <code>item-&gt;dict</code> — notes included, which the
+      grid doesn't carry:
+    </p>
+<pre><code>(let (it (item-&gt;dict (item-get id)))
+  (ui-set <span class="st">"txtNotes"</span> :value (dict-get it <span class="st">"notes"</span>)))</code></pre>
+    <p>
+      <code>defcategory</code>, <code>defrule</code> and <code>defview</code> read their arguments
+      as written — they are meant to be typed — so a form writes the call out as text and
+      evaluates it, with <code>json-stringify</code> to put quotes around what was typed safely:
+    </p>
+<pre><code>(eval (parse (str <span class="st">"(defrule "</span> name
+                  <span class="st">" :when (str-contains (str-lower text) "</span> (json-stringify word) <span class="st">")"</span>
+                  <span class="st">" :assign "</span> (json-stringify category) <span class="st">")"</span>)))</code></pre>
   </div></div>
 </section>
 

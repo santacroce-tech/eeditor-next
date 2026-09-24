@@ -154,3 +154,7 @@ footer a { color: var(--muted); }
 /* anchored headings in long docs */
 .doc h2 { scroll-margin-top: 76px; padding-top: .4em; }
 .doc h3 { scroll-margin-top: 76px; }
+
+/* screenshots in the manual */
+.shot { display: block; max-width: 100%; height: auto; margin: 0 0 1.2em; border: 1px solid var(--line); border-radius: 8px; }
+.doc h4 { scroll-margin-top: 76px; margin-top: 2em; }
