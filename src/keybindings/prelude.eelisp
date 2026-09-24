@@ -16,5 +16,6 @@
 (defn ed-open (path) (list "open" path))                    ;; open a file in a tab
 (defn ed-new (path . text) (cons "new" (cons path text)))   ;; create the note if missing, then open it
 (defn ed-form (path) (list "form" path))                    ;; open a .eeform and run it
+(defn ed-export (. path) (cons "export" path))              ;; a form (the one in front, with no name) as one HTML file
 (defn ed-message (text) (list "message" text))              ;; toast
 (defn ed-nothing () (list))                                 ;; do nothing (useful in a cond)

@@ -29,6 +29,11 @@ export interface FormRunner {
   menus(): FrameMenu[];
   /** Draw the menu bar again — a form in a frame has started, and has menus to lend. */
   refreshMenu(): void;
+  /**
+   * Whether the form may close: every form in its frames is asked first, then its own `:on-close` —
+   * a message refuses, and is shown. What the stop button, `(ui-close)` and a frame's Close all ask.
+   */
+  mayClose(): Promise<boolean>;
 }
 
 /** A menu as a frame's host draws it: items that run something, or a separator (`-`). */
@@ -49,6 +54,8 @@ export interface FrameChild {
   focus(): void;
   /** Asked to close — as if it had called (ui-close): the Window menu's Close, a tab's ×. */
   close(): void;
+  /** Whether it may close — its (and its frames') `:on-close` asked. */
+  mayClose(): Promise<boolean>;
   destroy(): void;
   /** Its menus, merged into the main form's bar while it shows (screens and tabs). */
   menus(): FrameMenu[];
@@ -154,7 +161,7 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
   }
   const stop = el("button", "formrun-stop", opts.windowed ? "✕" : "■ stop");
   stop.title = opts.windowed ? "Close the form" : "Stop the form and go back to the designer";
-  stop.addEventListener("click", () => opts.onClose());
+  stop.addEventListener("click", () => void closeIfAllowed());
   buttons.append(stop);
   const menuBar = el("div", "formrun-menubar");
   const canvas = el("div", "formrun-canvas");
@@ -341,6 +348,42 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
     });
   }
 
+  /**
+   * The forms in the frames first — each can refuse — then this form's own `:on-close`, run through
+   * the event queue like any handler, so it sees the form as it is after everything before it.
+   */
+  async function mayClose(): Promise<boolean> {
+    for (const fr of frames.values()) {
+      for (const ch of [...fr.children]) {
+        if (!(await ch.mayClose())) {
+          show(fr, ch, true);
+          return false;
+        }
+      }
+    }
+    const handler = current.onClose;
+    if (!handler) return true;
+    let answer: string | null = null;
+    const job = queue.then(async () => {
+      try {
+        answer = await opts.check(handler, state());
+      } catch (e) {
+        opts.onError(`${handler}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    });
+    queue = job.catch(() => {});
+    await job;
+    if (answer) {
+      opts.onMessage(answer);
+      return false;
+    }
+    return true;
+  }
+
+  async function closeIfAllowed(): Promise<void> {
+    if (await mayClose()) opts.onClose();
+  }
+
   /** Every form in every frame closes with this one. */
   function dropFrames(): void {
     for (const fr of frames.values()) for (const ch of [...fr.children]) ch.destroy();
@@ -479,7 +522,7 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
       case "focus":
         return live.get(ch.control)?.focus();
       case "close":
-        return opts.onClose();
+        return void closeIfAllowed();
       case "open":
         return opts.onOpen(ch.path, { into: ch.into, copy: ch.copy });
       case "public":
@@ -1030,6 +1073,7 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
     publicChanged: (name) => void fire(current.onPublic, undefined, { $changed: name }),
     hasFrame: (name) => frames.has(name),
     refreshMenu: () => drawMenu(),
+    mayClose,
     menus: () =>
       current.menu.map((m) => ({
         title: m.title,

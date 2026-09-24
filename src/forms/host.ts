@@ -129,6 +129,8 @@ export function createFormHost(o: FormHostOptions): FormHost {
       host.unmount(id.form);
       runner.destroy();
     };
+    /** The Window menu's Close, a tab's ×: asked like (ui-close) — the form may refuse. */
+    const askToClose = () => void runner.mayClose().then((ok) => ok && close());
     const runner: FormRunner = createFormRunner({ ...wire(id), ...o.runnerOptions(p), onClose: close, windowed: true });
     running.set(id.form, { runner, id });
     host.mount(frame, {
@@ -138,7 +140,8 @@ export function createFormHost(o: FormHostOptions): FormHost {
       el: runner.el,
       handle: runner.handle,
       focus: () => runner.focus(),
-      close,
+      close: askToClose,
+      mayClose: () => runner.mayClose(),
       destroy: () => runner.destroy(),
       menus: () => runner.menus(),
     });

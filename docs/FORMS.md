@@ -104,7 +104,10 @@ file is the Tab order when the form runs (the *Order* buttons in the properties 
 **Events**: `:on-click` (button), `:on-change` (anything with a value — a
 textbox when editing ends, a checkbox, a radio group, a dropdown, a date, a listbox or grid when the
 selection moves), `:on-dblclick` (a listbox or grid row), `:on-validate` (a button), `:on-tick` (a
-timer), `:on-load` (the form), `:on-public` (the form — another form of its main wrote a public variable).
+timer), `:on-load` (the form), `:on-public` (the form — another form of its main wrote a public variable),
+`:on-close` (the form — asked before it closes, by its stop/✕ button, `(ui-close)`, a frame's Close or ×,
+or the main form holding it closing: a message refuses and is shown, nil lets it go; the forms in a
+form's frames are asked before the form itself).
 
 **The handler's world** (`src/forms/prelude.eelisp`, loaded once before the first event):
 
@@ -200,8 +203,13 @@ locals go (`ui-forget`). An undeclared name gives a message naming it, and nil. 
 
 ## Export as HTML
 
-Right-click a form in the tree → **Export as HTML…** (or the `export-html` command on the open form)
-writes `Name.html` beside it — `Name-1.html` if that's taken; nothing is overwritten. **Exported from
+**⇪ export** in a form tab's head (or right-click a form in the tree → **Export as HTML…**, or the
+`export-html` command) opens the export panel: the forms going in (the main one first), the images,
+the size, and where it goes — *replace the last export* (the default when `Name.html` beside the form
+is an earlier export) or *a new file* (`Name-1.html`). A file that isn't an earlier export — a page
+of your own called `Name.html` — is never offered for replacing. `(ed-export "examples/Office")` —
+from the REPL or a keybinding; `(ed-export)` is the form in front — exports straight away with the
+panel's defaults. The toast offers *Reveal in Finder* where the app can reveal files. **Exported from
 a main form, that is the whole app**: every form reached from it goes in the same file — any string
 in a form's code that names a form (`(ui-open "Books" …)`, a list of screens, `(office-open
 "Orders")`), found beside it first as `ui-open` finds it, and the same again in those forms
@@ -218,6 +226,10 @@ data…** loads one back — how data moves between browsers or people.
   public variables and merged menus work as in the editor — both run forms through
   `forms/host.ts`. `Office.html` (about 1.5 MB with its five screens) runs from disk, offline.
 - What doesn't go in yet: a sheet control's `.eesheet`.
+- **Back again**: right-click an exported page → **Import forms from this page…** unpacks its app
+  into a new folder beside it (`Office forms`), each form in its place relative to the main one, and
+  opens the main form — for a page that arrived without its `.eeform` files (`readExportedApp`,
+  `unpackPlan` in `core/export.ts`). Nothing existing is written over.
 - From the command line, without the editor: `npm run export-app -- path/Main.eeform [--root folder]
   [-o out.html]` (`scripts/export-app.ts` — the same `collectApp`/`exportAppHtml`; names are matched
   case-exactly, since macOS and Windows file systems aren't).

@@ -141,3 +141,49 @@ export async function collectApp(
 export function isExportedPage(text: string): boolean {
   return /^\s*<!doctype html>\s*<html[^>]*>\s*<!-- made with EEditor/i.test(text.slice(0, 200));
 }
+
+// ── back again: an exported page's forms, as files ─────────────────────
+
+/**
+ * The app an exported page carries — or null for any other page. (A page exported before whole apps
+ * carried one form as `application/x-eeform+json`; that reads as an app of one.)
+ */
+export function readExportedApp(html: string): AppBundle | null {
+  const script = (type: string): string | null => {
+    const at = html.indexOf(`<script type="${type}">`);
+    if (at < 0) return null;
+    const from = at + `<script type="${type}">`.length;
+    const to = html.indexOf("</script>", from);
+    return to < 0 ? null : html.slice(from, to);
+  };
+  try {
+    const app = script("application/x-eeform-app+json");
+    if (app) {
+      const b = JSON.parse(app) as AppBundle;
+      if (typeof b.main === "string" && b.forms && typeof b.forms === "object") return { main: b.main, forms: b.forms, assets: b.assets ?? {} };
+    }
+    const one = script("application/x-eeform+json");
+    if (one) return { main: "form" + FORM_EXT, forms: { ["form" + FORM_EXT]: JSON.parse(one) as string }, assets: {} };
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+/**
+ * Where an app's files go when it is unpacked into the folder `into`: each keeps its place relative
+ * to the main form, so the names its forms use still find each other. A file that lived outside the
+ * main form's folder lands at the top of `into`, by its name.
+ */
+export function unpackPlan(b: AppBundle, into: string): { main: string; forms: [string, string][]; images: [string, string][] } {
+  const base = parentDir(b.main);
+  const place = (p: string): string => {
+    const rel = base && p.startsWith(base + "/") ? p.slice(base.length + 1) : base ? (p.split("/").pop() ?? p) : p;
+    return joinPath(into, rel);
+  };
+  return {
+    main: place(b.main),
+    forms: Object.entries(b.forms).map(([p, src]) => [place(p), src]),
+    images: Object.entries(b.assets).map(([p, url]) => [place(p), url]),
+  };
+}

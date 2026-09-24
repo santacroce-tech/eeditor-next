@@ -1,7 +1,7 @@
 // Export as HTML: a form becomes one file that runs on its own — opened from disk, with the network
 // off. Needs the runtime template: `npm run engine:wasm && npm run runtime:template`.
 
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 import { UI_WORKSPACE } from "../../playwright.config.mjs";
@@ -11,10 +11,17 @@ test.skip(!existsSync("public/runtime/eeform-runtime.html"), "no runtime templat
 
 const ctl = (page, name) => page.locator(`.formrun-ctl[data-name=${name}]`);
 
-async function exportFromTree(page, name, as = name) {
+const MOD = process.platform === "darwin" ? "Meta" : "Control";
+
+/** Export from the tree: the panel opens; `pick` chooses "a new file" over replacing the last one. */
+async function exportFromTree(page, name, as = name, pick) {
   await page.goto("/");
   await page.locator(".tree-file", { hasText: `${name}.eeform` }).click({ button: "right" });
   await page.locator(".ctx-menu .ctx-item", { hasText: "Export as HTML…" }).click();
+  const panel = page.locator(".export-panel");
+  await expect(panel).toBeVisible();
+  if (pick) await panel.locator("label", { hasText: pick }).click();
+  await panel.locator(".dlg-btn", { hasText: "Export" }).click();
   await expect(page.locator(".toast").last()).toContainText(`Exported ${as}.html`);
   const file = resolve(UI_WORKSPACE, "examples", `${as}.html`);
   expect(existsSync(file)).toBe(true);
@@ -55,8 +62,50 @@ test("Books exported from the tree runs from disk, offline, and keeps what it's 
   await ctx.close();
 });
 
-test("exporting again makes a new file rather than writing over the first", async ({ page }) => {
-  await exportFromTree(page, "Books", "Books-1"); // Books.html is taken by the test before
+test("exporting again offers to replace the last export, or to make a new file", async ({ page }) => {
+  // Books.html is the export from the test before: replacing it is the panel's first answer
+  const before = statSync(resolve(UI_WORKSPACE, "examples", "Books.html")).mtimeMs;
+  await exportFromTree(page, "Books", "Books");
+  expect(statSync(resolve(UI_WORKSPACE, "examples", "Books.html")).mtimeMs).toBeGreaterThan(before);
+  // …or a new file beside it
+  await exportFromTree(page, "Books", "Books-1", "a new file");
+});
+
+test("a page of your own with the export's name is never replaced", async ({ page }) => {
+  writeFileSync(resolve(UI_WORKSPACE, "examples", "Orders.html"), "<!doctype html><title>my own page</title>\n");
+  await page.goto("/");
+  await page.locator(".tree-file", { hasText: "Orders.eeform" }).click({ button: "right" });
+  await page.locator(".ctx-menu .ctx-item", { hasText: "Export as HTML…" }).click();
+  const panel = page.locator(".export-panel");
+  await expect(panel.locator("input[type=radio]")).toHaveCount(0); // nothing offered to replace
+  await expect(panel).toContainText("examples/Orders-1.html");
+  await panel.locator(".dlg-btn", { hasText: "Export" }).click();
+  await expect(page.locator(".toast").last()).toContainText("Exported Orders-1.html");
+  expect(readFileSync(resolve(UI_WORKSPACE, "examples", "Orders.html"), "utf8")).toContain("my own page");
+});
+
+test("the ⇪ export button shows what goes in; (ed-export …) exports without asking", async ({ page }) => {
+  await page.goto("/");
+  await page.locator(".tree-file", { hasText: "Office.eeform" }).click();
+  await page.waitForSelector(".fd-canvas");
+  await page.locator(".form-modes .form-export").click();
+  const panel = page.locator(".export-panel");
+  await expect(panel.locator(".main-form")).toHaveText("Office (main)");
+  for (const f of ["Books", "Orders", "Tables", "Agenda", "Functions"]) await expect(panel).toContainText(f);
+  await expect(panel).toContainText(/about 1\.\d MB/);
+  await page.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0);
+  expect(existsSync(resolve(UI_WORKSPACE, "examples", "Office.html"))).toBe(false); // cancelled: nothing written
+
+  await page.locator(".repl-input").fill('(ed-export "examples/Tables")');
+  await page.locator(".repl-input").press(`${MOD}+Enter`);
+  await expect(page.locator(".toast").last()).toContainText("Exported Tables.html");
+  await expect(panel).toHaveCount(0);
+  expect(existsSync(resolve(UI_WORKSPACE, "examples", "Tables.html"))).toBe(true);
+  // with no name: the form in front
+  await page.locator(".repl-input").fill("(ed-export)");
+  await page.locator(".repl-input").press(`${MOD}+Enter`);
+  await expect(page.locator(".toast").last()).toContainText("Exported Office.html with 5 more forms");
 });
 
 test("the Functions browser runs exported too — the whole language is in the file", async ({ page, browser }) => {
@@ -75,7 +124,7 @@ test("the Functions browser runs exported too — the whole language is in the f
 
 test("Office exports as a whole app: every screen inside one file, run from disk, offline", async ({ page, browser }) => {
   const file = await exportFromTree(page, "Office");
-  await expect(page.locator(".toast").last()).toContainText("with 5 more forms (");
+  await expect(page.locator(".toast").last()).toContainText("with 5 more forms");
 
   const ctx = await browser.newContext();
   await ctx.setOffline(true);
@@ -104,3 +153,36 @@ test("Office exports as a whole app: every screen inside one file, run from disk
   expect(outside).toEqual([]);
   await ctx.close();
 });
+
+test("an exported page unpacks back into forms that edit and run", async ({ page }) => {
+  // The unpacked copies would be a second Books.eeform in the tree for the specs after this one.
+  const cleanUp = () => rmSync(resolve(UI_WORKSPACE, "examples", "Office forms"), { recursive: true, force: true });
+  try {
+    await unpackAndRun(page);
+  } finally {
+    cleanUp();
+  }
+});
+
+async function unpackAndRun(page) {
+  await page.goto("/");
+  await page.locator(".tree-file", { hasText: /^Office\.html$/ }).click({ button: "right" });
+  await page.locator(".ctx-menu .ctx-item", { hasText: "Import forms from this page…" }).click();
+  await expect(page.locator(".toast").last()).toContainText("Unpacked 6 forms into Office forms");
+  for (const f of ["Office", "Books", "Orders", "Tables", "Agenda", "Functions"]) {
+    expect(existsSync(resolve(UI_WORKSPACE, "examples", "Office forms", `${f}.eeform`))).toBe(true);
+  }
+  // the main form opened; run it from its new folder — its screens are found beside it there
+  await expect(page.locator(".etab.active .etab-label")).toHaveText("Office.eeform");
+  await page.locator(".form-modes .head-btn", { hasText: "run" }).click();
+  const host = page.locator(".formrun-host");
+  await ctl(host, "lstNav").locator(".formrun-item", { hasText: "Books" }).click();
+  await expect(ctl(host, "frmMain").locator(".formrun-ctl[data-name=lblPos]")).toHaveText(/^(No records|Record \d+ of \d+)$/);
+
+  // a page that isn't an export says so
+  writeFileSync(resolve(UI_WORKSPACE, "examples", "Plain.html"), "<!doctype html><p>hello</p>\n");
+  await page.goto("/");
+  await page.locator(".tree-file", { hasText: "Plain.html" }).click({ button: "right" });
+  await page.locator(".ctx-menu .ctx-item", { hasText: "Import forms from this page…" }).click();
+  await expect(page.locator(".toast").last()).toContainText("isn't a page exported from EEditor");
+}

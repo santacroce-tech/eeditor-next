@@ -251,17 +251,33 @@ export function infoModal(title: string, value: string): Promise<void> {
   });
 }
 
-/** Brief non-blocking notification (bottom-center). Auto-dismisses. */
-export function toast(message: string): void {
+/**
+ * Brief non-blocking notification (bottom-center). Auto-dismisses. An `action` adds a button to it —
+ * "Reveal in Finder" after an export — and keeps it up long enough to be pressed.
+ */
+export function toast(message: string, action?: { label: string; run: () => void }): void {
   const t = document.createElement("div");
   t.className = "toast";
   t.textContent = message;
+  if (action) {
+    const b = document.createElement("button");
+    b.className = "toast-action";
+    b.textContent = action.label;
+    b.addEventListener("click", () => {
+      action.run();
+      t.remove();
+    });
+    t.append(" ", b);
+  }
   document.body.appendChild(t);
   setTimeout(() => t.classList.add("show"), 10);
-  setTimeout(() => {
-    t.classList.remove("show");
-    setTimeout(() => t.remove(), 300);
-  }, 2600);
+  setTimeout(
+    () => {
+      t.classList.remove("show");
+      setTimeout(() => t.remove(), 300);
+    },
+    action ? 6000 : 2600,
+  );
 }
 
 export interface MenuItem {

@@ -32,7 +32,8 @@ import { createOpenWith } from "./ui/openwith";
 import { exportPdf } from "./ui/pdf";
 import { dataUrl, parseMarkdown, renderMedia } from "./ui/markdown";
 import { imageMime, resolveNoteRelative } from "./core/mdmedia";
-import { FORM_SLOT, collectApp, exportAppHtml, isExportedPage } from "./core/export";
+import { FORM_SLOT, collectApp, exportAppHtml, isExportedPage, readExportedApp, unpackPlan } from "./core/export";
+import { exportPanel } from "./ui/exportdialog";
 import { createImages } from "./ui/images";
 import { promptModal, confirmModal, infoModal, showContextMenu, toast, type MenuItem } from "./ui/dialogs";
 import { resolveWikiLink } from "./core/fuzzy";
@@ -206,6 +207,16 @@ function main(): void {
     modeButtons.set(mode, b);
     formModes.append(b);
   }
+  // Not a mode: the form as one HTML file, with the export panel first.
+  const exportBtn = document.createElement("button");
+  exportBtn.className = "head-btn form-export";
+  exportBtn.textContent = "⇪ export";
+  exportBtn.title = "Export this form — and the forms it opens — as one HTML file that runs anywhere, offline";
+  exportBtn.addEventListener("click", () => {
+    const t = activeForm();
+    if (t) void exportFormAsHtml(t.path, true);
+  });
+  formModes.append(exportBtn);
   headRight.append(copyInBtn, themeBtn, imageBtn, formModes, previewBtn, pdfBtn, keysBtn, replBtn);
   editorPane.head.append(nameEl, headRight);
 
@@ -976,9 +987,14 @@ function main(): void {
    * A form — and every form it opens, and theirs — as one HTML file beside it, that runs on its own in
    * any browser, offline: the runtime template (the runtime page and the WebAssembly engine, built by
    * `npm run runtime:template`) with the app put in (core/export.ts). Exported from a main form, that
-   * is the whole app. A new name each time, never over an existing file.
+   * is the whole app.
+   *
+   * With `ask` (the ⇪ export button, the tree menu) the export panel shows what goes in and where,
+   * first. Without (`(ed-export …)` from the REPL or a keybinding) it writes straight away: over the
+   * last export if there is one, else a new file. Only a file that *is* an earlier export is ever
+   * replaced — a page of someone's own called Office.html gets a new name instead.
    */
-  async function exportFormAsHtml(path: string): Promise<void> {
+  async function exportFormAsHtml(path: string, ask: boolean): Promise<void> {
     try {
       const read = async (p: string) => {
         const tab = tabs.find((t) => t.path === p);
@@ -999,18 +1015,81 @@ function main(): void {
         image: async (p) => dataUrl(await ws.readImage(p), imageMime(p)),
       });
       const html = exportAppHtml({ template, bundle, title: r.spec.title, app: basename(path) });
-      const name = uniqueName(basename(path).replace(/\.eeform$/i, "") + ".html", siblings(path));
-      await ws.write(joinPath(parentDir(path), name), html);
+
+      const stem = basename(path).replace(/\.eeform$/i, "");
+      const beside = (n: string) => joinPath(parentDir(path), n);
+      const usual = beside(stem + ".html");
+      const last = known.has(usual) && isExportedPage(await ws.read(usual).catch(() => "")) ? usual : null;
+      const fresh = beside(uniqueName(stem + ".html", siblings(path)));
+      let target = last ?? fresh;
+      if (ask) {
+        const choice = await exportPanel({
+          title: r.spec.title,
+          forms: Object.keys(bundle.forms),
+          images: Object.keys(bundle.assets),
+          missing,
+          bytes: html.length,
+          last,
+          fresh,
+        });
+        if (!choice) return;
+        target = choice.target;
+      }
+      await ws.write(target, html);
       await sidebar.refresh();
-      const count = Object.keys(bundle.forms).length;
-      const what = count > 1 ? ` with ${count - 1} more form${count > 2 ? "s" : ""} (${Object.keys(bundle.forms).filter((p) => p !== path).map(basename).join(", ")})` : "";
+      const others = Object.keys(bundle.forms).length - 1;
+      const what = others > 0 ? ` with ${others} more form${others > 1 ? "s" : ""}` : "";
+      const gaps = missing.length ? ` — without ${missing.join(", ")}, which couldn't be read` : "";
       toast(
-        missing.length
-          ? `Exported ${name}${what} — without ${missing.join(", ")}, which couldn't be read`
-          : `Exported ${name}${what} — open it in a browser; it runs on its own`,
+        `Exported ${basename(target)}${what}${gaps}`,
+        ws.canReveal() ? { label: REVEAL_LABEL, run: () => void revealPath(target) } : undefined,
       );
     } catch (e) {
       toast(`Could not export: ${String(e instanceof Error ? e.message : e)}`);
+    }
+  }
+
+  /** The form an `(ed-export …)` names — `.eeform` optional — or, with no name, the form in front. */
+  function exportFromCommand(name: string): Promise<void> {
+    if (!name) {
+      const t = activeForm();
+      if (!t) {
+        toast("Open a form to export it, or name one: (ed-export \"examples/Office\")");
+        return Promise.resolve();
+      }
+      return exportFormAsHtml(t.path, false);
+    }
+    return exportFormAsHtml(isFormPath(name) ? name : name + FORM_EXT, false);
+  }
+
+  /**
+   * An exported page back into forms you can edit: its app unpacked into a new folder beside it
+   * (`Office forms`), each file in its place relative to the main form, then the main form opened.
+   * For a page someone sent without its .eeform files. Nothing existing is written over.
+   */
+  async function importAppFromHtml(path: string): Promise<void> {
+    try {
+      const bundle = readExportedApp(await ws.read(path));
+      if (!bundle) return toast(`${basename(path)} isn't a page exported from EEditor`);
+      const stem = basename(path).replace(/\.html?$/i, "");
+      const folder = joinPath(parentDir(path), uniqueName(`${stem} forms`, siblings(path)));
+      const plan = unpackPlan(bundle, folder);
+      const dirs = new Set<string>([folder]);
+      for (const [p] of [...plan.forms, ...plan.images]) {
+        for (let d = parentDir(p); d.length > folder.length; d = parentDir(d)) dirs.add(d);
+      }
+      for (const d of [...dirs].sort((a, b) => a.length - b.length)) await ws.create(d, true);
+      for (const [p, src] of plan.forms) await ws.write(p, src);
+      for (const [p, url] of plan.images) {
+        const bytes = Uint8Array.from(atob(url.slice(url.indexOf(",") + 1)), (c) => c.charCodeAt(0));
+        await ws.saveAsset(parentDir(p), basename(p), bytes);
+      }
+      await sidebar.refresh();
+      await openFile(plan.main);
+      const n = plan.forms.length;
+      toast(`Unpacked ${n} form${n > 1 ? "s" : ""}${plan.images.length ? ` and ${plan.images.length} image${plan.images.length > 1 ? "s" : ""}` : ""} into ${basename(folder)}`);
+    } catch (e) {
+      toast(`Could not import: ${String(e instanceof Error ? e.message : e)}`);
     }
   }
 
@@ -1088,7 +1167,10 @@ function main(): void {
       items.push({ label: "Export as CSV", action: () => void exportSheetCsv(node.path) });
     }
     if (isFormPath(node.path)) {
-      items.push({ label: "Export as HTML…", action: () => void exportFormAsHtml(node.path) });
+      items.push({ label: "Export as HTML…", action: () => void exportFormAsHtml(node.path, true) });
+    }
+    if (/\.html?$/i.test(node.path)) {
+      items.push({ label: "Import forms from this page…", action: () => void importAppFromHtml(node.path) });
     }
     if (/\.csv$/i.test(node.path)) {
       items.push({ label: "Import as sheet", action: () => void importCsvAsSheet(node.path) });
@@ -1406,7 +1488,7 @@ function main(): void {
     "form-run": () => void setFormMode("run"),
     "export-html": () => {
       const t = activeForm();
-      if (t) void exportFormAsHtml(t.path);
+      if (t) void exportFormAsHtml(t.path, true);
       else toast("Open a form to export it");
     },
     "open-keys": () => void keys.openConfig(),
@@ -1553,6 +1635,7 @@ function main(): void {
     openFile: (p) => openFile(p),
     createFile: (p, content) => openOrCreate(p, content),
     runForm: (p) => runForm(p),
+    exportForm: (p) => exportFromCommand(p),
     note: (t) => repl.note(t),
     focus: focusDocument,
   });
