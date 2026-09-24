@@ -33,10 +33,13 @@ const PICKER = `(form "Picker" :size (300 200)
 (defn pick-done (f) (ui-close))
 `;
 
-const NOTES = `(form "Notes" :size (300 160)
+const NOTES = `(form "Notes" :size (300 160) :on-close notes-may-close
   (textbox txtNote :at (16 16) :size (260 28))
   (button btnClose :text "Close" :at (16 56) :size (120 30) :on-click notes-close))
 (defn notes-close (f) (ui-close))
+;; Asked before closing: a message refuses.
+(defn notes-may-close (f)
+  (if (= (ui-get f "txtNote") "keep") "Notes has something unsaved" nil))
 `;
 
 test.beforeAll(() => {
@@ -147,4 +150,27 @@ test("windows: every form shows, each in a window of its own inside the frame", 
   await pick(host, "Notes");
   await expect(inFrame(host).filter({ visible: true })).toHaveCount(2);
   await expect(inFrame(host).locator(".formrun-title").first()).toBeVisible();
+});
+
+test(":on-close can refuse: the form stays, and so does the main form that holds it", async ({ page }) => {
+  const host = await runMain(page, "Main");
+  await pick(host, "Notes");
+  await frame(host).locator(".formrun-ctl[data-name=txtNote] input").fill("keep");
+
+  // its own Close button — (ui-close) — is refused
+  await frame(host).locator(".formrun-ctl[data-name=btnClose] button").click();
+  await expect(page.locator(".toast").last()).toHaveText("Notes has something unsaved");
+  await expect(inFrame(host)).toHaveCount(1);
+  // …so is the Window menu's Close
+  await windowMenu(page, host, "Close Notes");
+  await expect(inFrame(host)).toHaveCount(1);
+  // …and stopping the main form: Notes is asked first, and says no
+  await host.locator(".formrun-stop").first().click();
+  await expect(inFrame(host)).toHaveCount(1);
+  await expect(page.locator(".formrun-host .formrun-ctl[data-name=frmBody]")).toBeVisible();
+
+  // with nothing to keep, it goes
+  await frame(host).locator(".formrun-ctl[data-name=txtNote] input").fill("");
+  await frame(host).locator(".formrun-ctl[data-name=btnClose] button").click();
+  await expect(inFrame(host)).toHaveCount(0);
 });

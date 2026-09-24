@@ -104,7 +104,10 @@ file is the Tab order when the form runs (the *Order* buttons in the properties 
 **Events**: `:on-click` (button), `:on-change` (anything with a value — a
 textbox when editing ends, a checkbox, a radio group, a dropdown, a date, a listbox or grid when the
 selection moves), `:on-dblclick` (a listbox or grid row), `:on-validate` (a button), `:on-tick` (a
-timer), `:on-load` (the form), `:on-public` (the form — another form of its main wrote a public variable).
+timer), `:on-load` (the form), `:on-public` (the form — another form of its main wrote a public variable),
+`:on-close` (the form — asked before it closes, by its stop/✕ button, `(ui-close)`, a frame's Close or ×,
+or the main form holding it closing: a message refuses and is shown, nil lets it go; the forms in a
+form's frames are asked before the form itself).
 
 **The handler's world** (`src/forms/prelude.eelisp`, loaded once before the first event):
 
