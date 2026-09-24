@@ -41,14 +41,15 @@ cp workspace/examples/*.eeform site/examples/
 ## Deploying
 
 ```bash
-rsync -avz --delete --delete-excluded --exclude README.md -e "ssh -i ~/.ssh/id_epitetus" \
-  site/ root@91.98.47.97:/var/www/eeditor.app/
+npm run deploy:site -- --dry-run   # what would change
+npm run deploy:site                # deploy
 ```
 
-`--delete` removes files on the server that are no longer here. `--exclude README.md` keeps this
-file — which names the server and its paths — off the public site, and `--delete-excluded` takes
-away a copy an older deploy left there. Drop it if the server holds anything
-this folder doesn't, such as the `downloads/` directory below.
+`scripts/deploy-site.sh` mirrors `site/` onto the server (`rsync --delete`), leaving this README off
+it. Where it goes — the server, the user, the key, the folder — is in `.deploy.env` at the repo root,
+which git ignores: copy `.deploy.env.example` and fill it in. It deploys **`main` only**, clean and the
+same as GitHub's, because the deploy copies the working tree: a branch checked out for review must
+never go live by accident.
 
 ## Publishing installers
 
@@ -63,10 +64,9 @@ Two things must be true or every download link 404s:
 
 `../scripts/publish-downloads.sh v2.0.0` is still there if you ever want the files mirrored on this
 domain — it pulls a release, gives the assets clean names, writes `SHA256SUMS` and rsyncs them to
-`/var/www/eeditor.app/downloads/`. Nothing on the site depends on it today.
+a `downloads/` folder on the server (from `.deploy.env`). Nothing on the site depends on it today.
 
-## Deploying
+## Serving
 
-The server also hosts eelisp.app, roberto.santacroce.xyz and a dozen other vhosts; nginx serves this
-one from `/var/www/eeditor.app` with `try_files $uri $uri/ =404`, so plain `.html` files are all it
-needs. Backups of the previous site live in `/root/site-backups/` on the server.
+Plain files: the web server serves `site/` as it is (`try_files $uri $uri/ =404`), so `.html` files,
+images and the apps are all it needs.

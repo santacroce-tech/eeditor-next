@@ -21,3 +21,6 @@ public/engine/
 # …and the template an exported form is written from (npm run runtime:template)
 public/runtime/
 dist-runtime/
+
+# where the site deploys to — the server, its user and key — kept local (scripts/deploy-site.sh)
+.deploy.env

@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
 # Publish a release's installers to eeditor.app.
 #
-# The app repo is private, so GitHub's asset URLs need authentication and can't be linked from the
-# website. This pulls the assets down, gives them the clean names download.html expects, writes a
-# checksum file, and uploads the lot to the server.
+# The site links straight at GitHub's release assets (the repo is public), so this is only for
+# mirroring them on the site's own domain: it pulls the assets down, gives them clean names, writes a
+# checksum file, and uploads the lot to the server named in .deploy.env (see .deploy.env.example).
 #
 #   ./scripts/publish-downloads.sh v2.0.0
 #
-# Requires: gh (authenticated), rsync, ssh access to the web server.
+# Requires: gh (authenticated), rsync, ssh access to the web server, .deploy.env.
 
 set -euo pipefail
+cd "$(dirname "$0")/.."
+[ -f .deploy.env ] || { echo "no .deploy.env — copy .deploy.env.example to .deploy.env and fill it in" >&2; exit 1; }
+# shellcheck disable=SC1091
+source .deploy.env
 
 TAG="${1:-}"
 if [[ -z "$TAG" ]]; then
@@ -18,9 +22,9 @@ if [[ -z "$TAG" ]]; then
 fi
 
 REPO="santacroce-tech/eeditor-next"
-SERVER="root@91.98.47.97"
-SSH_KEY="$HOME/.ssh/id_epitetus"
-REMOTE_DIR="/var/www/eeditor.app/downloads"
+SERVER="${DEPLOY_HOST:?DEPLOY_HOST is missing from .deploy.env}"
+SSH_KEY="${DEPLOY_KEY/#\~/$HOME}"
+REMOTE_DIR="${DEPLOY_PATH:?DEPLOY_PATH is missing from .deploy.env}/downloads"
 VERSION="${TAG#v}"
 
 STAGE="$(mktemp -d)"
