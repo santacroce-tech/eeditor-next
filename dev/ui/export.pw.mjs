@@ -153,3 +153,26 @@ test("Office exports as a whole app: every screen inside one file, run from disk
   expect(outside).toEqual([]);
   await ctx.close();
 });
+
+test("an exported page unpacks back into forms that edit and run", async ({ page }) => {
+  await page.goto("/");
+  await page.locator(".tree-file", { hasText: /^Office\.html$/ }).click({ button: "right" });
+  await page.locator(".ctx-menu .ctx-item", { hasText: "Import forms from this page…" }).click();
+  await expect(page.locator(".toast").last()).toContainText("Unpacked 6 forms into Office forms");
+  for (const f of ["Office", "Books", "Orders", "Tables", "Agenda", "Functions"]) {
+    expect(existsSync(resolve(UI_WORKSPACE, "examples", "Office forms", `${f}.eeform`))).toBe(true);
+  }
+  // the main form opened; run it from its new folder — its screens are found beside it there
+  await expect(page.locator(".etab.active .etab-label")).toHaveText("Office.eeform");
+  await page.locator(".form-modes .head-btn", { hasText: "run" }).click();
+  const host = page.locator(".formrun-host");
+  await ctl(host, "lstNav").locator(".formrun-item", { hasText: "Books" }).click();
+  await expect(ctl(host, "frmMain").locator(".formrun-ctl[data-name=lblPos]")).toHaveText(/^(No records|Record \d+ of \d+)$/);
+
+  // a page that isn't an export says so
+  writeFileSync(resolve(UI_WORKSPACE, "examples", "Plain.html"), "<!doctype html><p>hello</p>\n");
+  await page.goto("/");
+  await page.locator(".tree-file", { hasText: "Plain.html" }).click({ button: "right" });
+  await page.locator(".ctx-menu .ctx-item", { hasText: "Import forms from this page…" }).click();
+  await expect(page.locator(".toast").last()).toContainText("isn't a page exported from EEditor");
+});
