@@ -18,6 +18,12 @@ export interface WasmEngineInstance {
   importDb(bytes: Uint8Array): void;
   /** Rows changed since the database was opened or imported. */
   changes(): number;
+  /** A sheet from its `.eesheet` file's bytes, open under `name`. */
+  importSheet?(name: string, bytes: Uint8Array): void;
+  /** An open sheet's bytes. */
+  exportSheet?(name: string): Uint8Array;
+  /** Every open sheet and its version, as JSON: `[["examples/Budget.eesheet", 7], …]`. */
+  sheetVersions?(): string;
 }
 
 /** Keeping the engine's data between visits: where, under what name, and how soon after a change. */
@@ -160,6 +166,26 @@ export class WasmEngine implements EngineClient {
         await persist.store.put(persist.key, bytes);
       });
     return this.writing;
+  }
+
+  /** A sheet from its file's bytes, open from now on under `name` (an exported app's sheets). */
+  async importSheet(name: string, bytes: Uint8Array): Promise<void> {
+    const e = await this.engine();
+    if (!e.importSheet) throw new Error("this engine can't open a sheet from bytes");
+    e.importSheet(name, bytes);
+  }
+
+  /** An open sheet's bytes. */
+  async exportSheet(name: string): Promise<Uint8Array> {
+    const e = await this.engine();
+    if (!e.exportSheet) throw new Error("this engine can't give a sheet's bytes");
+    return e.exportSheet(name);
+  }
+
+  /** Every open sheet's path and version — a version that moved is a sheet to keep again. */
+  async sheetVersions(): Promise<[string, number][]> {
+    const e = await this.engine();
+    return e.sheetVersions ? (JSON.parse(e.sheetVersions()) as [string, number][]) : [];
   }
 
   /** The database as the bytes of a SQLite file — *Save data…*. */

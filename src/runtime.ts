@@ -15,15 +15,18 @@
 
 import "./styles.css";
 import { FORM_EXT, isFormPath, type FormSpec } from "./core/form";
-import type { AppBundle } from "./core/export";
+import { sheetPath, type AppBundle } from "./core/export";
 import { resolveNoteRelative } from "./core/mdmedia";
+import type { EngineClient } from "./engine/client";
 import { createFormClient, type FormIdentity } from "./engine/form";
+import { createSheetClient } from "./engine/sheet";
 import { indexedDbStore } from "./engine/store";
 import { WasmEngine, defaultWasmUrls, loadWasmFrom, loadWasmFromText } from "./engine/wasm";
 import { createFormHost } from "./forms/host";
 import { toast } from "./ui/dialogs";
 import { createFormRunner, type FormRunner } from "./ui/formrun";
 import { createFormWindow, type FormWindow } from "./ui/formwindow";
+import { createSheetView } from "./ui/sheet";
 
 const app = document.getElementById("app") as HTMLElement;
 
@@ -47,6 +50,17 @@ interface Source {
   read(path: string): Promise<string>;
   exists(path: string): boolean;
   image(path: string): string | null;
+  /** A sheet's file as it came with the app — null when it didn't. */
+  sheet(path: string): Promise<Uint8Array | null>;
+  /** The sheets the app carries, to open before anything runs (a formula may read one). */
+  sheets: string[];
+}
+
+const fromBase64 = (b64: string): Uint8Array => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+function toBase64(bytes: Uint8Array): string {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
 }
 
 /** A JSON value carried in a <script> of the given type, or undefined when there's none. */
@@ -64,6 +78,8 @@ function fromBundle(b: AppBundle): Source {
     },
     exists: (p) => p in b.forms,
     image: (p) => b.assets[p] ?? null,
+    sheet: async (p) => (b.sheets?.[p] ? fromBase64(b.sheets[p]) : null),
+    sheets: Object.keys(b.sheets ?? {}),
   };
 }
 
@@ -85,6 +101,11 @@ function appSource(): Source | null {
     },
     exists: () => true,
     image: (p) => "/" + p,
+    sheet: async (p) => {
+      const res = await fetch("/" + p);
+      return res.ok ? new Uint8Array(await res.arrayBuffer()) : null;
+    },
+    sheets: [],
   };
 }
 
@@ -138,12 +159,30 @@ async function main(): Promise<void> {
   const windows = new Map<string, { runner: FormRunner; win: FormWindow }>();
 
   const note = (text: string) => console.log(text);
+  /** Every evaluation the forms and sheets make, followed by keeping any sheet it changed. */
+  let watched: EngineClient | null = null;
   const extras = (p: string) => ({
     imageUrl: async (s: string) => {
       const at = resolveNoteRelative(p, s);
       return at ? src.image(at) : null;
     },
-    sheetView: () => null,
+    // The real grid, over the page's engine — opened from what this browser kept, or the page.
+    sheetView: (file: string) => {
+      const path = sheetPath(p, file);
+      if (!path || !watched) return null;
+      const view = createSheetView({ client: createSheetClient(watched), path, onError: toast, onEditing: () => {} });
+      return {
+        el: view.el,
+        load: async () => {
+          if (!(await openSheet(path))) throw new Error(`${path} isn't part of this app`);
+          await view.load();
+        },
+        commit: () => view.commit(),
+        refreshIfChanged: () => view.refreshIfChanged(),
+        focus: () => view.focus(),
+        destroy: () => view.destroy(),
+      };
+    },
     onMessage: toast,
     onError: (m: string) => toast(m),
     note,
@@ -159,7 +198,49 @@ async function main(): Promise<void> {
   const title = /\(form\s+"((?:[^"\\]|\\.)*)"/.exec(mainText)?.[1] ?? "App";
   document.title = title;
   engine = await engineFor(`eeform:${document.body.dataset.app || title}`, keep);
-  const forms = createFormClient(engine);
+  const eng = engine;
+
+  // ── sheets: kept in the app's own database, so they last and Save data… carries them ──
+  const ev = async (code: string) => {
+    const r = await eng.evalSrc(code);
+    if (!r.ok) throw new Error(r.error);
+    return r.result;
+  };
+  await ev("(deftable _ui_sheets (path:string data:string))");
+  const kept = new Map<string, string>(
+    ((await ev("(map (fn (r) (list (field-get r :path) (field-get r :data))) (records (query _ui_sheets)))")) as [string, string][]) ?? [],
+  );
+  /** Open sheets, and the version each was at when last kept. */
+  const sheetAt = new Map<string, number>();
+  const openSheet = async (path: string): Promise<boolean> => {
+    if (sheetAt.has(path)) return true;
+    const bytes = kept.has(path) ? fromBase64(kept.get(path) as string) : await src.sheet(path);
+    if (!bytes) return false;
+    await eng.importSheet(path, bytes);
+    for (const [p, v] of await eng.sheetVersions()) if (p === path) sheetAt.set(p, v);
+    return true;
+  };
+  /** After any evaluation: a sheet whose version moved goes into _ui_sheets — a change to the database, which is then kept. */
+  const keepSheets = async (): Promise<void> => {
+    for (const [path, version] of await eng.sheetVersions()) {
+      if (!sheetAt.has(path) || sheetAt.get(path) === version) continue;
+      sheetAt.set(path, version);
+      const data = toBase64(await eng.exportSheet(path));
+      const p = JSON.stringify(path);
+      await ev(`(let (row (first (records (query _ui_sheets :where "path = ?" :params (list ${p})))))
+                  (if row (update _ui_sheets (record-id row) {:path ${p} :data "${data}"})
+                          (insert _ui_sheets {:path ${p} :data "${data}"})))`);
+    }
+  };
+  watched = {
+    evalSrc: async (code) => {
+      const r = await eng.evalSrc(code);
+      await keepSheets().catch((e) => note(`keeping a sheet: ${String(e)}`));
+      return r;
+    },
+  };
+  for (const s of src.sheets) await openSheet(s).catch((e) => toast(`${s}: ${e instanceof Error ? e.message : String(e)}`));
+  const forms = createFormClient(watched);
 
   const closeWindow = (p: string) => {
     const w = windows.get(p);
@@ -246,8 +327,8 @@ async function main(): Promise<void> {
     if (!file || !engine) return;
     try {
       await engine.importData(new Uint8Array(await file.arrayBuffer()));
-      toast(`Opened ${file.name}`);
-      await run();
+      // Start the page over: the opened data's sheets, as well as its tables, are what runs now.
+      location.reload();
     } catch (e) {
       toast(`${file.name} isn't data this app can open — ${e instanceof Error ? e.message : String(e)}`);
     }

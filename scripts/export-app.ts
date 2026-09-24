@@ -71,6 +71,7 @@ const { bundle, missing } = await collectApp(main, {
   read: async (p) => readFileSync(at(p), "utf8"),
   exists: exactly,
   image: async (p) => `data:${MIME[extname(p).toLowerCase()] ?? "application/octet-stream"};base64,${readFileSync(at(p)).toString("base64")}`,
+  sheet: async (p) => readFileSync(at(p)).toString("base64"),
 });
 
 const html = exportAppHtml({
@@ -85,4 +86,5 @@ writeFileSync(out, html);
 console.log(`${relative(process.cwd(), out)}  ${(html.length / 1024).toFixed(0)} KB`);
 for (const p of Object.keys(bundle.forms)) console.log(`  ${p === main ? "main " : "      "}${p}`);
 for (const p of Object.keys(bundle.assets)) console.log(`  image ${p}`);
+for (const p of Object.keys(bundle.sheets ?? {})) console.log(`  sheet ${p}`);
 if (missing.length) console.warn(`  couldn't read: ${missing.join(", ")}`);

@@ -225,7 +225,13 @@ data…** loads one back — how data moves between browsers or people.
 - The page runs the main form filling the window; its frames, windows over the page, `ui-open`,
   public variables and merged menus work as in the editor — both run forms through
   `forms/host.ts`. `Office.html` (about 1.5 MB with its five screens) runs from disk, offline.
-- What doesn't go in yet: a sheet control's `.eesheet`.
+- **Sheets go in too**: every sheet control's `.eesheet` (read through `(sheet-bytes …)`, carried
+  as base64). The page opens each in its engine (`importSheet`), from what the browser kept or else
+  from the page; after every evaluation a sheet whose version moved is written into a `_ui_sheets`
+  table of the app's own database — so it lasts with the rest, and **Save data… / Open data… carry
+  the sheets too** (Open data… reloads the page, so the opened file's sheets take over). Import
+  unpacks a carried sheet back into a file with `(sheet-from-bytes …)`, never over an existing one.
+  Test: `dev/ui/sheetapp.pw.mjs` (needs eelisp-rs#14).
 - **Back again**: right-click an exported page → **Import forms from this page…** unpacks its app
   into a new folder beside it (`Office forms`), each form in its place relative to the main one, and
   opens the main form — for a page that arrived without its `.eeform` files (`readExportedApp`,
