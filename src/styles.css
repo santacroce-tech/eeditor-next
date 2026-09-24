@@ -725,6 +725,8 @@ body.runtime #app { min-height: 100vh; display: flex; flex-direction: column; }
 .formrun-framebody > .formrun.in-frame .formrun-stage { padding: 0; overflow: visible; }
 .formrun-framebody > .formrun.in-frame .formrun-window { border: 0; border-radius: 0; box-shadow: none; }
 .formrun-ctl.frame:not(.mode-windows) .formrun.in-frame .formrun-title { display: none; }
+/* …and its menus are on the main form's bar, merged, while it shows */
+.formrun-ctl.frame:not(.mode-windows) .formrun.in-frame .formrun-menubar { display: none !important; }
 .formrun-ctl.frame.mode-windows .formrun.in-frame { inset: auto; overflow: visible; }
 .formrun-ctl.frame.mode-windows .formrun.in-frame .formrun-window { border: 1px solid var(--border); border-radius: 6px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, .18); }

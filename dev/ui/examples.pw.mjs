@@ -162,3 +162,28 @@ test("Agenda adds, edits, files and completes items across its tabs", async ({ p
   await ctl(form, "btnDefView").locator("button").click();
   await expect(ctl(form, "lstViews")).toContainText("homey");
 });
+
+test("Office runs the others in its frame, lends their menus to its bar, and reopens the last screen", async ({ page }) => {
+  const form = await run(page, "Office");
+  const bar = form.locator(".formrun-menubar").first();
+  const frame = ctl(form, "frmMain");
+  await ctl(form, "lstNav").locator(".formrun-item", { hasText: "Books" }).click();
+  await expect(frame.locator(".formrun.in-frame")).toHaveCount(1);
+  await expect(ctl(form, "lblShowing")).toHaveText("showing Books");
+  // Books' own menus are on Office's bar now, between Office's and Window
+  await expect(bar.locator(".formrun-menu")).toHaveText(["Office", "Record", "Go", "Window"]);
+  await bar.locator(".formrun-menu", { hasText: "Go" }).click();
+  await page.locator(".formrun-menulist .formrun-menuitem", { hasText: "Last" }).click();
+  await expect(frame.locator(".formrun-ctl[data-name=lblPos]")).toHaveText(/^Record (\d+) of \1$/);
+
+  await ctl(form, "lstNav").locator(".formrun-item", { hasText: "Agenda" }).click();
+  await expect(bar.locator(".formrun-menu")).toHaveText(["Office", "Agenda", "Rules", "Help", "Window"]);
+  await bar.locator(".formrun-menu", { hasText: "Window" }).click();
+  await expect(page.locator(".formrun-menulist .formrun-menuitem").first()).toContainText("Books");
+  await page.keyboard.press("Escape");
+
+  // run it again: it opens where it was left
+  await form.locator(".formrun-stop").first().click();
+  await page.locator(".form-modes .head-btn", { hasText: "run" }).click();
+  await expect(ctl(page.locator(".formrun-host"), "lblShowing")).toHaveText("showing Agenda");
+});

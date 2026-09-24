@@ -25,6 +25,16 @@ export interface FormRunner {
   bringForward(frame: string, key: string): boolean;
   /** A form in one of the frames closed: take it out, and show the one before it. */
   unmount(childId: string): void;
+  /** Its own menus, each item running its handler — what it lends the main form's bar while it shows in a frame. */
+  menus(): FrameMenu[];
+  /** Draw the menu bar again — a form in a frame has started, and has menus to lend. */
+  refreshMenu(): void;
+}
+
+/** A menu as a frame's host draws it: items that run something, or a separator (`-`). */
+export interface FrameMenu {
+  title: string;
+  items: { label: string; run?: () => void }[];
 }
 
 /** A form running inside another's frame — made by the host, shown and ordered by the frame. */
@@ -40,6 +50,8 @@ export interface FrameChild {
   /** Asked to close — as if it had called (ui-close): the Window menu's Close, a tab's ×. */
   close(): void;
   destroy(): void;
+  /** Its menus, merged into the main form's bar while it shows (screens and tabs). */
+  menus(): FrameMenu[];
 }
 
 export interface FormRunnerOptions {
@@ -152,9 +164,15 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
   type LiveItem = { label: string; handler?: string; run?: () => void };
   type LiveMenu = { title: string; items: LiveItem[] };
 
-  /** The form's menus, then a Window menu for each frame with forms in it. */
+  /**
+   * The form's menus; then, as VB merged them, the menus of the form showing in each frame (screens
+   * and tabs — a window in windows mode keeps its own bar); then a Window menu for each frame.
+   */
   function menus(): LiveMenu[] {
     const out: LiveMenu[] = current.menu.map((m) => ({ title: m.title, items: m.items }));
+    for (const fr of frames.values()) {
+      if (fr.mode !== "windows" && fr.showing) out.push(...fr.showing.menus());
+    }
     for (const fr of frames.values()) {
       if (!fr.children.length) continue;
       const items: LiveItem[] = fr.children.map((ch) => ({
@@ -1011,6 +1029,12 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
     },
     publicChanged: (name) => void fire(current.onPublic, undefined, { $changed: name }),
     hasFrame: (name) => frames.has(name),
+    refreshMenu: () => drawMenu(),
+    menus: () =>
+      current.menu.map((m) => ({
+        title: m.title,
+        items: m.items.map((it) => (it.handler ? { label: it.label, run: () => void fire(it.handler) } : { label: it.label })),
+      })),
     mount(frame, ch) {
       const fr = frames.get(frame);
       if (!fr) return false;

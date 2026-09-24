@@ -154,6 +154,23 @@ frames. Keys pressed in a form inside the frame are that form's: Enter doesn't p
 form's `:default` button. Runner: `mount`/`unmount`/`bringForward`/`hasFrame`; the host
 (`openInFrame` in main.ts) makes the child. Tests: `dev/ui/frames.pw.mjs`.
 
+### A main form, and an app
+
+`:main true` on a form (*Main form* in the designer's form properties) says it is an app's entry —
+the one the others are reached from. Running one is running the app. Two things make several forms
+one application:
+
+- **Menus merge**, as in VB: while a form shows in a screens or tabs frame, its menus join the main
+  form's bar — the main form's own first, then the showing form's, then Window — and its own bar is
+  hidden. A form in windows mode keeps its bar.
+- **Names are found beside the form that asks**: `(ui-open "Books" :in "frmMain")` from
+  `examples/Office.eeform` opens `examples/Books.eeform` — so an app's folder can move, and (W4) be
+  exported whole. A name that isn't beside it is taken from the top of the workspace.
+
+`Office.eeform` in the examples is the worked one: the other examples as screens of one app, the
+counts of what they store down the side, and the last screen used reopened next run
+(`(public last-screen "" :persist true)`).
+
 ## Variables: local and public
 
 ```lisp
@@ -213,6 +230,7 @@ tree, open from disk with the network off, reload).
 | `Books.eeform` | One record at a time, dBASE-style: \|◀ ◀ ▶ ▶\|, *Record n of m*, find, and New / Edit / Save / Cancel / Delete with the boxes locked while browsing (`:enabled` from the handlers). |
 | `Tables.eeform` | Any table: pick it from `(tables)`, a WHERE / order / limit that shows the `(query …)` it ran, cells edited in place, new row, delete, pack. The table is named by an expression — `(query (str name))`. |
 | `Orders.eeform` | Master–detail: customers, the picked one's orders (`:where "customer = ?"`), a worked-out amount column and a total. |
+| `Office.eeform` | The others as one app: a `:main` form with a screens frame, their menus merged into its bar, and the last screen remembered in a `:persist` public variable. |
 | `Agenda.eeform` | The agenda PIM through most of the controls: tabs, menu, datagrid, date, radio, dropdowns, checkbox, timer. Items by due date, an editor for one (`item->dict` reads it), quick add with a `smart-parse` preview, categories, rules, saved views. |
 
 `defcategory`, `defrule` and `defview` take their arguments unevaluated, so the Agenda form writes

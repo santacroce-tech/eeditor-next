@@ -494,6 +494,8 @@ export interface FormSpec {
   onLoad?: string;
   /** `:on-public` — runs when another form of the same main writes a public variable; its name is `$changed`. */
   onPublic?: string;
+  /** `:main true` — this form is an app's entry: the one Export as HTML takes the other forms along from. */
+  main?: boolean;
   /** `:menu (("File" ("New" new-item) ("-") ("Quit" quit)) …)` — a menu bar under the title. */
   menu: Menu[];
   controls: Control[];
@@ -665,6 +667,7 @@ export function parseFormSpec(x: Sx): FormSpec | { error: string } {
     else if (k === "title" && v.t === "str") spec.title = v.v;
     else if (k === "on-load" && fnName(v) !== undefined) spec.onLoad = fnName(v);
     else if (k === "on-public" && fnName(v) !== undefined) spec.onPublic = fnName(v);
+    else if (k === "main" && v.t === "bool") spec.main = v.v || undefined;
     else if (k === "menu") spec.menu = parseMenu(v);
     else spec.extra.push([k, v]);
   }
@@ -720,6 +723,7 @@ function controlSx(c: Control): Sx {
 export function printFormSpec(spec: FormSpec): string {
   const head: Sx[] = [sym("form"), str(spec.title), kw("size"), list(num(spec.w), num(spec.h))];
   if (spec.onLoad) head.push(kw("on-load"), sym(spec.onLoad));
+  if (spec.main) head.push(kw("main"), { t: "bool", v: true });
   if (spec.onPublic) head.push(kw("on-public"), sym(spec.onPublic));
   if (spec.menu.length) head.push(kw("menu"), menuSx(spec.menu));
   for (const [k, v] of spec.extra) head.push(kw(k), v);

@@ -16,6 +16,7 @@ import {
   parseFormSpec,
   parseMenuText,
   printFormSpec,
+  frameMode,
   printSx,
   readAll,
   readFormSpec,
@@ -253,5 +254,28 @@ describe("the form's state for a handler", () => {
   });
   it("writes a key that can't be a keyword as a string, so none is lost", () => {
     expect(lispLiteral({ "bad key": 1, ok: 2, $form: "f1" })).toBe('{"bad key" 1 :ok 2 "$form" "f1"}');
+  });
+});
+
+describe(":main and :on-public on a form", () => {
+  it("read and write back, and the frame control with them", () => {
+    const src = `(form "Office" :size (400 300) :main true :on-public heard\n  (frame frmMain :mode "tabs" :at (8 8) :size (384 284)))`;
+    const r = readFormSpec(src);
+    if ("error" in r) throw new Error(r.error);
+    expect(r.spec.main).toBe(true);
+    expect(r.spec.onPublic).toBe("heard");
+    expect(r.spec.controls[0].type).toBe("frame");
+    expect(r.spec.controls[0].props.mode).toBe("tabs");
+    const again = readFormSpec(printFormSpec(r.spec));
+    if ("error" in again) throw new Error(again.error);
+    expect(again.spec).toEqual(r.spec);
+  });
+
+  it("leaves :main out when it isn't one, and reads an unknown frame mode as screens", () => {
+    const r = readFormSpec(`(form "F" :size (100 100) :main false (frame f :mode "cards" :at (0 0) :size (10 10)))`);
+    if ("error" in r) throw new Error(r.error);
+    expect(r.spec.main).toBeUndefined();
+    expect(printFormSpec(r.spec)).not.toContain(":main");
+    expect(frameMode(r.spec.controls[0].props.mode)).toBe("screens");
   });
 });

@@ -5,7 +5,7 @@ variables with them, and **a runtime** that runs a set of forms as a program on 
 the editor around it. The first is what makes several `.eeform`s one application; the second is how
 that application reaches someone who doesn't use EEditor.
 
-Status: decisions taken (see *Decided* at the end). W0–W3 are done: the engine runs in a browser, and a form exports as one HTML file that runs anywhere, offline, keeping its data.
+Status: decisions taken (see *Decided* at the end). W0–W3 and A1–A3 are done: a form exports as one HTML file that runs anywhere, offline; forms share variables, and a main form runs the others in a frame. Next: W4, exporting a whole app.
 
 ```
  ┌ Shop ─────────────────────────────────────────────────────────┐
@@ -206,7 +206,7 @@ can be exported on its own — and the main form (A) is what turns several of th
 | ~~**W3**~~ | ~~*Export as HTML…*~~ — done: the tree menu on a form and the `export-html` command write one self-contained file beside it (`core/export.ts` into the template from `npm run runtime:template`); the form and its images inside, runs offline from disk — checked in Chromium (with the network off) and WebKit. The release workflow builds the template once and puts it in every installer | W2 |
 | ~~**A1**~~ | ~~Scopes~~ — done: `local`, `public` (`:persist`), `var`, `var!`, `:on-public`; `$form`/`$main`/`$key`/`$app` in `f`. Until the frame exists, a form's *main* is the one that opened it with `ui-open` (windows), or itself — see docs/FORMS.md, *Variables* | — |
 | ~~**A2**~~ | ~~The `frame` control~~ — done: `(ui-open … :in …)` (`:new true`), screens (default) / tabs / windows, the Window menu, ⌃Tab, back to the previous on close, `:value`/`:on-change`. `:on-close` (refusing to close) is left for later | A1 |
-| **A3** | `:main`, menu merge, **Shop.eeform** example | A2 |
+| ~~**A3**~~ | ~~`:main`, menu merge, the example~~ — done: `:main true` (designer: *Main form*), menus merged into the main form's bar while a form shows in a frame, `ui-open` names resolved beside the opener, **Office.eeform** | A2 |
 | **W4** | Export of a whole app — the main form and every form it reaches — as one HTML file; *Save data / Open data* | W3, A3 |
 | B1–B4 | The `.eeapp` folder, the desktop runtime, the served app — later, if the HTML file leaves a need |  |
 

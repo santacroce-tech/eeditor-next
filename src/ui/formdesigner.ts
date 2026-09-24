@@ -430,6 +430,7 @@ export function createFormDesigner(opts: FormDesignerOptions): FormDesigner {
       field("Title", textInput(spec.title, (v) => ((spec.title = v), commit()))),
       field("Width", numberInput(spec.w, (v) => ((spec.w = clamp(snap(v), MIN_FORM, MAX_FORM)), commit()))),
       field("Height", numberInput(spec.h, (v) => ((spec.h = clamp(snap(v), MIN_FORM, MAX_FORM)), commit()))),
+      field("Main form", boolInput(spec.main === true, (v) => ((spec.main = v || undefined), commit()))),
       el("div", "fd-props-sub", "Events"),
       eventRow("load", spec.onLoad ?? "", null, (fn) => ((spec.onLoad = fn || undefined), commit())),
       eventRow("public", spec.onPublic ?? "", null, (fn) => ((spec.onPublic = fn || undefined), commit())),

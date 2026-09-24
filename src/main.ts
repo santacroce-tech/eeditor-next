@@ -571,8 +571,10 @@ function main(): void {
     return {
       call: (handler: string, state: Record<string, StateValue>) => forms.call(handler, { ...state, ...who }),
       check: (handler: string, state: Record<string, StateValue>) => forms.check(handler, { ...state, ...who }),
-      onOpen: (other: string, how?: { into?: string; copy?: boolean }) =>
-        void (how?.into ? openInFrame(other, how.into, id, how.copy === true) : runForm(other, id)),
+      onOpen: (other: string, how?: { into?: string; copy?: boolean }) => {
+        const p = formPathFor(other, id);
+        void (how?.into ? openInFrame(p, how.into, id, how.copy === true) : runForm(p, id));
+      },
       // A public variable written here: every other form of the same main hears of it.
       onPublic: (name: string) => {
         for (const [other, r] of running) if (other !== id.form && r.id.main === id.main) r.runner.publicChanged(name);
@@ -695,9 +697,22 @@ function main(): void {
       focus: () => runner.focus(),
       close,
       destroy: () => runner.destroy(),
+      menus: () => runner.menus(),
     });
     await runner.start(r.spec);
+    host.refreshMenu(); // its menus exist now, to merge into the main form's bar
     runner.focus();
+  }
+
+  /**
+   * The file `(ui-open "Orders")` means: beside the form that asked, when there is one there — so an
+   * app's forms can name each other wherever its folder is — else from the top of the workspace.
+   */
+  function formPathFor(ref: string, opener: FormIdentity): string {
+    const name = isFormPath(ref) ? ref : ref + FORM_EXT;
+    const near = joinPath(parentDir(opener.key), name);
+    const known = new Set(sidebar.files().map((f) => f.path));
+    return known.has(near) || !known.has(name) ? near : name;
   }
 
   function closeWindow(path: string): void {
