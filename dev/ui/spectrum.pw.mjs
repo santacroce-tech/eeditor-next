@@ -30,8 +30,9 @@ test("Demo runs a Z80 program with no ROM: the bars paint, the border changes, f
 
   // the first cell's paper, then the next one's: colour bars, not a black screen
   await expect.poll(() => pixel(page, 12, 4)).not.toEqual([0, 0, 0]);
-  const border = await ctl(form, "scrZX").evaluate((e) => e.style.background);
-  await expect.poll(() => ctl(form, "scrZX").evaluate((e) => e.style.background), { timeout: 5000 }).not.toBe(border);
+  const stage = form.locator(".zx-stage");
+  const border = await stage.evaluate((e) => e.style.background);
+  await expect.poll(() => stage.evaluate((e) => e.style.background), { timeout: 5000 }).not.toBe(border);
 
   // the frame rate, as the page sees it: the machine, the engine round trip and the painting
   const a = await frames(form);
@@ -156,4 +157,53 @@ test("BASIC: text pasted on the screen, and the editor's Send, go to the machine
   await expect(ctl(form, "lblStatus")).toHaveText("typing 4 lines");
   await ctl(form, "btnRun").locator("button").click();
   await expect(ctl(form, "lblStatus")).toHaveText("typing 1 line");
+});
+
+test("⛶ fills the window with the screen, scaled up; Esc comes back", async ({ page }) => {
+  const form = await run(page);
+  await ctl(form, "btnDemo").locator("button").click();
+  const screen = form.locator(".formrun-screen");
+  const small = await screen.boundingBox();
+  await form.locator(".zx-fullscreen").click();
+  await expect(ctl(form, "scrZX")).toHaveClass(/zx-expanded/);
+  const view = page.viewportSize();
+  const host = await ctl(form, "scrZX").boundingBox();
+  expect(Math.round(host.width)).toBe(view.width);
+  expect(Math.round(host.height)).toBe(view.height);
+  const big = await screen.boundingBox();
+  expect(big.width).toBeGreaterThan(small.width * 1.3);
+  const n = await frames(form);
+  await expect.poll(() => frames(form)).toBeGreaterThan(n); // still running, full size
+
+  await screen.focus();
+  await page.keyboard.press("Escape");
+  await expect(ctl(form, "scrZX")).not.toHaveClass(/zx-expanded/);
+});
+
+test("⧉ opens the screen in a window of its own — the same machine — and the form's waits", async ({ page }) => {
+  const form = await run(page);
+  await ctl(form, "btnDemo").locator("button").click();
+  await expect.poll(() => frames(form)).toBeGreaterThan(3);
+
+  const popup = page.waitForEvent("popup");
+  await form.locator(".zx-popout").click();
+  const win = await popup;
+  await win.waitForLoadState();
+  expect(win.url()).toContain("screen.html");
+  // the window paints the machine the form is running
+  await expect.poll(async () => Number((await win.locator(".formrun-screen").getAttribute("data-frames")) ?? 0)).toBeGreaterThan(5);
+  // …while the form's screen says where it went, and stops asking for frames
+  await expect(form.locator(".zx-away")).toBeVisible();
+  const held = await frames(form);
+  await page.waitForTimeout(400);
+  expect(await frames(form)).toBe(held);
+
+  // the window fills itself and scales with it
+  await win.setViewportSize({ width: 1000, height: 800 });
+  const canvasBox = await win.locator(".formrun-screen").boundingBox();
+  expect(canvasBox.width).toBeGreaterThan(700);
+
+  await win.close();
+  await expect(form.locator(".zx-away")).toBeHidden();
+  await expect.poll(() => frames(form)).toBeGreaterThan(held);
 });

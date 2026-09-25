@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Spectrum</title>
+  </head>
+  <body class="screen-window">
+    <!--
+      A form's screen control, in a window of its own: the same engine as the app (Tauri's, or the
+      dev bridge), so the same machine — this page only runs the frame expression and paints it.
+      ?expr=<the :frame expression>&title=<the form's title>
+    -->
+    <div id="app"></div>
+    <script type="module" src="/src/screen.ts"></script>
+  </body>
+</html>

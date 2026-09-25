@@ -3,9 +3,9 @@
 
 import { frameMode, humanName, onOpenPage, openPages, type Control, type FormSpec, type FrameMode, type StateValue } from "../core/form";
 import { rowsOf, stateValue, type Row, type UiChange } from "../engine/form";
-import { dictGet, isDict, type JsonValue } from "../engine/types";
-import { borderCss, bytesToB64, frameOf, H, KeyMatrix, screenRgba, W, type Key } from "../spectrum/screen";
-import { createZxKeyboard } from "./zxkeyboard";
+import type { JsonValue } from "../engine/types";
+import { bytesToB64 } from "../spectrum/screen";
+import { createScreenView, type ScreenWindow } from "./screenview";
 
 export interface FormRunner {
   readonly el: HTMLElement;
@@ -90,6 +90,8 @@ export interface FormRunnerOptions {
   windowed?: boolean;
   /** Evaluate a screen control's `:frame` expression; its value. Without it a screen stays dark. */
   frame?: (src: string) => Promise<JsonValue>;
+  /** Open a screen control in a native window of its own (⧉), over the same engine. Left out where there's none. */
+  popScreen?: (expr: string, title: string) => ScreenWindow;
 }
 
 /** What the runner needs of a sheet grid: the element, loading, writing what is being typed, and letting go. */
@@ -807,141 +809,31 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
         break;
       }
       case "screen": {
-        // Fifty frames a second — the Spectrum's rate — or as many as the engine manages: each
-        // one evaluates :frame with the keys held down in `ui-keys`, and paints the screen it
-        // returns. The next starts as soon as this one is back and its 20 ms are up; a slow frame
-        // delays the ones after it, it never piles them up.
-        const view = el("canvas", "formrun-screen");
-        view.width = W;
-        view.height = H;
-        view.tabIndex = 0;
-        box.append(view);
-        const g = view.getContext("2d");
-        const image = g?.createImageData(W, H);
-        const keys = new KeyMatrix();
-        let expr = asText(p.frame as string);
-        let on = p.enabled !== false;
-        let stopped = false;
-        let wait: ReturnType<typeof setTimeout> | undefined;
-        let due = 0;
-        let painted = 0;
-        const later = (ms: number) => (wait = setTimeout(step, ms));
-        const step = () => {
-          if (stopped) return;
-          if (!on || !expr || !opts.frame || !g || !image) return void later(100);
-          const now = performance.now();
-          if (now < due) return void later(due - now);
-          due = now - due > 100 ? now + 20 : due + 20;
-          opts
-            .frame(`(let (ui-keys ${JSON.stringify(keys.base64())}) ${expr})`)
-            .then(
-              (v) => {
-                const f = isDict(v) ? frameOf((k) => dictGet(v, k)) : null;
-                if (!f || stopped) return;
-                screenRgba(f, image.data);
-                g.putImageData(image, 0, 0);
-                box.style.background = borderCss(f.border);
-                view.dataset.frames = String(++painted); // how many it has painted: tests read it
-              },
-              (e) => {
-                on = false; // one message, not fifty a second
-                opts.onError(`${c.name} :frame: ${e instanceof Error ? e.message : String(e)}`);
-              },
-            )
-            .finally(step);
-        };
-        later(0);
-        loops.push(() => {
-          stopped = true;
-          clearTimeout(wait);
-        });
-        // A key is held for at least HOLD ms: the ROM reads the keyboard once a frame, and a quick
-        // tap — a click, a fast typist — could otherwise come and go between two reads.
-        const HOLD = 80;
-        const since = new Map<string, number>();
-        const pendingUp = new Map<string, ReturnType<typeof setTimeout>>();
-        const pressed = (id: string) => {
-          clearTimeout(pendingUp.get(id));
-          pendingUp.delete(id);
-          since.set(id, performance.now());
-        };
-        const release = (id: string) => {
-          const wait = HOLD - (performance.now() - (since.get(id) ?? 0));
-          since.delete(id);
-          if (wait <= 0) return void keys.release(id);
-          pendingUp.set(id, setTimeout(() => (pendingUp.delete(id), keys.release(id)), wait));
-        };
-        // The keys go to the machine, not to the form (Enter, Escape) or the editor's bindings.
-        view.addEventListener("keydown", (e) => {
-          // ⌘ is the OS's; Ctrl+V pastes (a typed / is still the Spectrum's /)
-          if (e.metaKey || (e.ctrlKey && e.key.toLowerCase() === "v") || !keys.press(e.code, e.key)) return;
-          pressed(e.code);
-          e.preventDefault();
-          e.stopPropagation();
-        });
-        view.addEventListener("keyup", (e) => {
-          if (!since.has(e.code)) return;
-          e.preventDefault();
-          release(e.code);
-        });
-        view.addEventListener("pointerdown", () => view.focus());
-
-        // Text pasted on the screen goes to :on-paste, in "$text". A canvas isn't editable, and a
-        // webview may not send it a paste event: after ⌘V/Ctrl+V with none, the clipboard is read.
-        let pasteSeen = false;
-        const pasted = (text: string) => {
-          if (text && c.events.paste) void fire(c.events.paste, undefined, { $text: text });
-        };
-        view.addEventListener("paste", (e) => {
-          pasteSeen = true;
-          e.preventDefault();
-          pasted(e.clipboardData?.getData("text/plain") ?? "");
-        });
-        view.addEventListener("keydown", (e) => {
-          if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "v" || !c.events.paste) return;
-          pasteSeen = false;
-          setTimeout(() => {
-            if (!pasteSeen) void navigator.clipboard?.readText?.().then(pasted, () => {});
-          }, 150);
-        });
-
-        // The Spectrum's own keyboard, on screen, under the picture: ⌨ in the corner, or :keyboard.
-        const board = createZxKeyboard({
-          press: (id: string, k: Key[]) => (keys.hold(id, k), pressed(id)),
-          release,
-        });
-        board.el.classList.add("formrun-zxkb");
-        const toggle = el("button", "formrun-screen-kbtoggle", "⌨");
-        toggle.type = "button";
-        toggle.title = "The Spectrum's keyboard";
-        toggle.tabIndex = -1;
-        toggle.addEventListener("pointerdown", (e) => e.preventDefault());
-        const showBoard = (show: boolean) => {
-          board.reset();
-          board.el.hidden = !show;
-          toggle.classList.toggle("on", show);
+        // A ZX Spectrum screen — the view (src/ui/screenview.ts) runs :frame and paints it.
+        const sv = createScreenView(box, {
+          frame: opts.frame,
+          expr: asText(p.frame as string),
+          running: p.enabled !== false,
+          onError: (m) => opts.onError(`${c.name} :frame: ${m}`),
+          onPaste: c.events.paste ? (text) => void fire(c.events.paste, undefined, { $text: text }) : undefined,
           // The form's canvas clips, so it grows to hold the keyboard below the screen.
-          const need = show ? c.y + c.h + 8 + board.el.offsetHeight + 8 : 0;
-          canvas.style.height = `${Math.max(current.h, need)}px`;
-        };
-        toggle.addEventListener("click", () => showBoard(board.el.hidden));
-        box.append(toggle, board.el);
-        board.el.hidden = true;
-        if (p.keyboard === true) queueMicrotask(() => showBoard(true));
-        view.addEventListener("blur", () => {
-          keys.clear();
-          board.reset();
+          onBoard: (shown, height) => {
+            canvas.style.height = `${Math.max(current.h, shown ? c.y + c.h + 8 + height + 8 : 0)}px`;
+          },
+          popOut: opts.popScreen ? (expr) => opts.popScreen!(expr, current.title || humanName(c.name)) : undefined,
         });
+        if (p.keyboard === true) queueMicrotask(() => sv.showKeyboard(true));
+        loops.push(() => sv.destroy());
         out = {
           spec: c,
           box,
-          value: () => on,
+          value: () => sv.running(),
           set: (k, v) => {
-            if (k === "frame") expr = asText(v);
-            else if (k === "keyboard") showBoard(truthy(v));
-            else if (k === "enabled" || k === "value") on = truthy(v);
+            if (k === "frame") sv.setExpr(asText(v));
+            else if (k === "keyboard") sv.showKeyboard(truthy(v));
+            else if (k === "enabled" || k === "value") sv.setRunning(truthy(v));
           },
-          focus: () => view.focus(),
+          focus: () => sv.focus(),
         };
         break;
       }

@@ -86,7 +86,7 @@ enabled — with the keys held on the screen in `ui-keys`, as the ZX Spectrum's 
 in base64 — whose value, `{"kind" "screen" "pixels" … "border" … "frame" …}`, is painted: a
 ZX Spectrum screen. The keys held on it are the Spectrum's — a typed symbol presses the Spectrum's
 own combination for it — and `:keyboard true` (or ⌨ in its corner) shows the Spectrum's keyboard
-under it, to click. `:on-paste` runs with text pasted on it in `(ui-get f "$text")`. A form with one gets the Spectrum machine, `src/spectrum/zx.eelisp`, loaded
+under it, to click. `:on-paste` runs with text pasted on it in `(ui-get f "$text")`. Its corner has ⛶ — full screen, the picture scaled to fit, Esc back — and, in the app, ⧉: the screen in a window of its own (`screen.html`), resizable, over the same engine and so the same machine, while the form's screen waits. A form with one gets the Spectrum machine, `src/spectrum/zx.eelisp`, loaded
 first; `workspace/examples/Spectrum.eeform` runs it. See `docs/spectrum/`).
 
 **The menu bar.** `(form … :menu (("File" ("New" new-item) ("-") ("Quit" quit)) ("Help" ("About"

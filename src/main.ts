@@ -41,6 +41,7 @@ import { backlinksTo } from "./core/backlinks";
 import { linkifyWikiLinks } from "./ui/wikilinks";
 import { uniqueName } from "./core/uniquename";
 import "./styles.css";
+import { openScreenWindow } from "./ui/screenwindow";
 
 const parentDir = (p: string): string => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
 const joinPath = (dir: string, name: string): string => (dir ? `${dir}/${name}` : name);
@@ -546,6 +547,7 @@ function main(): void {
       ...formHost.wire(id),
       imageUrl: (src) => formImageUrl(t.path, src),
       sheetView: (file) => formSheetView(t.path, file),
+      popScreen: openScreenWindow,
       onMessage: toast,
       onClose: backToDesign,
       onError: (m) => {
@@ -682,6 +684,7 @@ function main(): void {
   const formExtras = (p: string) => ({
     imageUrl: (src: string) => formImageUrl(p, src),
     sheetView: (file: string) => formSheetView(p, file),
+    popScreen: openScreenWindow,
     onMessage: toast,
     onError: (m: string) => {
       repl.note(`; ${basename(p)}: ${m}`);
