@@ -1,0 +1,168 @@
+/* ══ VB6 theme kit — portable ═══════════════════════════════════════════════════════════════
+   Windows 98 as the Visual Basic 6 IDE drew it. Framework-free: drop this file in, set
+   data-theme="vb6" on <html>, and either
+     · rely on the native-element rules below (button, input, select, textarea, scrollbars), or
+     · add the recipe classes (.vb6-raised, .vb6-sunken, .vb6-window, .vb6-caption, …) to your
+       own markup, or copy a recipe's declarations into your own selectors.
+   Everything is scoped under :root[data-theme="vb6"], so other themes are untouched.
+   Extracted from EEditor (src/styles.css, the "Theme: Visual Basic 6" section), which is the
+   full worked example: an app shell, dialogs, a form designer, a grid, a REPL. */
+
+/* ── 1 · tokens ─────────────────────────────────────────────────────────────────────────── */
+:root[data-theme="vb6"] {
+  /* the Windows 98 system colours */
+  --vb-face: #c0c0c0;       /* ButtonFace — every surface that isn't a field */
+  --vb-light: #dfdfdf;      /* ButtonLight — inner highlight of a bevel */
+  --vb-hilite: #ffffff;     /* ButtonHilight — outer highlight of a bevel */
+  --vb-shadow: #808080;     /* ButtonShadow — inner shadow; also GrayText */
+  --vb-dark: #000000;       /* ButtonDkShadow — outer shadow */
+  --vb-window: #ffffff;     /* Window — fields: text boxes, lists, code */
+  --vb-text: #000000;
+  --vb-highlight: #000080;  /* Highlight — selected rows, menu hover, focused caption */
+  --vb-highlight-text: #ffffff;
+  --vb-caption: linear-gradient(90deg, #000080, #1084d0);          /* active title bar */
+  --vb-caption-inactive: linear-gradient(90deg, #808080, #b5b5b5); /* inactive title bar */
+  --vb-desktop: #008080;    /* the teal desktop, behind a running window */
+  --vb-workspace: #808080;  /* the MDI / designer background */
+  --vb-link: #0000ff;
+  --vb-ok: #008000;
+  --vb-err: #c00000;
+  --vb-dither: repeating-conic-gradient(#c0c0c0 0 25%, #fff 0 50%) 0 0 / 2px 2px; /* latched button, scroll track */
+
+  --vb-ui: "MS Sans Serif", "Microsoft Sans Serif", Tahoma, Geneva, Verdana, sans-serif;
+  --vb-code: "Courier New", Courier, monospace;
+
+  /* A bevel = a 1px border (outer ring) + a 1px inset shadow (inner ring). The border keeps
+     the element's box size identical to a flat 1px-bordered control, so switching themes
+     never moves anything. */
+  --vb-raised-border: #fff #000 #000 #fff;     /* border-color: top right bottom left */
+  --vb-raised-inner: inset 1px 1px #dfdfdf, inset -1px -1px #808080;
+  --vb-sunken-border: #808080 #fff #fff #808080;
+  --vb-sunken-inner: inset 1px 1px #000, inset -1px -1px #dfdfdf;
+  --vb-window-border: #dfdfdf #000 #000 #dfdfdf;
+  --vb-window-inner: inset 1px 1px #fff, inset -1px -1px #808080;
+
+  color-scheme: light;
+}
+
+/* ── 2 · global rules ───────────────────────────────────────────────────────────────────── */
+/* Windows 98 had no rounded corners and no soft shadows. */
+:root[data-theme="vb6"] *, :root[data-theme="vb6"] *::before, :root[data-theme="vb6"] *::after {
+  border-radius: 0 !important;
+}
+:root[data-theme="vb6"] body { background: var(--vb-face); color: var(--vb-text); font: 12px/1.4 var(--vb-ui); }
+:root[data-theme="vb6"] ::selection { background: var(--vb-highlight); color: var(--vb-highlight-text); }
+/* the dotted focus rectangle */
+:root[data-theme="vb6"] :focus-visible { outline: 1px dotted #000; outline-offset: -4px; }
+:root[data-theme="vb6"] :is(code, pre, kbd, samp, .vb6-code) { font-family: var(--vb-code); }
+
+/* ── 3 · recipes ────────────────────────────────────────────────────────────────────────── */
+/* raised — a command button, a toolbar button, a scroll thumb */
+:root[data-theme="vb6"] :is(.vb6-raised, button, input[type="button"], input[type="submit"], input[type="reset"]) {
+  background: var(--vb-face); color: var(--vb-text); font-family: var(--vb-ui);
+  border: 1px solid; border-color: var(--vb-raised-border); box-shadow: var(--vb-raised-inner);
+}
+/* pressed — only while the mouse is down; the label drops 1px */
+:root[data-theme="vb6"] :is(.vb6-raised, button, input[type="button"], input[type="submit"], input[type="reset"]):active:not(:disabled) {
+  border-color: var(--vb-sunken-border); box-shadow: var(--vb-sunken-inner); padding-top: 1px;
+}
+/* latched — a toggle that stays down (Bold, the current mode, the toolbox pointer) */
+:root[data-theme="vb6"] :is(.vb6-latched, [aria-pressed="true"]) {
+  border-color: var(--vb-sunken-border); box-shadow: var(--vb-sunken-inner); background: var(--vb-dither);
+}
+/* disabled text is etched: grey with a white drop */
+:root[data-theme="vb6"] :is(.vb6-raised, button, input):disabled { color: var(--vb-shadow); text-shadow: 1px 1px #fff; }
+/* the default button of a dialog carries an extra black frame */
+:root[data-theme="vb6"] .vb6-default { outline: 1px solid #000; outline-offset: 0; }
+
+/* sunken — a field: text box, list box, combo, the code window, a tree view */
+:root[data-theme="vb6"] :is(.vb6-sunken, input:not([type="button"], [type="submit"], [type="reset"], [type="checkbox"], [type="radio"], [type="range"], [type="color"]), textarea, select) {
+  background: var(--vb-window); color: var(--vb-text); font-family: var(--vb-ui);
+  border: 1px solid; border-color: var(--vb-sunken-border); box-shadow: var(--vb-sunken-inner);
+}
+:root[data-theme="vb6"] :is(input, textarea, select):disabled,
+:root[data-theme="vb6"] :is(input, textarea)[readonly] { background: var(--vb-face); }
+:root[data-theme="vb6"] :is(input[type="checkbox"], input[type="radio"]) { accent-color: #000; }
+
+/* window — a dialog, a popup menu, a floating form, a tooltip-free palette */
+:root[data-theme="vb6"] .vb6-window {
+  background: var(--vb-face); color: var(--vb-text); padding: 2px;
+  border: 1px solid; border-color: var(--vb-window-border); box-shadow: var(--vb-window-inner);
+}
+/* caption — the title bar across the top of a .vb6-window (or a docked tool window's header).
+   Inside a window with padding P, give it margin: calc(2px - P) calc(2px - P) … to reach the frame. */
+:root[data-theme="vb6"] .vb6-caption {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 3px 4px 3px 6px; background: var(--vb-caption); color: #fff; font: 700 11px var(--vb-ui);
+}
+:root[data-theme="vb6"] .vb6-caption.inactive { background: var(--vb-caption-inactive); color: var(--vb-face); }
+/* the three caption buttons (min · max · close) as a decorative strip — put it on ::after or an empty span */
+:root[data-theme="vb6"] .vb6-caption-buttons {
+  flex: 0 0 auto; width: 50px; height: 14px;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='14'%3E%3Crect width='16' height='14' fill='%23c0c0c0'/%3E%3Cpath d='M0 13.5h16M15.5 0v14' stroke='%23000'/%3E%3Cpath d='M0 .5h15M.5 0v13' stroke='%23fff'/%3E%3Cpath d='M1 12.5h14M14.5 1v12' stroke='%23808080'/%3E%3Cpath d='M4 10h6v2H4z' fill='%23000'/%3E%3C/svg%3E") 0 0 / 16px 14px no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='14'%3E%3Crect width='16' height='14' fill='%23c0c0c0'/%3E%3Cpath d='M0 13.5h16M15.5 0v14' stroke='%23000'/%3E%3Cpath d='M0 .5h15M.5 0v13' stroke='%23fff'/%3E%3Cpath d='M1 12.5h14M14.5 1v12' stroke='%23808080'/%3E%3Cpath d='M3.5 3.5h8v7h-8z' fill='none' stroke='%23000'/%3E%3Cpath d='M3 4h9' stroke='%23000'/%3E%3C/svg%3E") 16px 0 / 16px 14px no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='14'%3E%3Crect width='16' height='14' fill='%23c0c0c0'/%3E%3Cpath d='M0 13.5h16M15.5 0v14' stroke='%23000'/%3E%3Cpath d='M0 .5h15M.5 0v13' stroke='%23fff'/%3E%3Cpath d='M1 12.5h14M14.5 1v12' stroke='%23808080'/%3E%3Cpath d='M4.5 3.5l6 6M10.5 3.5l-6 6' stroke='%23000' stroke-width='1.6'/%3E%3C/svg%3E") 34px 0 / 16px 14px no-repeat;
+}
+
+/* toolbar — a strip of buttons under the menu, etched off the content below */
+:root[data-theme="vb6"] .vb6-toolbar {
+  display: flex; align-items: center; gap: 4px; padding: 2px 4px;
+  background: var(--vb-face); border-bottom: 1px solid var(--vb-shadow); box-shadow: 0 1px #fff;
+}
+/* group box / frame — the etched line around a set of controls */
+:root[data-theme="vb6"] .vb6-groupbox { border: 1px solid var(--vb-shadow); box-shadow: 1px 1px #fff, inset 1px 1px #fff; }
+/* separator in a menu */
+:root[data-theme="vb6"] .vb6-separator { height: 0; margin: 3px 0; border-top: 1px solid var(--vb-shadow); border-bottom: 1px solid #fff; }
+
+/* selection — a selected row, a menu item under the mouse. Classic Windows had no hover tint. */
+:root[data-theme="vb6"] :is(.vb6-selected, [aria-selected="true"], option:checked) {
+  background: var(--vb-highlight); color: var(--vb-highlight-text);
+}
+:root[data-theme="vb6"] .vb6-menu-item:hover { background: var(--vb-highlight); color: var(--vb-highlight-text); }
+
+/* tabs — raised tabs on a strip; the active one is bold and 1px taller, joined to its page */
+:root[data-theme="vb6"] .vb6-tab {
+  margin-right: -1px; padding: 2px 8px; background: var(--vb-face); color: #000;
+  border: 1px solid; border-bottom: 0; border-color: #fff #000 transparent #fff; box-shadow: inset -1px 0 #808080;
+}
+:root[data-theme="vb6"] .vb6-tab.active { position: relative; top: 1px; margin-top: -2px; padding-top: 3px; font-weight: 700; }
+
+/* column header of a grid or list view — a raised button per column */
+:root[data-theme="vb6"] .vb6-colhead { background: var(--vb-face); color: #000; box-shadow: inset 1px 1px #fff, inset -1px -1px #808080; }
+
+/* surfaces */
+:root[data-theme="vb6"] .vb6-desktop { background: var(--vb-desktop); }
+:root[data-theme="vb6"] .vb6-workspace { background: var(--vb-workspace); }
+/* the form designer's grid: black dots every 8px (120 twips) on ButtonFace */
+:root[data-theme="vb6"] .vb6-design-grid {
+  background-color: var(--vb-face);
+  background-image: radial-gradient(#000 0.6px, transparent 0.8px); background-size: 8px 8px;
+}
+/* designer selection handle: a small filled navy square */
+:root[data-theme="vb6"] .vb6-handle { width: 6px; height: 6px; background: var(--vb-highlight); border: 0; }
+
+/* ── 4 · classic scrollbars (WebKit / Blink: Chrome, Edge, Safari, WKWebView, WebView2) ── */
+:root[data-theme="vb6"] ::-webkit-scrollbar { width: 16px; height: 16px; }
+:root[data-theme="vb6"] ::-webkit-scrollbar-track { background: var(--vb-dither); }
+:root[data-theme="vb6"] ::-webkit-scrollbar-corner { background: var(--vb-face); }
+:root[data-theme="vb6"] ::-webkit-scrollbar-thumb {
+  background: var(--vb-face); border: 1px solid; border-color: var(--vb-window-border); box-shadow: var(--vb-window-inner);
+}
+:root[data-theme="vb6"] ::-webkit-scrollbar-button:single-button {
+  display: block; width: 16px; height: 16px; background-color: var(--vb-face); background-repeat: no-repeat;
+  background-position: center; border: 1px solid; border-color: var(--vb-window-border); box-shadow: var(--vb-window-inner);
+}
+:root[data-theme="vb6"] ::-webkit-scrollbar-button:single-button:vertical:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4'%3E%3Cpath d='M3.5 0L7 4H0z'/%3E%3C/svg%3E");
+}
+:root[data-theme="vb6"] ::-webkit-scrollbar-button:single-button:vertical:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4'%3E%3Cpath d='M0 0h7L3.5 4z'/%3E%3C/svg%3E");
+}
+:root[data-theme="vb6"] ::-webkit-scrollbar-button:single-button:horizontal:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='7'%3E%3Cpath d='M0 3.5L4 0v7z'/%3E%3C/svg%3E");
+}
+:root[data-theme="vb6"] ::-webkit-scrollbar-button:single-button:horizontal:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='7'%3E%3Cpath d='M0 0l4 3.5L0 7z'/%3E%3C/svg%3E");
+}
+:root[data-theme="vb6"] ::-webkit-scrollbar-button:single-button:active { border-color: var(--vb-shadow); box-shadow: none; }
