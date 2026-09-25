@@ -752,7 +752,8 @@ body.runtime #app { min-height: 100vh; display: flex; flex-direction: column; }
    Windows 98 as VB6 drew it: ButtonFace grey, square corners, 3D bevels built from four colours
    (white · #dfdfdf · #808080 · black), navy title bars, white "fields", MS Sans Serif for the
    chrome and Courier New for code. The bevels ride on a 1px border plus an inset shadow, so no
-   control changes size when the theme switches. */
+   control changes size when the theme switches. Details follow 98.css (jdan.github.io/98.css);
+   the --vb-icon-* pixel art is its (MIT, © 2020 Jordan Scales). */
 :root[data-theme="vb6"] {
   --bg: #ffffff;       /* fields: text boxes, lists, the code window */
   --bg-2: #c0c0c0;     /* ButtonFace */
@@ -770,6 +771,26 @@ body.runtime #app { min-height: 100vh; display: flex; flex-direction: column; }
   --vb-raised: inset 1px 1px #dfdfdf, inset -1px -1px #808080;
   --vb-sunken: inset 1px 1px #000000, inset -1px -1px #dfdfdf;
   --vb-caption: linear-gradient(90deg, #000080, #1084d0);
+  /* the 2px bevels 98.css draws with box-shadow alone, for elements that have no border to spare */
+  --vb-raised-2: inset -1px -1px #0a0a0a, inset 1px 1px #fff, inset -2px -2px #808080, inset 2px 2px #dfdfdf;
+  --vb-field-2: inset -1px -1px #fff, inset 1px 1px #808080, inset -2px -2px #dfdfdf, inset 2px 2px #0a0a0a;
+  --vb-tab: inset -1px 0 #0a0a0a, inset 1px 1px #dfdfdf, inset -2px 0 #808080, inset 2px 2px #fff;
+  --vb-status: inset -1px -1px #dfdfdf, inset 1px 1px #808080;
+  --vb-icon-up: url("data:image/svg+xml,%3Csvg width='16' height='17' viewBox='0 0 16 17' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M15 0H0V1V16H1V1H15V0Z' fill='%23DFDFDF'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M2 1H1V15H2V2H14V1H2Z' fill='white'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M16 17H15H0V16H15V0H16V17Z' fill='black'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M15 1H14V15H1V16H14H15V1Z' fill='%23808080'/%3E%3Crect x='2' y='2' width='12' height='13' fill='%23C0C0C0'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M8 6H7V7H6V8H5V9H4V10H11V9H10V8H9V7H8V6Z' fill='black'/%3E%3C/svg%3E");
+  --vb-icon-down: url("data:image/svg+xml,%3Csvg width='16' height='17' viewBox='0 0 16 17' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M15 0H0V1V16H1V1H15V0Z' fill='%23DFDFDF'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M2 1H1V15H2V2H14V1H2Z' fill='white'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M16 17H15H0V16H15V0H16V17Z' fill='black'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M15 1H14V15H1V16H14H15V1Z' fill='%23808080'/%3E%3Crect x='2' y='2' width='12' height='13' fill='%23C0C0C0'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M11 6H4V7H5V8H6V9H7V10H8V9H9V8H10V7H11V6Z' fill='black'/%3E%3C/svg%3E");
+  --vb-icon-down-active: url("data:image/svg+xml,%3Csvg width='16' height='17' viewBox='0 0 16 17' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M0 0H15H16V17H15H0V16V1V0ZM1 16H15V1H1V16Z' fill='%23808080'/%3E%3Crect x='1' y='1' width='14' height='15' fill='%23C0C0C0'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M12 7H5V8H6V9H7V10H8V11H9V10H10V9H11V8H12V7Z' fill='black'/%3E%3C/svg%3E");
+  --vb-icon-left: url("data:image/svg+xml,%3Csvg width='16' height='17' viewBox='0 0 16 17' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M15 0H0V1V16H1V1H15V0Z' fill='%23DFDFDF'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M2 1H1V15H2V2H14V1H2Z' fill='white'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M16 17H15H0V16H15V0H16V17Z' fill='black'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M15 1H14V15H1V16H14H15V1Z' fill='%23808080'/%3E%3Crect x='2' y='2' width='12' height='13' fill='%23C0C0C0'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M9 4H8V5H7V6H6V7H5V8H6V9H7V10H8V11H9V4Z' fill='black'/%3E%3C/svg%3E");
+  --vb-icon-right: url("data:image/svg+xml,%3Csvg width='16' height='17' viewBox='0 0 16 17' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M15 0H0V1V16H1V1H15V0Z' fill='%23DFDFDF'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M2 1H1V15H2V2H14V1H2Z' fill='white'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M16 17H15H0V16H15V0H16V17Z' fill='black'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M15 1H14V15H1V16H14H15V1Z' fill='%23808080'/%3E%3Crect x='2' y='2' width='12' height='13' fill='%23C0C0C0'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M7 4H6V11H7V10H8V9H9V8H10V7H9V6H8V5H7V4Z' fill='black'/%3E%3C/svg%3E");
+  --vb-icon-track: url("data:image/svg+xml,%3Csvg width='2' height='2' viewBox='0 0 2 2' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M1 0H0V1H1V2H2V1H1V0Z' fill='%23C0C0C0'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M2 0H1V1H0V2H1V1H2V0Z' fill='white'/%3E%3C/svg%3E");
+  --vb-icon-check: url("data:image/svg+xml,%3Csvg width='7' height='7' viewBox='0 0 7 7' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M7 0H6V1H5V2H4V3H3V4H2V3H1V2H0V5H1V6H2V7H3V6H4V5H5V4H6V3H7V0Z' fill='black'/%3E%3C/svg%3E");
+  --vb-icon-check-disabled: url("data:image/svg+xml,%3Csvg width='7' height='7' viewBox='0 0 7 7' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M7 0H6V1H5V2H4V3H3V4H2V3H1V2H0V5H1V6H2V7H3V6H4V5H5V4H6V3H7V0Z' fill='%23808080'/%3E%3C/svg%3E");
+  --vb-icon-radio: url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M8 0H4V1H2V2H1V4H0V8H1V10H2V8H1V4H2V2H4V1H8V2H10V1H8V0Z' fill='%23808080'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M8 1H4V2H2V3V4H1V8H2V9H3V8H2V4H3V3H4V2H8V3H10V2H8V1Z' fill='black'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M9 3H10V4H9V3ZM10 8V4H11V8H10ZM8 10V9H9V8H10V9V10H8ZM4 10V11H8V10H4ZM4 10V9H2V10H4Z' fill='%23DFDFDF'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M11 2H10V4H11V8H10V10H8V11H4V10H2V11H4V12H8V11H10V10H11V8H12V4H11V2Z' fill='white'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M4 2H8V3H9V4H10V8H9V9H8V10H4V9H3V8H2V4H3V3H4V2Z' fill='white'/%3E%3C/svg%3E");
+  --vb-icon-radio-disabled: url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M8 0H4V1H2V2H1V4H0V8H1V10H2V8H1V4H2V2H4V1H8V2H10V1H8V0Z' fill='%23808080'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M8 1H4V2H2V3V4H1V8H2V9H3V8H2V4H3V3H4V2H8V3H10V2H8V1Z' fill='black'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M9 3H10V4H9V3ZM10 8V4H11V8H10ZM8 10V9H9V8H10V9V10H8ZM4 10V11H8V10H4ZM4 10V9H2V10H4Z' fill='%23DFDFDF'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M11 2H10V4H11V8H10V10H8V11H4V10H2V11H4V12H8V11H10V10H11V8H12V4H11V2Z' fill='white'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M4 2H8V3H9V4H10V8H9V9H8V10H4V9H3V8H2V4H3V3H4V2Z' fill='%23C0C0C0'/%3E%3C/svg%3E");
+  --vb-icon-radio-dot: url("data:image/svg+xml,%3Csvg width='4' height='4' viewBox='0 0 4 4' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M3 0H1V1H0V2V3H1V4H3V3H4V2V1H3V0Z' fill='black'/%3E%3C/svg%3E");
+  --vb-icon-radio-dot-disabled: url("data:image/svg+xml,%3Csvg width='4' height='4' viewBox='0 0 4 4' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M3 0H1V1H0V2V3H1V4H3V3H4V2V1H3V0Z' fill='%23808080'/%3E%3C/svg%3E");
+  --vb-icon-minimize: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='14' shape-rendering='crispEdges'%3E%3Crect width='16' height='14' fill='%23000'/%3E%3Crect width='15' height='13' fill='%23fff'/%3E%3Crect x='1' y='1' width='14' height='12' fill='%23808080'/%3E%3Crect x='1' y='1' width='13' height='11' fill='%23dfdfdf'/%3E%3Crect x='2' y='2' width='12' height='10' fill='%23c0c0c0'/%3E%3Crect x='4' y='9' width='6' height='2'/%3E%3C/svg%3E");
+  --vb-icon-maximize: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='14' shape-rendering='crispEdges'%3E%3Crect width='16' height='14' fill='%23000'/%3E%3Crect width='15' height='13' fill='%23fff'/%3E%3Crect x='1' y='1' width='14' height='12' fill='%23808080'/%3E%3Crect x='1' y='1' width='13' height='11' fill='%23dfdfdf'/%3E%3Crect x='2' y='2' width='12' height='10' fill='%23c0c0c0'/%3E%3Cpath fill-rule='evenodd' d='M3 2h9v9H3zM4 4h7v6H4z'/%3E%3C/svg%3E");
+  --vb-icon-close: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='14' shape-rendering='crispEdges'%3E%3Crect width='16' height='14' fill='%23000'/%3E%3Crect width='15' height='13' fill='%23fff'/%3E%3Crect x='1' y='1' width='14' height='12' fill='%23808080'/%3E%3Crect x='1' y='1' width='13' height='11' fill='%23dfdfdf'/%3E%3Crect x='2' y='2' width='12' height='10' fill='%23c0c0c0'/%3E%3Cpath transform='translate(4 3)' d='M0 0H2V1H3V2H5V1H6V0H8V1H7V2H6V3H5V4H6V5H7V6H8V7H6V6H5V5H3V6H2V7H0V6H1V5H2V4H3V3H2V2H1V1H0Z'/%3E%3C/svg%3E");
   color-scheme: light;
 }
 /* Square corners and hard edges everywhere — Windows 98 had no radius and no soft shadow. */
@@ -779,6 +800,8 @@ body.runtime #app { min-height: 100vh; display: flex; flex-direction: column; }
 :root[data-theme="vb6"] body { font: 12px/1.4 var(--vb-ui); }
 :root[data-theme="vb6"] ::selection { background: #000080; color: #fff; }
 :root[data-theme="vb6"] :focus-visible { outline: 1px dotted #000; outline-offset: -4px; }
+:root[data-theme="vb6"] :is(input:not([type="checkbox"], [type="radio"]), textarea, select, [contenteditable]):focus-visible { outline: none; }
+:root[data-theme="vb6"] a:focus-visible { outline-color: #0000ff; outline-offset: 0; }
 
 /* code surfaces: Courier New, like the code and Immediate windows */
 :root[data-theme="vb6"] .repl-echo, :root[data-theme="vb6"] .repl-output, :root[data-theme="vb6"] .repl-input,
@@ -803,14 +826,19 @@ body.runtime #app { min-height: 100vh; display: flex; flex-direction: column; }
 :root[data-theme="vb6"] :is(.head-btn, .side-btn, .dlg-btn, .ag-btn, .ag-cat-add-btn, .setup-btn, .setup-add,
   .snip-runall, .snip-run, .snip-srcbtn, .snip-copy, .sheet-tool, .sheet-colour, .fd-tool, .fd-action, .fd-go,
   .fd-p-button, .formrun-button, .formrun-stop, .formrun-popout, .formrun-pagebtn, .rt-btn, .cal-nav, .tab,
-  .toast .toast-action) {
+  .toast-action) {
   background: #c0c0c0; color: #000; border: 1px solid; border-color: #fff #000 #000 #fff;
   box-shadow: var(--vb-raised); font-weight: 400;
 }
 :root[data-theme="vb6"] :is(.head-btn, .side-btn, .dlg-btn, .ag-btn, .ag-cat-add-btn, .setup-btn, .setup-add,
   .snip-runall, .snip-run, .snip-srcbtn, .snip-copy, .sheet-tool, .fd-tool, .fd-action, .fd-go, .formrun-button,
-  .formrun-stop, .formrun-popout, .formrun-pagebtn, .rt-btn, .cal-nav, .tab, .toast .toast-action):active:not(:disabled) {
-  border-color: #000 #fff #fff #000; box-shadow: var(--vb-sunken); padding-top: 1px;
+  .formrun-stop, .formrun-popout, .formrun-pagebtn, .rt-btn, .cal-nav, .tab, .toast-action):active:not(:disabled) {
+  border-color: #000 #fff #fff #000; box-shadow: var(--vb-sunken); color: transparent; text-shadow: 1px 1px #000;
+}
+/* on a touch screen there is no hover, so the press shows on touch */
+@media (hover: none) {
+  :root[data-theme="vb6"] :is(.head-btn, .side-btn, .dlg-btn, .ag-btn, .setup-btn, .sheet-tool, .fd-tool, .formrun-button,
+    .rt-btn, .tab):hover:not(:disabled):not(.active) { border-color: #000 #fff #fff #000; box-shadow: var(--vb-sunken); }
 }
 /* latched: a toggle that is down (design/code/run, the toolbox pointer, Bold) — sunken on a dither */
 :root[data-theme="vb6"] :is(.form-modes .head-btn.active, .fd-tool.active, .sheet-tool.on, .tab.active) {
@@ -820,7 +848,11 @@ body.runtime #app { min-height: 100vh; display: flex; flex-direction: column; }
 :root[data-theme="vb6"] :is(.dlg-btn, .ag-btn):disabled,
 :root[data-theme="vb6"] .formrun-pagebtn:disabled { color: #808080; text-shadow: 1px 1px #fff; }
 /* the default button in a dialog carries the extra black frame */
-:root[data-theme="vb6"] .dlg-primary { outline: 1px solid #000; outline-offset: 0; }
+:root[data-theme="vb6"] .dlg-primary { border-color: #000;
+  box-shadow: inset 1px 1px #fff, inset -1px -1px #000, inset 2px 2px #dfdfdf, inset -2px -2px #808080; }
+:root[data-theme="vb6"] .dlg-primary:active { box-shadow: inset 1px 1px #808080, inset -1px -1px #808080; }
+/* a dialog's command buttons are at least 75 × 23, as Windows sized them */
+:root[data-theme="vb6"] :is(.dlg-btn, .rt-btn) { min-width: 75px; min-height: 23px; padding: 0 12px; }
 :root[data-theme="vb6"] .dlg-danger { color: #000; }
 :root[data-theme="vb6"] .dlg-danger:hover { background: #c0c0c0; color: #000; }
 :root[data-theme="vb6"] .ag-btn.ag-done, :root[data-theme="vb6"] .snip-run { color: #000; }
@@ -843,22 +875,25 @@ body.runtime #app { min-height: 100vh; display: flex; flex-direction: column; }
 :root[data-theme="vb6"] :is(.dlg-panel, .qo-panel, .cal-panel, .setup-panel, .snip-panel, .ctx-menu, .toast,
   .formrun-menulist, .drop-badge, .fd-window, .formrun-window, .formwin) {
   background: #c0c0c0; color: #000; border: 1px solid; border-color: #dfdfdf #000 #000 #dfdfdf;
-  box-shadow: inset 1px 1px #fff, inset -1px -1px #808080; padding: 2px;
+  box-shadow: inset 1px 1px #fff, inset -1px -1px #808080; padding: 3px;
 }
 :root[data-theme="vb6"] :is(.dlg-panel, .cal-panel, .setup-panel, .snip-panel) { padding: 16px; }
 :root[data-theme="vb6"] .formrun.windowed .formrun-window, :root[data-theme="vb6"] .formrun-framebody > .formrun.in-frame .formrun-window {
   border: 0; box-shadow: none; padding: 0;
 }
 :root[data-theme="vb6"] .qo-overlay { background: transparent; }
-/* a dialog's title becomes its caption bar (16px padding − the 2px frame) */
-:root[data-theme="vb6"] .dlg-title { margin: -14px -14px 12px; padding: 3px 6px; background: var(--vb-caption);
+/* a dialog's title becomes its caption bar, 1px inside the 2px frame (16px padding − 3px) */
+:root[data-theme="vb6"] .dlg-title { margin: -13px -13px 12px; padding: 3px 3px 3px 4px; background: var(--vb-caption);
   color: #fff; font-weight: 700; }
 :root[data-theme="vb6"] .dlg-detail { color: #000; }
 
 /* ── caption bars: the form windows, and the sidebar's docked tool windows ── */
 :root[data-theme="vb6"] .fd-title, :root[data-theme="vb6"] .formrun-title {
-  background: var(--vb-caption); color: #fff; border-bottom: 0; font-weight: 700; padding: 3px 4px 3px 6px;
+  background: var(--vb-caption); color: #fff; border-bottom: 0; font-weight: 700; padding: 3px 2px 3px 4px;
 }
+/* the running form's own caption buttons (pop out, stop), at caption-button size */
+:root[data-theme="vb6"] :is(.formrun-stop, .formrun-popout) { min-height: 14px; padding: 0 4px; font: 11px/12px var(--vb-ui); }
+:root[data-theme="vb6"] .formrun-buttons { gap: 2px; }
 :root[data-theme="vb6"] .formrun-ctl.frame.mode-windows .formrun.in-frame:not(.front) .formrun-title {
   background: linear-gradient(90deg, #808080, #b5b5b5); color: #c0c0c0;
 }
@@ -866,10 +901,8 @@ body.runtime #app { min-height: 100vh; display: flex; flex-direction: column; }
 :root[data-theme="vb6"] .fd-title { display: flex; align-items: center; justify-content: space-between; }
 :root[data-theme="vb6"] .fd-title::after {
   content: ""; flex: 0 0 auto; width: 50px; height: 14px; margin-left: 12px;
-  background:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='14'%3E%3Crect width='16' height='14' fill='%23c0c0c0'/%3E%3Cpath d='M0 13.5h16M15.5 0v14' stroke='%23000'/%3E%3Cpath d='M0 .5h15M.5 0v13' stroke='%23fff'/%3E%3Cpath d='M1 12.5h14M14.5 1v12' stroke='%23808080'/%3E%3Cpath d='M4 10h6v2H4z' fill='%23000'/%3E%3C/svg%3E") 0 0 / 16px 14px no-repeat,
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='14'%3E%3Crect width='16' height='14' fill='%23c0c0c0'/%3E%3Cpath d='M0 13.5h16M15.5 0v14' stroke='%23000'/%3E%3Cpath d='M0 .5h15M.5 0v13' stroke='%23fff'/%3E%3Cpath d='M1 12.5h14M14.5 1v12' stroke='%23808080'/%3E%3Cpath d='M3.5 3.5h8v7h-8z' fill='none' stroke='%23000'/%3E%3Cpath d='M3 4h9' stroke='%23000'/%3E%3C/svg%3E") 16px 0 / 16px 14px no-repeat,
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='14'%3E%3Crect width='16' height='14' fill='%23c0c0c0'/%3E%3Cpath d='M0 13.5h16M15.5 0v14' stroke='%23000'/%3E%3Cpath d='M0 .5h15M.5 0v13' stroke='%23fff'/%3E%3Cpath d='M1 12.5h14M14.5 1v12' stroke='%23808080'/%3E%3Cpath d='M4.5 3.5l6 6M10.5 3.5l-6 6' stroke='%23000' stroke-width='1.6'/%3E%3C/svg%3E") 34px 0 / 16px 14px no-repeat;
+  background: var(--vb-icon-minimize) 0 0 / 16px 14px no-repeat, var(--vb-icon-maximize) 16px 0 / 16px 14px no-repeat,
+    var(--vb-icon-close) 34px 0 / 16px 14px no-repeat;
 }
 :root[data-theme="vb6"] .side-head {
   margin: 2px 2px 0; padding: 2px 3px 2px 6px; background: var(--vb-caption); color: #fff;
@@ -887,14 +920,20 @@ body.runtime #app { min-height: 100vh; display: flex; flex-direction: column; }
 :root[data-theme="vb6"] .editor-pane { border-right: 0; box-shadow: inset -1px 0 #808080; }
 :root[data-theme="vb6"] .etabbar { padding: 3px 3px 0; border-bottom: 1px solid #fff; box-shadow: none; }
 :root[data-theme="vb6"] .etab {
-  margin-right: -1px; padding: 2px 4px 2px 8px; border: 1px solid; border-bottom: 0;
-  border-color: #fff #000 transparent #fff; box-shadow: inset -1px 0 #808080; color: #000; background: #c0c0c0;
+  padding: 4px 5px 3px 9px; border: 0; box-shadow: var(--vb-tab); color: #000; background: #c0c0c0;
 }
-:root[data-theme="vb6"] .etab.active { position: relative; top: 1px; margin-top: -2px; padding-top: 3px; font-weight: 700; }
+:root[data-theme="vb6"] .etab.active { position: relative; z-index: 1; margin: -2px 0 -1px -3px; padding: 5px 5px 5px 12px; }
+:root[data-theme="vb6"] .etab.active + .etab { margin-left: -3px; padding-left: 12px; }
+:root[data-theme="vb6"] :is(.etab, .fd-p-tab, .formrun-tab, .formrun-frametab) {
+  border-top-left-radius: 3px !important; border-top-right-radius: 3px !important;
+}
 :root[data-theme="vb6"] .etab-close:hover { background: #c0c0c0; color: #000; }
 :root[data-theme="vb6"] .etab-ext { color: #000080; }
-:root[data-theme="vb6"] .backlinks-bar { background: #c0c0c0; color: #000; border-top: 1px solid #fff;
-  box-shadow: 0 -1px #808080; }
+/* status bars: a row of shallow sunken fields */
+:root[data-theme="vb6"] :is(.backlinks-bar, .fd-status, .sheet-status) {
+  margin: 2px; padding: 2px 4px; border: 0; background: #c0c0c0; box-shadow: var(--vb-status);
+}
+:root[data-theme="vb6"] .backlinks-bar { color: #000; }
 :root[data-theme="vb6"] .backlinks-bar .backlink { color: #0000ff; text-decoration: underline; }
 :root[data-theme="vb6"] .form-modes .head-btn { margin-left: 0; }
 
@@ -907,6 +946,12 @@ body.runtime #app { min-height: 100vh; display: flex; flex-direction: column; }
 :root[data-theme="vb6"] .tree-file:hover:not(.active) { background: transparent; }
 :root[data-theme="vb6"] .formrun-menu:hover { background: transparent; box-shadow: inset 1px 1px #fff, inset -1px -1px #808080; }
 :root[data-theme="vb6"] .tree-dir { color: #000; }
+/* a folder's expander is the tree view's 9px box with a minus (open) or plus (closed) */
+:root[data-theme="vb6"] .tree-caret { width: 9px; height: 9px; margin-right: 5px; font-size: 0; vertical-align: middle; display: inline-block;
+  background: #fff; border: 1px solid #808080; position: relative; box-sizing: border-box; }
+:root[data-theme="vb6"] .tree-caret::before, :root[data-theme="vb6"] .tree-caret.closed::after {
+  content: ""; position: absolute; background: #000; left: 1px; top: 3px; width: 5px; height: 1px; }
+:root[data-theme="vb6"] .tree-caret.closed::after { left: 3px; top: 1px; width: 1px; height: 5px; }
 :root[data-theme="vb6"] .ctx-menu { padding: 2px; }
 :root[data-theme="vb6"] .ctx-item { padding: 3px 20px; font-size: 12px; }
 :root[data-theme="vb6"] .ctx-item.danger { color: #000; }
@@ -921,9 +966,13 @@ body.runtime #app { min-height: 100vh; display: flex; flex-direction: column; }
 :root[data-theme="vb6"] .repl-output { color: #000; }
 :root[data-theme="vb6"] .result-scalar { background: transparent; color: #000; padding: 0; }
 :root[data-theme="vb6"] .result-error { background: transparent; color: #c00000; padding: 0; }
-:root[data-theme="vb6"] .result-table th, :root[data-theme="vb6"] .formrun-grid th, :root[data-theme="vb6"] .fd-p-gridhead {
-  background: #c0c0c0; color: #000; box-shadow: inset 1px 1px #fff, inset -1px -1px #808080;
+/* column headers are buttons: 2px raised, regular weight */
+:root[data-theme="vb6"] :is(.result-table th, .formrun-grid th, .fd-p-gridhead span) {
+  background: #c0c0c0; color: #000; box-shadow: var(--vb-raised-2); border: 0; font-weight: 400;
 }
+:root[data-theme="vb6"] .fd-p-gridhead { background: #c0c0c0; border: 0; }
+:root[data-theme="vb6"] .formrun-grid th.sortable:active { box-shadow: var(--vb-status); }
+:root[data-theme="vb6"] .formrun-grid th.sortable:hover { color: #000; }
 
 /* ── the form designer: a grey form on the dark MDI workspace, dotted grid, navy handles ── */
 :root[data-theme="vb6"] .fd-stage { background: #808080; }
@@ -958,16 +1007,51 @@ body.runtime #app { min-height: 100vh; display: flex; flex-direction: column; }
 :root[data-theme="vb6"] :is(.fd-p-frame, .fd-p-timer, .fd-p-image, .fd-p-tabs, .formrun-ctl.tabs, .formrun-ctl.frame,
   .formrun-ctl.sheet) { border: 1px solid #808080; box-shadow: 1px 1px #fff, inset 1px 1px #fff; }
 :root[data-theme="vb6"] :is(.fd-p-tab, .formrun-tab, .formrun-frametab) {
-  background: #c0c0c0; color: #000; border: 1px solid; border-bottom: 0; border-color: #fff #000 transparent #fff;
-  box-shadow: inset -1px 0 #808080;
+  background: #c0c0c0; color: #000; border: 1px solid transparent; border-bottom: 0; box-shadow: var(--vb-tab);
 }
-:root[data-theme="vb6"] :is(.fd-p-tab.active, .formrun-tab.active, .formrun-frametab.active) { font-weight: 700; }
+:root[data-theme="vb6"] :is(.fd-p-tab.active, .formrun-tab.active, .formrun-frametab.active) {
+  position: relative; z-index: 1; margin-top: -2px; padding-bottom: 5px; margin-bottom: -1px;
+}
 :root[data-theme="vb6"] :is(.fd-p-tabhead, .formrun-tabhead, .formrun-framehead) { background: #c0c0c0; border-bottom: 1px solid #fff; }
 :root[data-theme="vb6"] .formrun-ctl.invalid .formrun-input { border-color: #c00000; }
 :root[data-theme="vb6"] .formrun-input { color-scheme: light; }
-:root[data-theme="vb6"] .formrun-check input, :root[data-theme="vb6"] .dlg-check input, :root[data-theme="vb6"] .setup-auto input {
-  accent-color: #000;
+/* check boxes and option buttons, drawn the 98.css way: a 13px field with a 7px tick, a 12px ring with a 4px dot */
+:root[data-theme="vb6"] input[type="checkbox"] {
+  -webkit-appearance: none; appearance: none; flex: 0 0 auto; width: 13px; height: 13px; margin: 0 4px 0 0;
+  background: #fff center / 7px 7px no-repeat; box-shadow: var(--vb-field-2); border: 0; vertical-align: -2px;
 }
+:root[data-theme="vb6"] input[type="checkbox"]:checked { background-image: var(--vb-icon-check); }
+:root[data-theme="vb6"] input[type="checkbox"]:active:not(:disabled), :root[data-theme="vb6"] input[type="checkbox"]:disabled { background-color: #c0c0c0; }
+:root[data-theme="vb6"] input[type="checkbox"]:disabled:checked { background-image: var(--vb-icon-check-disabled); }
+:root[data-theme="vb6"] input[type="radio"] {
+  -webkit-appearance: none; appearance: none; flex: 0 0 auto; width: 12px; height: 12px; margin: 0 4px 0 0; border: 0;
+  background: var(--vb-icon-radio) 0 0 / 12px 12px no-repeat; vertical-align: -2px;
+}
+:root[data-theme="vb6"] input[type="radio"]:checked {
+  background: var(--vb-icon-radio-dot) 4px 4px / 4px 4px no-repeat, var(--vb-icon-radio) 0 0 / 12px 12px no-repeat;
+}
+:root[data-theme="vb6"] input[type="radio"]:active:not(:disabled), :root[data-theme="vb6"] input[type="radio"]:disabled {
+  background-image: var(--vb-icon-radio-disabled);
+}
+:root[data-theme="vb6"] input[type="radio"]:disabled:checked {
+  background: var(--vb-icon-radio-dot-disabled) 4px 4px / 4px 4px no-repeat, var(--vb-icon-radio-disabled) 0 0 / 12px 12px no-repeat;
+}
+:root[data-theme="vb6"] :is(input[type="checkbox"], input[type="radio"]):focus-visible { outline: none; }
+:root[data-theme="vb6"] :is(input[type="checkbox"], input[type="radio"]):focus-visible + *,
+:root[data-theme="vb6"] label:has(> :is(input[type="checkbox"], input[type="radio"]):focus-visible) { outline: 1px dotted #000; }
+/* a combo box: the field with its drop-down button inside the right edge; focused, it goes navy.
+   (:is() lifts these over the field rule above, which the app's selects also match) */
+:root[data-theme="vb6"] :is(select, select.sheet-num, select.formrun-input) {
+  -webkit-appearance: none; appearance: none; padding-right: 20px;
+  background: #fff var(--vb-icon-down) right 2px center / 16px 17px no-repeat;
+}
+:root[data-theme="vb6"] :is(select, select.sheet-num, select.formrun-input):active { background-image: var(--vb-icon-down-active); }
+:root[data-theme="vb6"] :is(select, select.sheet-num, select.formrun-input):focus { background-color: #000080; color: #fff; }
+:root[data-theme="vb6"] select option { background: #fff; color: #000; }
+:root[data-theme="vb6"] :is(select, select.sheet-num, select.formrun-input):disabled { background-color: #c0c0c0; color: #808080; }
+/* …and the designer's picture of one */
+:root[data-theme="vb6"] .fd-p-caret { top: 2px; right: 2px; width: 16px; height: calc(100% - 4px); max-height: 17px;
+  font-size: 0; background: var(--vb-icon-down) center / 16px 17px no-repeat; }
 :root[data-theme="vb6"] body.runtime { background: #808080; }
 
 /* ── the rest: chips, calendar, agenda, snippets, sheets ── */
@@ -998,31 +1082,17 @@ body.runtime #app { min-height: 100vh; display: flex; flex-direction: column; }
 :root[data-theme="vb6"] .drop-badge { padding: 22px 34px; }
 :root[data-theme="vb6"] .tabbar { background: #c0c0c0; border-top: 1px solid #fff; }
 
-/* ── classic scrollbars: 16px, bevelled thumb and arrows, dithered track ── */
-:root[data-theme="vb6"] ::-webkit-scrollbar { width: 16px; height: 16px; }
-:root[data-theme="vb6"] ::-webkit-scrollbar-track { background: repeating-conic-gradient(#c0c0c0 0 25%, #fff 0 50%) 0 0 / 2px 2px; }
-:root[data-theme="vb6"] ::-webkit-scrollbar-corner { background: #c0c0c0; }
-:root[data-theme="vb6"] ::-webkit-scrollbar-thumb {
-  background: #c0c0c0; border: 1px solid; border-color: #dfdfdf #000 #000 #dfdfdf;
-  box-shadow: inset 1px 1px #fff, inset -1px -1px #808080;
-}
-:root[data-theme="vb6"] ::-webkit-scrollbar-button:single-button {
-  display: block; width: 16px; height: 16px; background-color: #c0c0c0; background-repeat: no-repeat;
-  background-position: center; border: 1px solid; border-color: #dfdfdf #000 #000 #dfdfdf;
-  box-shadow: inset 1px 1px #fff, inset -1px -1px #808080;
-}
-:root[data-theme="vb6"] ::-webkit-scrollbar-button:single-button:vertical:decrement {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4'%3E%3Cpath d='M3.5 0L7 4H0z'/%3E%3C/svg%3E");
-}
-:root[data-theme="vb6"] ::-webkit-scrollbar-button:single-button:vertical:increment {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4'%3E%3Cpath d='M0 0h7L3.5 4z'/%3E%3C/svg%3E");
-}
-:root[data-theme="vb6"] ::-webkit-scrollbar-button:single-button:horizontal:decrement {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='7'%3E%3Cpath d='M0 3.5L4 0v7z'/%3E%3C/svg%3E");
-}
-:root[data-theme="vb6"] ::-webkit-scrollbar-button:single-button:horizontal:increment {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='7'%3E%3Cpath d='M0 0l4 3.5L0 7z'/%3E%3C/svg%3E");
-}
-:root[data-theme="vb6"] ::-webkit-scrollbar-button:single-button:active {
-  border-color: #808080; box-shadow: none;
-}
+/* ── classic scrollbars: 98.css's arrow buttons (bevel included) and dither track, a 2px-bevelled thumb ── */
+:root[data-theme="vb6"] ::-webkit-scrollbar { width: 16px; }
+:root[data-theme="vb6"] ::-webkit-scrollbar:horizontal { height: 17px; }
+:root[data-theme="vb6"] ::-webkit-scrollbar-track { background-image: var(--vb-icon-track); }
+:root[data-theme="vb6"] ::-webkit-scrollbar-corner { background: #dfdfdf; }
+:root[data-theme="vb6"] ::-webkit-scrollbar-thumb { background-color: #dfdfdf; box-shadow: var(--vb-raised-2); }
+:root[data-theme="vb6"] ::-webkit-scrollbar-button:horizontal:start:decrement,
+:root[data-theme="vb6"] ::-webkit-scrollbar-button:horizontal:end:increment,
+:root[data-theme="vb6"] ::-webkit-scrollbar-button:vertical:start:decrement,
+:root[data-theme="vb6"] ::-webkit-scrollbar-button:vertical:end:increment { display: block; }
+:root[data-theme="vb6"] ::-webkit-scrollbar-button:vertical:start { height: 17px; background-image: var(--vb-icon-up); }
+:root[data-theme="vb6"] ::-webkit-scrollbar-button:vertical:end { height: 17px; background-image: var(--vb-icon-down); }
+:root[data-theme="vb6"] ::-webkit-scrollbar-button:horizontal:start { width: 16px; background-image: var(--vb-icon-left); }
+:root[data-theme="vb6"] ::-webkit-scrollbar-button:horizontal:end { width: 16px; background-image: var(--vb-icon-right); }
