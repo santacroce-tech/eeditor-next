@@ -51,6 +51,36 @@ describe("the keyboard", () => {
     expect(spectrumKeys("KeyB")).toEqual([[7, 4]]);
   });
 
+  it("types a symbol as itself: + is SYMBOL SHIFT + K, whatever the PC needed to type it", () => {
+    expect(spectrumKeys("Equal", "+")).toEqual([[7, 1], [6, 2]]);
+    expect(spectrumKeys("Digit8", "*")).toEqual([[7, 1], [7, 4]]);
+    expect(spectrumKeys("Equal", "=")).toEqual([[7, 1], [6, 1]]);
+    expect(spectrumKeys("Slash", "?")).toEqual([[7, 1], [0, 3]]);
+    // a letter is still a letter, whatever it types
+    expect(spectrumKeys("KeyK", "k")).toEqual([[6, 2]]);
+  });
+
+  it("drops the PC's Shift while a symbol is held, so + isn't CAPS SHIFT + SYMBOL SHIFT + K", () => {
+    const k = new KeyMatrix();
+    k.press("ShiftLeft", "Shift");
+    k.press("Equal", "+");
+    const m = k.bytes();
+    expect(m[0]).toBe(0xff); // no CAPS SHIFT
+    expect(m[7]).toBe(0xfd); // SYMBOL SHIFT
+    expect(m[6]).toBe(0xfb); // K
+    k.release("Equal");
+    expect(k.bytes()[0]).toBe(0xfe); // Shift is CAPS SHIFT again
+  });
+
+  it("holds on-screen keys by their own id", () => {
+    const k = new KeyMatrix();
+    k.hold("vk-symbol", [[7, 1]]);
+    k.hold("vk-K", [[6, 2]]);
+    expect([k.bytes()[7], k.bytes()[6]]).toEqual([0xfd, 0xfb]);
+    k.release("vk-K");
+    expect(k.bytes()[6]).toBe(0xff);
+  });
+
   it("presses CAPS SHIFT with a digit for the cursor keys and DELETE", () => {
     expect(spectrumKeys("ArrowLeft")).toEqual([[0, 0], [3, 4]]);
     expect(spectrumKeys("Backspace")).toEqual([[0, 0], [4, 0]]);

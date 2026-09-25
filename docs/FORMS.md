@@ -84,7 +84,9 @@ unless `:toolbar false`; handlers read and write its cells with `(sheet-get …)
 and the grid follows), `screen` (`:frame`, an expression evaluated fifty times a second while
 enabled — with the keys held on the screen in `ui-keys`, as the ZX Spectrum's 8-byte key matrix
 in base64 — whose value, `{"kind" "screen" "pixels" … "border" … "frame" …}`, is painted: a
-ZX Spectrum screen. A form with one gets the Spectrum machine, `src/spectrum/zx.eelisp`, loaded
+ZX Spectrum screen. The keys held on it are the Spectrum's — a typed symbol presses the Spectrum's
+own combination for it — and `:keyboard true` (or ⌨ in its corner) shows the Spectrum's keyboard
+under it, to click. A form with one gets the Spectrum machine, `src/spectrum/zx.eelisp`, loaded
 first; `workspace/examples/Spectrum.eeform` runs it. See `docs/spectrum/`).
 
 **The menu bar.** `(form … :menu (("File" ("New" new-item) ("-") ("Quit" quit)) ("Help" ("About"

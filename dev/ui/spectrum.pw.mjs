@@ -71,15 +71,74 @@ test("Load ROM… picks a file and the machine boots from it", async ({ page }) 
   await expect(page.locator(".toast").last()).toContainText("a 48K ROM is 16384");
 });
 
-test("keys held on the screen go to the machine, not to the form", async ({ page }) => {
+// Not Sinclair's ROM — a loop that reads two half-rows of the keyboard and shows the raw bits in the
+// top-left of the screen (black ink on white): 0x4000 ← IN (0x7FFE) (SPACE SYMBOL M N B),
+// 0x4001 ← IN (0xBFFE) (ENTER L K J H). A clear bit is a key held down.
+//   LD HL,0x5800 / LD (HL),0x38 / INC HL / LD (HL),0x38
+//   loop: LD A,0x7F / IN A,(0xFE) / LD (0x4000),A / LD A,0xBF / IN A,(0xFE) / LD (0x4001),A / JR loop
+const KEYS_ROM = Buffer.alloc(16384);
+Buffer.from([0x21, 0x00, 0x58, 0x36, 0x38, 0x23, 0x36, 0x38, 0x3e, 0x7f, 0xdb, 0xfe, 0x32, 0x00, 0x40, 0x3e, 0xbf, 0xdb, 0xfe, 0x32, 0x01, 0x40, 0x18, 0xf0]).copy(KEYS_ROM);
+
+/** The byte the machine last read from a half-row, read back off the canvas: a dark pixel is a 1. */
+const shown = (page, i) =>
+  page.evaluate((i) => {
+    const d = document.querySelector(".formrun-screen").getContext("2d").getImageData(i * 8, 0, 8, 1).data;
+    let b = 0;
+    for (let x = 0; x < 8; x++) if (d[x * 4] < 100) b |= 0x80 >> x;
+    return b;
+  }, i);
+
+async function withKeysRom(page) {
   const form = await run(page);
-  await ctl(form, "btnDemo").locator("button").click();
+  const chooser = page.waitForEvent("filechooser");
+  await ctl(form, "btnRom").locator("button").click();
+  await (await chooser).setFiles({ name: "keys.rom", mimeType: "application/octet-stream", buffer: KEYS_ROM });
+  await expect.poll(() => shown(page, 0)).toBe(0xbf); // nothing held: 0xA0 | 0x1F
+  return form;
+}
+
+test("a typed symbol is the Spectrum's: + is SYMBOL SHIFT + K, and Enter stays on the screen", async ({ page }) => {
+  const form = await withKeysRom(page);
   const screen = form.locator(".formrun-screen");
   await screen.click();
-  await expect(screen).toBeFocused();
+  await page.keyboard.down("Shift");
+  await page.keyboard.down("+");
+  await expect.poll(() => shown(page, 0)).toBe(0xbd); // SYMBOL SHIFT (bit 1)
+  expect(await shown(page, 1)).toBe(0xbb); // K (bit 2)
+  await page.keyboard.up("+");
+  await page.keyboard.up("Shift");
+  await expect.poll(() => shown(page, 1)).toBe(0xbf);
+
   // Enter would press a :default button; here it is the Spectrum's ENTER, and the form stays put
   await page.keyboard.down("Enter");
+  await expect.poll(() => shown(page, 1)).toBe(0xbe); // ENTER (bit 0)
   await page.keyboard.up("Enter");
   await expect(screen).toBeFocused();
-  await expect(form.locator(".formrun-ctl.screen")).toHaveCount(1);
+});
+
+test("the on-screen keyboard: ⌨ shows it, SYMBOL SHIFT latches for the next key", async ({ page }) => {
+  const form = await withKeysRom(page);
+  const board = form.locator(".formrun-zxkb");
+  await expect(board).toBeHidden();
+  await form.locator(".formrun-screen-kbtoggle").click();
+  await expect(board).toBeVisible();
+  await expect(board.locator(".zxkb-key")).toHaveCount(40);
+
+  await board.locator('.zxkb-key[data-key="SYMBOL SHIFT"]').click();
+  await expect(board.locator('.zxkb-key[data-key="SYMBOL SHIFT"]')).toHaveClass(/latched/);
+  await expect.poll(() => shown(page, 0)).toBe(0xbd);
+  const k = board.locator('.zxkb-key[data-key="K"]');
+  const box = await k.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await expect.poll(() => shown(page, 1)).toBe(0xbb); // K, with SYMBOL SHIFT still held: +
+  expect(await shown(page, 0)).toBe(0xbd);
+  await page.mouse.up();
+  // the latch let go with the key
+  await expect.poll(() => shown(page, 0)).toBe(0xbf);
+  await expect(board.locator('.zxkb-key[data-key="SYMBOL SHIFT"]')).not.toHaveClass(/latched/);
+  await expect(form.locator(".formrun-screen")).toBeFocused(); // clicking keys never took the focus
+
+  await form.locator(".formrun-screen-kbtoggle").click();
+  await expect(board).toBeHidden();
 });

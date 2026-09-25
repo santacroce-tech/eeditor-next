@@ -8,15 +8,20 @@
 ;; bundled; every emulator carries it). The Spectrum boots to © 1982 Sinclair Research Ltd; click
 ;; the screen and type. Load .sna… restores a 48K snapshot over it. Demo runs a small program with
 ;; no ROM at all.
+;;
+;; Typing: letters, digits, Enter, Space and Shift are the Spectrum's. A symbol types itself — + is
+;; +, whatever your keyboard needs for it (the Spectrum's SYMBOL SHIFT + K). Ctrl or Alt is SYMBOL
+;; SHIFT, the arrows are the cursor keys, Backspace is DELETE. ⌨ in the screen's corner shows the
+;; Spectrum's own keyboard under it: click CAPS SHIFT or SYMBOL SHIFT, then a key.
 
-(form "Spectrum" :size (560 456) :on-load spectrum-load
-  (screen scrZX :frame "(zx-frame zx ui-keys)" :at (16 16) :size (528 384))
-  (button btnRom :text "Load ROM…" :at (16 416) :size (96 24) :on-click spectrum-pick-rom)
-  (button btnSna :text "Load .sna…" :at (120 416) :size (96 24) :on-click spectrum-pick-sna)
-  (button btnDemo :text "Demo" :at (224 416) :size (64 24) :on-click spectrum-demo)
-  (button btnReset :text "Reset" :at (296 416) :size (64 24) :on-click spectrum-reset)
-  (button btnPause :text "Pause" :at (368 416) :size (64 24) :on-click spectrum-pause)
-  (label lblStatus :at (440 420) :size (104 24)))
+(form "Spectrum" :size (560 448) :on-load spectrum-load
+  (button btnRom :text "Load ROM…" :at (16 12) :size (96 24) :on-click spectrum-pick-rom)
+  (button btnSna :text "Load .sna…" :at (120 12) :size (96 24) :on-click spectrum-pick-sna)
+  (button btnDemo :text "Demo" :at (224 12) :size (64 24) :on-click spectrum-demo)
+  (button btnReset :text "Reset" :at (296 12) :size (64 24) :on-click spectrum-reset)
+  (button btnPause :text "Pause" :at (368 12) :size (64 24) :on-click spectrum-pause)
+  (label lblStatus :at (440 16) :size (104 24))
+  (screen scrZX :frame "(zx-frame zx ui-keys)" :at (16 48) :size (528 384)))
 
 (def zx (zx-new))
 (def spectrum-rom nil)        ; the ROM last loaded, so Reset boots it again

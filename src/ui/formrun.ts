@@ -4,7 +4,8 @@
 import { frameMode, humanName, onOpenPage, openPages, type Control, type FormSpec, type FrameMode, type StateValue } from "../core/form";
 import { rowsOf, stateValue, type Row, type UiChange } from "../engine/form";
 import { dictGet, isDict, type JsonValue } from "../engine/types";
-import { borderCss, bytesToB64, frameOf, H, KeyMatrix, screenRgba, W } from "../spectrum/screen";
+import { borderCss, bytesToB64, frameOf, H, KeyMatrix, screenRgba, W, type Key } from "../spectrum/screen";
+import { createZxKeyboard } from "./zxkeyboard";
 
 export interface FormRunner {
   readonly el: HTMLElement;
@@ -854,23 +855,70 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
           stopped = true;
           clearTimeout(wait);
         });
+        // A key is held for at least HOLD ms: the ROM reads the keyboard once a frame, and a quick
+        // tap — a click, a fast typist — could otherwise come and go between two reads.
+        const HOLD = 80;
+        const since = new Map<string, number>();
+        const pendingUp = new Map<string, ReturnType<typeof setTimeout>>();
+        const pressed = (id: string) => {
+          clearTimeout(pendingUp.get(id));
+          pendingUp.delete(id);
+          since.set(id, performance.now());
+        };
+        const release = (id: string) => {
+          const wait = HOLD - (performance.now() - (since.get(id) ?? 0));
+          since.delete(id);
+          if (wait <= 0) return void keys.release(id);
+          pendingUp.set(id, setTimeout(() => (pendingUp.delete(id), keys.release(id)), wait));
+        };
         // The keys go to the machine, not to the form (Enter, Escape) or the editor's bindings.
         view.addEventListener("keydown", (e) => {
-          if (e.metaKey || !keys.press(e.code)) return;
+          if (e.metaKey || !keys.press(e.code, e.key)) return;
+          pressed(e.code);
           e.preventDefault();
           e.stopPropagation();
         });
         view.addEventListener("keyup", (e) => {
-          if (keys.release(e.code)) e.preventDefault();
+          if (!since.has(e.code)) return;
+          e.preventDefault();
+          release(e.code);
         });
-        view.addEventListener("blur", () => keys.clear());
         view.addEventListener("pointerdown", () => view.focus());
+
+        // The Spectrum's own keyboard, on screen, under the picture: ⌨ in the corner, or :keyboard.
+        const board = createZxKeyboard({
+          press: (id: string, k: Key[]) => (keys.hold(id, k), pressed(id)),
+          release,
+        });
+        board.el.classList.add("formrun-zxkb");
+        const toggle = el("button", "formrun-screen-kbtoggle", "⌨");
+        toggle.type = "button";
+        toggle.title = "The Spectrum's keyboard";
+        toggle.tabIndex = -1;
+        toggle.addEventListener("pointerdown", (e) => e.preventDefault());
+        const showBoard = (show: boolean) => {
+          board.reset();
+          board.el.hidden = !show;
+          toggle.classList.toggle("on", show);
+          // The form's canvas clips, so it grows to hold the keyboard below the screen.
+          const need = show ? c.y + c.h + 8 + board.el.offsetHeight + 8 : 0;
+          canvas.style.height = `${Math.max(current.h, need)}px`;
+        };
+        toggle.addEventListener("click", () => showBoard(board.el.hidden));
+        box.append(toggle, board.el);
+        board.el.hidden = true;
+        if (p.keyboard === true) queueMicrotask(() => showBoard(true));
+        view.addEventListener("blur", () => {
+          keys.clear();
+          board.reset();
+        });
         out = {
           spec: c,
           box,
           value: () => on,
           set: (k, v) => {
             if (k === "frame") expr = asText(v);
+            else if (k === "keyboard") showBoard(truthy(v));
             else if (k === "enabled" || k === "value") on = truthy(v);
           },
           focus: () => view.focus(),

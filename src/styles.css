@@ -594,6 +594,28 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-s
 .formrun-ctl.screen { background: #000; padding: 10% 10%; box-sizing: border-box; }
 .formrun-screen { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; display: block; outline: none; }
 .formrun-ctl.screen:focus-within { box-shadow: 0 0 0 2px var(--accent); }
+.formrun-screen-kbtoggle { position: absolute; top: 4px; right: 4px; width: 26px; height: 22px; padding: 0; border: 0;
+  border-radius: 4px; background: rgba(0,0,0,.45); color: #fff; font-size: 14px; line-height: 22px; cursor: pointer; opacity: .6; }
+.formrun-screen-kbtoggle:hover, .formrun-screen-kbtoggle.on { opacity: 1; }
+/* the 48K's keyboard: dark rubber keys, the letter in white, the keyword under it, SYMBOL SHIFT's red above */
+.formrun-zxkb { position: absolute; left: 0; top: calc(100% + 8px); width: 100%; }
+.zxkb { box-sizing: border-box; padding: 8px; background: #1b1b1b; border-radius: 6px; display: flex; flex-direction: column; gap: 5px;
+  user-select: none; -webkit-user-select: none; font: 9px system-ui, sans-serif; }
+.zxkb[hidden] { display: none; }
+.zxkb-row { display: flex; gap: 5px; }
+.zxkb-row:nth-child(2) { padding-left: 2.5%; }
+.zxkb-row:nth-child(3) { padding-left: 5%; }
+.zxkb-key { flex: 1 1 0; min-width: 0; height: 40px; padding: 2px 1px; border: 0; border-radius: 4px; background: #3b3b3b; color: #eee;
+  box-shadow: inset 0 -3px #262626; display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+  cursor: pointer; touch-action: none; }
+.zxkb-key.wide { flex-grow: 1.4; }
+.zxkb-key.space { flex-grow: 1.4; }
+.zxkb-key.down, .zxkb-key.latched { background: #5a5a5a; box-shadow: inset 0 2px #262626; }
+.zxkb-key.latched { outline: 2px solid var(--accent); }
+.zxkb-red { color: #ff5a4a; font-size: 9px; line-height: 1; white-space: nowrap; }
+.zxkb-main { font-size: 13px; font-weight: 600; line-height: 1; white-space: nowrap; }
+.zxkb-key.wide .zxkb-main { font-size: 8px; }
+.zxkb-kw { color: #bbb; font-size: 7px; line-height: 1; white-space: nowrap; overflow: hidden; max-width: 100%; }
 .fd-p-gridhead { display: flex; background: var(--bg-2); border-bottom: 1px solid var(--border); }
 .fd-p-gridhead span { flex: 1; padding: 3px 6px; font-weight: 600; border-right: 1px solid var(--border); white-space: nowrap; overflow: hidden; }
 .fd-status { padding: 6px 12px; font: 12px var(--mono); color: var(--err); background: var(--bg-2); border-top: 1px solid var(--border); }

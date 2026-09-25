@@ -402,7 +402,10 @@ export const CONTROLS: Record<ControlType, ControlDef> = {
     prefix: "scr",
     w: 320,
     h: 240,
-    props: [{ key: "frame", kind: "text", label: "Each frame", default: "" }],
+    props: [
+      { key: "frame", kind: "text", label: "Each frame", default: "" },
+      { key: "keyboard", kind: "bool", label: "Keyboard on screen", default: false },
+    ],
     events: [],
     initial: { frame: "(zx-frame zx ui-keys)" },
   },
