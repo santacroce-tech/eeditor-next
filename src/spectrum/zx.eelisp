@@ -1,0 +1,636 @@
+;; zx.eelisp — a ZX Spectrum 48K, written in EELisp.
+;;
+;; The machine is ours end to end: the Z80, the memory map, the ULA ports and the frame timing
+;; are all here, running on the eelisp engine. The engine only lends compute primitives —
+;; byte buffers (make-bytes bget bset bcopy), bitwise integers (band bor bxor shl shr) and
+;; base64 — see docs/spectrum/ZXSPECTRUM.md for the boundary and PLAN.md for the phases.
+;;
+;; Public surface:
+;;   (zx-new)                  a fresh 48K machine
+;;   (zx-load m addr bytes)    copy bytes (a buffer or base64) into memory, ROM included
+;;   (zx-frame m keys)         run one frame (69,888 T-states); keys is the 8-byte keyboard
+;;                             matrix as base64 or bytes (nil keeps the last); returns
+;;                             {"kind" "screen" "pixels" <base64 6912 bytes> "border" n "frame" n}
+;;   (zx-step m)               run one instruction; returns its T-states
+;;   (zx-regs m)               the registers, as a dict
+;;   (zx-set-reg m name v)     set one register by name ("pc", "sp", "a", "hl", "im", ...)
+;;   (zx-peek m addr)  (zx-poke m addr v)
+;;
+;; How it's built. Every opcode is decoded ONCE, when the tables are made: `zx-decode` reads the
+;; opcode's bit fields (x y z p q — the standard Z80 decoding) and returns a closure specialised
+;; to that one instruction. Running an instruction is then a fetch, an `nth` and a call. Handlers
+;; return the T-states they took. DD/FD (IX/IY) get their own tables from the same decoder,
+;; with the HL register pair swapped for the index register.
+;;
+;; Flags follow the Z80 exactly, undocumented bits 3 and 5 included, using lookup tables for
+;; sign/zero/parity and for half-carry/overflow (the same scheme the FUSE emulator uses).
+
+;; ---------------------------------------------------------------------------
+;; Register file — offsets into the :reg buffer. A pair is hi at i, lo at i+1.
+;; ---------------------------------------------------------------------------
+(def zx-A 0)  (def zx-F 1)  (def zx-B 2)  (def zx-C 3)
+(def zx-D 4)  (def zx-E 5)  (def zx-H 6)  (def zx-L 7)
+;; 8..15: the shadow set A' F' B' C' D' E' H' L'
+(def zx-IX 16) (def zx-IY 18) (def zx-SP 20) (def zx-PC 22)
+(def zx-I 24) (def zx-R 25) (def zx-IFF1 26) (def zx-IFF2 27) (def zx-IM 28)
+(def zx-HALT 29)     ; 1 while halted (PC points back at the HALT)
+(def zx-BORDER 30)   ; last OUT (0xFE) & 7
+(def zx-EI 31)       ; 1 for the instruction right after EI: no interrupt yet
+(def zx-TCARRY 32)   ; T-states the last frame overran by
+(def zx-FRAME 33)    ; frame counter mod 256 (FLASH uses bit 4)
+(def zx-BEEP 34)     ; last OUT (0xFE) & 0x10
+(def zx-REGS 40)
+
+;; Flag bits
+(def zx-fC 0x01) (def zx-fN 0x02) (def zx-fP 0x04) (def zx-f3 0x08)
+(def zx-fH 0x10) (def zx-f5 0x20) (def zx-fZ 0x40) (def zx-fS 0x80)
+
+;; The machine being run. zx-use points these at one machine's buffers, so the hot path never
+;; looks anything up in a dict.
+(def zx-mem nil)
+(def zx-reg nil)
+(def zx-keys nil)
+;; Writes below this address are ignored — the 16K ROM. A test machine sets it to 0.
+(def zx-rom-top 0x4000)
+
+;; ---------------------------------------------------------------------------
+;; Lookup tables
+;; ---------------------------------------------------------------------------
+(defn zx-parity (v)                    ; P flag when the number of set bits is even
+  (loop (x v n 0)
+    (if (= x 0)
+        (if (= 0 (band n 1)) zx-fP 0)
+        (recur (shr x 1) (+ n (band x 1))))))
+
+(def zx-sz53 (map (fn (i) (bor (band i 0xa8) (if (= i 0) zx-fZ 0))) (range 256)))
+(def zx-sz53p (map (fn (i) (bor (nth zx-sz53 i) (zx-parity i))) (range 256)))
+(def zx-par (map zx-parity (range 256)))
+;; indexed by bits 3 (and 7) of operand, value and result: see zx-add8 / zx-sub8
+(def zx-hc-add (list 0 zx-fH zx-fH zx-fH 0 0 0 zx-fH))
+(def zx-hc-sub (list 0 0 zx-fH 0 zx-fH 0 zx-fH zx-fH))
+(def zx-ov-add (list 0 0 0 zx-fP zx-fP 0 0 0))
+(def zx-ov-sub (list 0 zx-fP 0 0 0 0 zx-fP 0))
+
+;; ---------------------------------------------------------------------------
+;; Registers and memory
+;; ---------------------------------------------------------------------------
+(defn zx-r (i) (bget zx-reg i))
+(defn zx-r! (i v) (bset zx-reg i v))                    ; bset keeps v & 0xff
+(defn zx-rr (i) (bor (shl (bget zx-reg i) 8) (bget zx-reg (+ i 1))))
+(defn zx-rr! (i v) (do (bset zx-reg i (shr v 8)) (bset zx-reg (+ i 1) v)))  ; wraps to 16 bits
+
+(defn zx-rd (a) (bget zx-mem (band a 0xffff)))
+(defn zx-wr (a v)                                       ; the ROM ignores writes
+  (let (a (band a 0xffff)) (if (< a zx-rom-top) nil (bset zx-mem a v))))
+(defn zx-rd16 (a) (bor (zx-rd a) (shl (zx-rd (+ a 1)) 8)))
+(defn zx-wr16 (a v) (do (zx-wr a v) (zx-wr (+ a 1) (shr v 8))))
+
+(defn zx-fetch ()
+  (let (p (zx-rr zx-PC)) (do (zx-rr! zx-PC (+ p 1)) (bget zx-mem p))))
+(defn zx-fetch16 ()
+  (let (lo (zx-fetch)) (bor lo (shl (zx-fetch) 8))))
+(defn zx-sgn (d) (if (> d 127) (- d 256) d))
+
+(defn zx-push (v)
+  (let (s (band (- (zx-rr zx-SP) 2) 0xffff))
+    (do (zx-rr! zx-SP s) (zx-wr16 s v))))
+(defn zx-pop ()
+  (let (s (zx-rr zx-SP))
+    (do (zx-rr! zx-SP (+ s 2)) (zx-rd16 s))))
+
+(defn zx-inc-r ()                                       ; R counts M1 cycles, bit 7 kept
+  (let (r (zx-r zx-R)) (zx-r! zx-R (bor (band r 0x80) (band (+ r 1) 0x7f)))))
+
+(defn zx-flag (mask) (!= 0 (band (zx-r zx-F) mask)))
+(defn zx-carry () (band (zx-r zx-F) zx-fC))
+
+;; ---------------------------------------------------------------------------
+;; The ALU
+;; ---------------------------------------------------------------------------
+(defn zx-add8 (v c)
+  (let (a (zx-r zx-A) r (+ a v c)
+        lk (bor (shr (band a 0x88) 3) (shr (band v 0x88) 2) (shr (band r 0x88) 1)))
+    (do (zx-r! zx-A r)
+        (zx-r! zx-F (bor (if (> r 0xff) zx-fC 0) (nth zx-hc-add (band lk 7))
+                         (nth zx-ov-add (shr lk 4)) (nth zx-sz53 (band r 0xff)))))))
+
+(defn zx-sub8 (v c)
+  (let (a (zx-r zx-A) r (- a v c)
+        lk (bor (shr (band a 0x88) 3) (shr (band v 0x88) 2) (shr (band r 0x88) 1)))
+    (do (zx-r! zx-A r)
+        (zx-r! zx-F (bor (if (< r 0) zx-fC 0) zx-fN (nth zx-hc-sub (band lk 7))
+                         (nth zx-ov-sub (shr lk 4)) (nth zx-sz53 (band r 0xff)))))))
+
+(defn zx-cp (v)                         ; F3/F5 come from the operand, not the result
+  (let (a (zx-r zx-A) r (- a v)
+        lk (bor (shr (band a 0x88) 3) (shr (band v 0x88) 2) (shr (band r 0x88) 1)))
+    (zx-r! zx-F (bor (if (< r 0) zx-fC (if (= r 0) zx-fZ 0)) zx-fN
+                     (nth zx-hc-sub (band lk 7)) (nth zx-ov-sub (shr lk 4))
+                     (band v 0x28) (band r zx-fS)))))
+
+(defn zx-and (v)
+  (let (r (band (zx-r zx-A) v)) (do (zx-r! zx-A r) (zx-r! zx-F (bor zx-fH (nth zx-sz53p r))))))
+(defn zx-xor (v)
+  (let (r (bxor (zx-r zx-A) v)) (do (zx-r! zx-A r) (zx-r! zx-F (nth zx-sz53p r)))))
+(defn zx-or (v)
+  (let (r (bor (zx-r zx-A) v)) (do (zx-r! zx-A r) (zx-r! zx-F (nth zx-sz53p r)))))
+
+;; alu[y]: ADD ADC SUB SBC AND XOR OR CP
+(def zx-alu
+  (list (fn (v) (zx-add8 v 0))
+        (fn (v) (zx-add8 v (zx-carry)))
+        (fn (v) (zx-sub8 v 0))
+        (fn (v) (zx-sub8 v (zx-carry)))
+        zx-and zx-xor zx-or zx-cp))
+
+(defn zx-inc8 (v)
+  (let (r (band (+ v 1) 0xff))
+    (do (zx-r! zx-F (bor (band (zx-r zx-F) zx-fC) (if (= r 0x80) zx-fP 0)
+                         (if (= 0 (band r 0x0f)) zx-fH 0) (nth zx-sz53 r)))
+        r)))
+(defn zx-dec8 (v)
+  (let (r (band (- v 1) 0xff))
+    (do (zx-r! zx-F (bor (band (zx-r zx-F) zx-fC) zx-fN (if (= 0 (band v 0x0f)) zx-fH 0)
+                         (if (= r 0x7f) zx-fP 0) (nth zx-sz53 r)))
+        r)))
+
+(defn zx-add16 (i v)                    ; ADD HL/IX/IY,rr
+  (let (a (zx-rr i) r (+ a v)
+        lk (bor (shr (band a 0x0800) 11) (shr (band v 0x0800) 10) (shr (band r 0x0800) 9)))
+    (do (zx-rr! i r)
+        (zx-r! zx-F (bor (band (zx-r zx-F) (bor zx-fP zx-fZ zx-fS))
+                         (if (> r 0xffff) zx-fC 0) (band (shr r 8) 0x28)
+                         (nth zx-hc-add lk))))))
+
+(defn zx-adc16 (v)
+  (let (a (zx-rr zx-H) r (+ a v (zx-carry))
+        lk (bor (shr (band a 0x8800) 11) (shr (band v 0x8800) 10) (shr (band r 0x8800) 9))
+        hi (band (shr r 8) 0xff))
+    (do (zx-rr! zx-H r)
+        (zx-r! zx-F (bor (if (> r 0xffff) zx-fC 0) (nth zx-ov-add (shr lk 4))
+                         (band hi 0xa8) (nth zx-hc-add (band lk 7))
+                         (if (= 0 (band r 0xffff)) zx-fZ 0))))))
+
+(defn zx-sbc16 (v)
+  (let (a (zx-rr zx-H) r (- a v (zx-carry))
+        lk (bor (shr (band a 0x8800) 11) (shr (band v 0x8800) 10) (shr (band r 0x8800) 9))
+        hi (band (shr r 8) 0xff))
+    (do (zx-rr! zx-H r)
+        (zx-r! zx-F (bor (if (< r 0) zx-fC 0) zx-fN (nth zx-ov-sub (shr lk 4))
+                         (band hi 0xa8) (nth zx-hc-sub (band lk 7))
+                         (if (= 0 (band r 0xffff)) zx-fZ 0))))))
+
+;; CB rotates and shifts: rot[y] RLC RRC RL RR SLA SRA SLL SRL — value in, value out, F set.
+(defn zx-rot (y v)
+  (let (r (cond (= y 0) (bor (shl v 1) (shr v 7))
+                (= y 1) (bor (shr v 1) (shl v 7))
+                (= y 2) (bor (shl v 1) (zx-carry))
+                (= y 3) (bor (shr v 1) (shl (zx-carry) 7))
+                (= y 4) (shl v 1)
+                (= y 5) (bor (band v 0x80) (shr v 1))
+                (= y 6) (bor (shl v 1) 1)
+                true    (shr v 1))
+        c (if (= 0 (band y 1)) (shr v 7) (band v 1))
+        r (band r 0xff))
+    (do (zx-r! zx-F (bor c (nth zx-sz53p r))) r)))
+
+(defn zx-bit (b v hi)                   ; BIT b: F3/F5 from hi (the operand, or the address)
+  (let (set (!= 0 (band v (shl 1 b))))
+    (zx-r! zx-F (bor (band (zx-r zx-F) zx-fC) zx-fH (band hi 0x28)
+                     (if set 0 (bor zx-fP zx-fZ))
+                     (if (and set (= b 7)) zx-fS 0)))))
+
+;; ---------------------------------------------------------------------------
+;; The ULA: keyboard in, border and beeper out
+;; ---------------------------------------------------------------------------
+(defn zx-in (port)
+  (if (= 0 (band port 1))
+      (let (hi (shr port 8))              ; each 0 bit of the high byte selects a half-row
+        (loop (i 0 acc 0x1f)
+          (if (= i 8)
+              (bor acc 0xa0)
+              (recur (+ i 1) (if (= 0 (band hi (shl 1 i))) (band acc (bget zx-keys i)) acc)))))
+      0xff))
+
+(defn zx-out (port v)
+  (if (= 0 (band port 1))
+      (do (zx-r! zx-BORDER (band v 7)) (zx-r! zx-BEEP (band v 0x10)))
+      nil))
+
+;; ---------------------------------------------------------------------------
+;; The decoder. zx-decode returns the handler for one opcode, with HL meaning the pair at
+;; `hp` — zx-H (6) normally, zx-IX or zx-IY after a DD/FD prefix.
+;; ---------------------------------------------------------------------------
+;; r[k] for k in 0..7: B C D E H L (HL) A — as a register offset (nil for (HL))
+(defn zx-ri (k hp) (nth (list zx-B zx-C zx-D zx-E hp (+ hp 1) nil zx-A) k))
+;; rp[p]: BC DE HL SP;  rp2[p]: BC DE HL AF
+(defn zx-rp (p hp) (nth (list zx-B zx-D hp zx-SP) p))
+(defn zx-rp2 (p hp) (nth (list zx-B zx-D hp zx-A) p))
+
+;; The address of the (HL) operand: HL, or IX/IY plus a displacement read from the code.
+(defn zx-ea (hp)
+  (if (= hp zx-H)
+      (zx-rr zx-H)
+      (band (+ (zx-rr hp) (zx-sgn (zx-fetch))) 0xffff)))
+
+;; cc[y]: NZ Z NC C PO PE P M — a test closure
+(defn zx-cc (y)
+  (let (mask (nth (list zx-fZ zx-fC zx-fP zx-fS) (shr y 1)))
+    (if (= 0 (band y 1))
+        (fn () (= 0 (band (zx-r zx-F) mask)))
+        (fn () (!= 0 (band (zx-r zx-F) mask))))))
+
+(defn zx-jr (take)                       ; JR / DJNZ tail: reads e, branches if take
+  (let (e (zx-sgn (zx-fetch)))
+    (if take (do (zx-rr! zx-PC (+ (zx-rr zx-PC) e)) 12) 7)))
+
+(defn zx-decode (op hp)
+  (let (x (shr op 6) y (band (shr op 3) 7) z (band op 7) p (shr y 1) q (band y 1)
+        mx (if (= hp zx-H) 0 8))           ; (IX+d) costs 8 more than (HL)
+    (cond
+      ;; ---- x = 0 ----
+      (= x 0)
+      (cond
+        (= z 0)
+        (cond (= y 0) (fn () 4)                                          ; NOP
+              (= y 1) (fn () (do (zx-exaf) 4))                           ; EX AF,AF'
+              (= y 2) (fn ()                                             ; DJNZ e
+                        (let (b (band (- (zx-r zx-B) 1) 0xff))
+                          (do (zx-r! zx-B b) (+ 1 (zx-jr (!= b 0))))))
+              (= y 3) (fn () (zx-jr true))                               ; JR e
+              true (let (cc (zx-cc (- y 4))) (fn () (zx-jr (cc)))))      ; JR cc,e
+        (= z 1)
+        (let (rr (zx-rp p hp))
+          (if (= q 0)
+              (fn () (do (zx-rr! rr (zx-fetch16)) 10))                  ; LD rr,nn
+              (fn () (do (zx-add16 hp (zx-rr rr)) 11))))                 ; ADD HL,rr
+        (= z 2)
+        (cond (= y 0) (fn () (do (zx-wr (zx-rr zx-B) (zx-r zx-A)) 7))   ; LD (BC),A
+              (= y 1) (fn () (do (zx-r! zx-A (zx-rd (zx-rr zx-B))) 7))  ; LD A,(BC)
+              (= y 2) (fn () (do (zx-wr (zx-rr zx-D) (zx-r zx-A)) 7))   ; LD (DE),A
+              (= y 3) (fn () (do (zx-r! zx-A (zx-rd (zx-rr zx-D))) 7))  ; LD A,(DE)
+              (= y 4) (fn () (do (zx-wr16 (zx-fetch16) (zx-rr hp)) 16)) ; LD (nn),HL
+              (= y 5) (fn () (do (zx-rr! hp (zx-rd16 (zx-fetch16))) 16)) ; LD HL,(nn)
+              (= y 6) (fn () (do (zx-wr (zx-fetch16) (zx-r zx-A)) 13))  ; LD (nn),A
+              true    (fn () (do (zx-r! zx-A (zx-rd (zx-fetch16))) 13))) ; LD A,(nn)
+        (= z 3)
+        (let (rr (zx-rp p hp))
+          (if (= q 0)
+              (fn () (do (zx-rr! rr (+ (zx-rr rr) 1)) 6))               ; INC rr
+              (fn () (do (zx-rr! rr (- (zx-rr rr) 1)) 6))))             ; DEC rr
+        (or (= z 4) (= z 5))
+        (let (f (if (= z 4) zx-inc8 zx-dec8) k (zx-ri y hp))
+          (if (= y 6)
+              (fn () (let (a (zx-ea hp)) (do (zx-wr a (f (zx-rd a))) (+ 11 mx))))  ; INC/DEC (HL)
+              (fn () (do (zx-r! k (f (zx-r k))) 4))))                   ; INC/DEC r
+        (= z 6)
+        (if (= y 6)
+            (fn () (let (a (zx-ea hp)) (do (zx-wr a (zx-fetch)) (if (= mx 0) 10 15))))  ; LD (HL),n
+            (let (k (zx-ri y hp)) (fn () (do (zx-r! k (zx-fetch)) 7))))  ; LD r,n
+        true
+        (nth (list zx-rlca zx-rrca zx-rla zx-rra zx-daa zx-cpl zx-scf zx-ccf) y))
+      ;; ---- x = 1: LD r,r' and HALT ----
+      (= x 1)
+      (cond (and (= y 6) (= z 6)) zx-halt
+            (= z 6) (let (k (zx-ri y zx-H))                            ; LD r,(HL): real H/L
+                      (fn () (do (zx-r! k (zx-rd (zx-ea hp))) (+ 7 mx))))
+            (= y 6) (let (k (zx-ri z zx-H))                            ; LD (HL),r
+                      (fn () (do (zx-wr (zx-ea hp) (zx-r k)) (+ 7 mx))))
+            true (let (d (zx-ri y hp) s (zx-ri z hp))
+                   (fn () (do (zx-r! d (zx-r s)) 4))))
+      ;; ---- x = 2: ALU A,r ----
+      (= x 2)
+      (let (f (nth zx-alu y))
+        (if (= z 6)
+            (fn () (do (f (zx-rd (zx-ea hp))) (+ 7 mx)))
+            (let (k (zx-ri z hp)) (fn () (do (f (zx-r k)) 4)))))
+      ;; ---- x = 3 ----
+      true
+      (cond
+        (= z 0) (let (cc (zx-cc y))                                     ; RET cc
+                  (fn () (if (cc) (do (zx-rr! zx-PC (zx-pop)) 11) 5)))
+        (= z 1)
+        (if (= q 0)
+            (let (rr (zx-rp2 p hp)) (fn () (do (zx-rr! rr (zx-pop)) 10))) ; POP rr
+            (cond (= p 0) (fn () (do (zx-rr! zx-PC (zx-pop)) 10))       ; RET
+                  (= p 1) (fn () (do (zx-exx) 4))                       ; EXX
+                  (= p 2) (fn () (do (zx-rr! zx-PC (zx-rr hp)) 4))      ; JP (HL)
+                  true    (fn () (do (zx-rr! zx-SP (zx-rr hp)) 6))))    ; LD SP,HL
+        (= z 2) (let (cc (zx-cc y))                                     ; JP cc,nn
+                  (fn () (let (a (zx-fetch16)) (do (if (cc) (zx-rr! zx-PC a) nil) 10))))
+        (= z 3)
+        (cond (= y 0) (fn () (do (zx-rr! zx-PC (zx-fetch16)) 10))       ; JP nn
+              (= y 1) (if (= hp zx-H) zx-prefix-cb (zx-prefix-xcb hp))  ; CB
+              (= y 2) (fn ()                                            ; OUT (n),A
+                        (let (a (zx-r zx-A)) (do (zx-out (bor (shl a 8) (zx-fetch)) a) 11)))
+              (= y 3) (fn ()                                            ; IN A,(n)
+                        (do (zx-r! zx-A (zx-in (bor (shl (zx-r zx-A) 8) (zx-fetch)))) 11))
+              (= y 4) (fn ()                                            ; EX (SP),HL
+                        (let (s (zx-rr zx-SP) v (zx-rd16 s))
+                          (do (zx-wr16 s (zx-rr hp)) (zx-rr! hp v) 19)))
+              (= y 5) (fn ()                                            ; EX DE,HL (never IX)
+                        (let (de (zx-rr zx-D)) (do (zx-rr! zx-D (zx-rr zx-H)) (zx-rr! zx-H de) 4)))
+              (= y 6) (fn () (do (zx-r! zx-IFF1 0) (zx-r! zx-IFF2 0) 4)) ; DI
+              true    (fn () (do (zx-r! zx-IFF1 1) (zx-r! zx-IFF2 1) (zx-r! zx-EI 1) 4))) ; EI
+        (= z 4) (let (cc (zx-cc y))                                     ; CALL cc,nn
+                  (fn () (let (a (zx-fetch16))
+                           (if (cc) (do (zx-push (zx-rr zx-PC)) (zx-rr! zx-PC a) 17) 10))))
+        (= z 5)
+        (if (= q 0)
+            (let (rr (zx-rp2 p hp)) (fn () (do (zx-push (zx-rr rr)) 11))) ; PUSH rr
+            (cond (= p 0) (fn ()                                        ; CALL nn
+                            (let (a (zx-fetch16)) (do (zx-push (zx-rr zx-PC)) (zx-rr! zx-PC a) 17)))
+                  (= p 1) zx-prefix-dd
+                  (= p 2) zx-prefix-ed
+                  true    zx-prefix-fd))
+        (= z 6) (let (f (nth zx-alu y)) (fn () (do (f (zx-fetch)) 7)))  ; ALU A,n
+        true    (let (a (* y 8))                                        ; RST
+                  (fn () (do (zx-push (zx-rr zx-PC)) (zx-rr! zx-PC a) 11)))))))
+
+;; ---- the x=0 z=7 group, and the other one-offs ----
+(defn zx-rlca ()
+  (let (a (zx-r zx-A) r (band (bor (shl a 1) (shr a 7)) 0xff))
+    (do (zx-r! zx-A r)
+        (zx-r! zx-F (bor (band (zx-r zx-F) 0xc4) (band r 0x29))) 4)))
+(defn zx-rrca ()
+  (let (a (zx-r zx-A) r (band (bor (shr a 1) (shl a 7)) 0xff))
+    (do (zx-r! zx-A r)
+        (zx-r! zx-F (bor (band (zx-r zx-F) 0xc4) (band a zx-fC) (band r 0x28))) 4)))
+(defn zx-rla ()
+  (let (a (zx-r zx-A) r (band (bor (shl a 1) (zx-carry)) 0xff))
+    (do (zx-r! zx-A r)
+        (zx-r! zx-F (bor (band (zx-r zx-F) 0xc4) (band r 0x28) (shr a 7))) 4)))
+(defn zx-rra ()
+  (let (a (zx-r zx-A) r (bor (shr a 1) (shl (zx-carry) 7)))
+    (do (zx-r! zx-A r)
+        (zx-r! zx-F (bor (band (zx-r zx-F) 0xc4) (band r 0x28) (band a zx-fC))) 4)))
+(defn zx-daa ()
+  (let (a (zx-r zx-A) f (zx-r zx-F)
+        add (bor (if (or (!= 0 (band f zx-fH)) (> (band a 0x0f) 9)) 6 0)
+                 (if (or (!= 0 (band f zx-fC)) (> a 0x99)) 0x60 0))
+        c (if (or (!= 0 (band f zx-fC)) (> a 0x99)) zx-fC 0))
+    (do (if (!= 0 (band f zx-fN)) (zx-sub8 add 0) (zx-add8 add 0))
+        (zx-r! zx-F (bor (band (zx-r zx-F) (bnot (bor zx-fC zx-fP))) c (nth zx-par (zx-r zx-A))))
+        4)))
+(defn zx-cpl ()
+  (let (r (bxor (zx-r zx-A) 0xff))
+    (do (zx-r! zx-A r)
+        (zx-r! zx-F (bor (band (zx-r zx-F) 0xc5) (band r 0x28) zx-fN zx-fH)) 4)))
+;; SCF/CCF take bits 3 and 5 from (F | A): what a Z80 does when the instruction before didn't
+;; set the flags (Patrik Rak's Q-register finding; FUSE's tests start from that state).
+(defn zx-scf ()
+  (let (f (zx-r zx-F))
+    (do (zx-r! zx-F (bor (band f 0xc4) (band (bor f (zx-r zx-A)) 0x28) zx-fC)) 4)))
+(defn zx-ccf ()
+  (let (f (zx-r zx-F))
+    (do (zx-r! zx-F (bor (band f 0xc4) (if (!= 0 (band f zx-fC)) zx-fH zx-fC)
+                         (band (bor f (zx-r zx-A)) 0x28)))
+        4)))
+(defn zx-halt ()                         ; stay on the HALT until an interrupt
+  (do (zx-r! zx-HALT 1) (zx-rr! zx-PC (- (zx-rr zx-PC) 1)) 4))
+(defn zx-exaf ()
+  (loop (i 0)
+    (if (= i 2) nil
+        (let (v (zx-r i)) (do (zx-r! i (zx-r (+ i 8))) (zx-r! (+ i 8) v) (recur (+ i 1)))))))
+(defn zx-exx ()
+  (loop (i 2)
+    (if (= i 8) nil
+        (let (v (zx-r i)) (do (zx-r! i (zx-r (+ i 8))) (zx-r! (+ i 8) v) (recur (+ i 1)))))))
+
+;; ---------------------------------------------------------------------------
+;; Prefixes. Each reads the next opcode (another M1 cycle, so R counts it) and dispatches.
+;; ---------------------------------------------------------------------------
+(defn zx-prefix-cb () (do (zx-inc-r) ((nth zx-ops-cb (zx-fetch)))))
+(defn zx-prefix-ed () (do (zx-inc-r) ((nth zx-ops-ed (zx-fetch)))))
+(defn zx-prefix-dd () (do (zx-inc-r) (+ 4 ((nth zx-ops-dd (zx-fetch))))))
+(defn zx-prefix-fd () (do (zx-inc-r) (+ 4 ((nth zx-ops-fd (zx-fetch))))))
+
+;; DD CB d op / FD CB d op: the displacement comes before the opcode. Totals are 20 (BIT) and
+;; 23; the DD/FD prefix already counted 4.
+(defn zx-prefix-xcb (hp)
+  (fn ()
+    (let (a (band (+ (zx-rr hp) (zx-sgn (zx-fetch))) 0xffff)
+          op (zx-fetch)
+          x (shr op 6) y (band (shr op 3) 7) z (band op 7)
+          v (zx-rd a))
+      (if (= x 1)
+          (do (zx-bit y v (shr a 8)) 16)
+          (let (r (cond (= x 0) (zx-rot y v)
+                        (= x 2) (band v (bxor 0xff (shl 1 y)))
+                        true    (bor v (shl 1 y))))
+            (do (zx-wr a r)
+                (if (= z 6) nil (zx-r! (zx-ri z zx-H) r))  ; undocumented: also into r[z]
+                19))))))
+
+;; ---------------------------------------------------------------------------
+;; CB: rotates, shifts, BIT, RES, SET
+;; ---------------------------------------------------------------------------
+(defn zx-decode-cb (op)
+  (let (x (shr op 6) y (band (shr op 3) 7) z (band op 7) k (zx-ri z zx-H))
+    (cond
+      (= x 1)                                                     ; BIT y,r
+      (if (= z 6)
+          (fn () (let (a (zx-rr zx-H)) (do (zx-bit y (zx-rd a) (shr a 8)) 12)))
+          (fn () (let (v (zx-r k)) (do (zx-bit y v v) 8))))
+      true
+      (let (f (cond (= x 0) (fn (v) (zx-rot y v))
+                    (= x 2) (let (m (bxor 0xff (shl 1 y))) (fn (v) (band v m)))
+                    true    (let (m (shl 1 y)) (fn (v) (bor v m)))))
+        (if (= z 6)
+            (fn () (let (a (zx-rr zx-H)) (do (zx-wr a (f (zx-rd a))) 15)))
+            (fn () (do (zx-r! k (f (zx-r k))) 8)))))))
+
+;; ---------------------------------------------------------------------------
+;; ED: the extended set
+;; ---------------------------------------------------------------------------
+(defn zx-decode-ed (op)
+  (let (x (shr op 6) y (band (shr op 3) 7) z (band op 7) p (shr y 1) q (band y 1))
+    (cond
+      (= x 1)
+      (cond
+        (= z 0) (let (k (zx-ri y zx-H))                              ; IN r,(C)
+                  (fn () (let (v (zx-in (zx-rr zx-B)))
+                           (do (if (= y 6) nil (zx-r! k v))
+                               (zx-r! zx-F (bor (zx-carry) (nth zx-sz53p v))) 12))))
+        (= z 1) (let (k (zx-ri y zx-H))                              ; OUT (C),r
+                  (fn () (do (zx-out (zx-rr zx-B) (if (= y 6) 0 (zx-r k))) 12)))
+        (= z 2) (let (rr (zx-rp p zx-H))
+                  (if (= q 0)
+                      (fn () (do (zx-sbc16 (zx-rr rr)) 15))          ; SBC HL,rr
+                      (fn () (do (zx-adc16 (zx-rr rr)) 15))))        ; ADC HL,rr
+        (= z 3) (let (rr (zx-rp p zx-H))
+                  (if (= q 0)
+                      (fn () (do (zx-wr16 (zx-fetch16) (zx-rr rr)) 20))  ; LD (nn),rr
+                      (fn () (do (zx-rr! rr (zx-rd16 (zx-fetch16))) 20)))) ; LD rr,(nn)
+        (= z 4) (fn () (let (a (zx-r zx-A)) (do (zx-r! zx-A 0) (zx-sub8 a 0) 8)))  ; NEG
+        (= z 5) (fn ()                                               ; RETN / RETI
+                  (do (zx-r! zx-IFF1 (zx-r zx-IFF2)) (zx-rr! zx-PC (zx-pop)) 14))
+        (= z 6) (let (m (nth (list 0 0 1 2 0 0 1 2) y))               ; IM 0/1/2
+                  (fn () (do (zx-r! zx-IM m) 8)))
+        true
+        (cond (= y 0) (fn () (do (zx-r! zx-I (zx-r zx-A)) 9))        ; LD I,A
+              (= y 1) (fn () (do (zx-r! zx-R (zx-r zx-A)) 9))        ; LD R,A
+              (or (= y 2) (= y 3))                                   ; LD A,I / LD A,R
+              (let (src (if (= y 2) zx-I zx-R))
+                (fn () (let (v (zx-r src))
+                         (do (zx-r! zx-A v)
+                             (zx-r! zx-F (bor (zx-carry) (nth zx-sz53 v)
+                                              (if (= 1 (zx-r zx-IFF2)) zx-fP 0)))
+                             9))))
+              (= y 4) zx-rrd
+              (= y 5) zx-rld
+              true (fn () 8)))
+      (and (= x 2) (<= z 3) (>= y 4))
+      (zx-block y z)
+      true (fn () 8))))                                              ; the rest: NOPs
+
+(defn zx-rrd ()
+  (let (a (zx-rr zx-H) m (zx-rd a) acc (zx-r zx-A))
+    (do (zx-wr a (bor (shl acc 4) (shr m 4)))
+        (zx-r! zx-A (bor (band acc 0xf0) (band m 0x0f)))
+        (zx-r! zx-F (bor (zx-carry) (nth zx-sz53p (zx-r zx-A))))
+        18)))
+(defn zx-rld ()
+  (let (a (zx-rr zx-H) m (zx-rd a) acc (zx-r zx-A))
+    (do (zx-wr a (bor (shl m 4) (band acc 0x0f)))
+        (zx-r! zx-A (bor (band acc 0xf0) (shr m 4)))
+        (zx-r! zx-F (bor (zx-carry) (nth zx-sz53p (zx-r zx-A))))
+        18)))
+
+;; Block instructions: y 4..7 = I, D, IR, DR;  z = LD, CP, IN, OUT.
+;; A repeating one that isn't finished steps PC back onto itself: 21 T-states, else 16.
+(defn zx-block (y z)
+  (let (d (if (= 0 (band y 1)) 1 -1) rep (>= y 6))
+    (cond
+      (= z 0)
+      (fn ()                                                          ; LDI LDD LDIR LDDR
+        (let (hl (zx-rr zx-H) v (zx-rd hl) bc (band (- (zx-rr zx-B) 1) 0xffff) n (+ v (zx-r zx-A)))
+          (do (zx-wr (zx-rr zx-D) v)
+              (zx-rr! zx-D (+ (zx-rr zx-D) d)) (zx-rr! zx-H (+ hl d)) (zx-rr! zx-B bc)
+              (zx-r! zx-F (bor (band (zx-r zx-F) 0xc1) (if (= bc 0) 0 zx-fP)
+                               (band n zx-f3) (if (= 0 (band n 2)) 0 zx-f5)))
+              (if (and rep (!= bc 0)) (do (zx-rr! zx-PC (- (zx-rr zx-PC) 2)) 21) 16))))
+      (= z 1)
+      (fn ()                                                          ; CPI CPD CPIR CPDR
+        (let (hl (zx-rr zx-H) v (zx-rd hl) a (zx-r zx-A) r (- a v)
+              lk (bor (shr (band a 0x08) 3) (shr (band v 0x08) 2) (shr (band r 0x08) 1))
+              bc (band (- (zx-rr zx-B) 1) 0xffff)
+              hf (nth zx-hc-sub lk)
+              n (if (= hf 0) r (- r 1)))
+          (do (zx-rr! zx-H (+ hl d)) (zx-rr! zx-B bc)
+              (zx-r! zx-F (bor (zx-carry) zx-fN (if (= bc 0) 0 zx-fP) hf
+                               (if (= r 0) zx-fZ 0) (band r zx-fS)
+                               (band n zx-f3) (if (= 0 (band n 2)) 0 zx-f5)))
+              (if (and rep (!= bc 0) (!= r 0)) (do (zx-rr! zx-PC (- (zx-rr zx-PC) 2)) 21) 16))))
+      (= z 2)
+      (fn ()                                                          ; INI IND INIR INDR
+        (let (v (zx-in (zx-rr zx-B)) hl (zx-rr zx-H) b (band (- (zx-r zx-B) 1) 0xff)
+              k (+ v (band (+ (zx-r zx-C) d) 0xff)))
+          (do (zx-wr hl v) (zx-rr! zx-H (+ hl d)) (zx-r! zx-B b)
+              (zx-block-io-flags v k b)
+              (if (and rep (!= b 0)) (do (zx-rr! zx-PC (- (zx-rr zx-PC) 2)) 21) 16))))
+      true
+      (fn ()                                                          ; OUTI OUTD OTIR OTDR
+        (let (hl (zx-rr zx-H) v (zx-rd hl) b (band (- (zx-r zx-B) 1) 0xff))
+          (do (zx-r! zx-B b) (zx-out (zx-rr zx-B) v) (zx-rr! zx-H (+ hl d))
+              (zx-block-io-flags v (+ v (zx-r zx-L)) b)
+              (if (and rep (!= b 0)) (do (zx-rr! zx-PC (- (zx-rr zx-PC) 2)) 21) 16)))))))
+
+;; The undocumented flags of the block I/O instructions: v is the byte moved, k the sum the
+;; hardware forms from it (with C±1 for IN, with the new L for OUT), b the new B.
+(defn zx-block-io-flags (v k b)
+  (zx-r! zx-F (bor (if (= 0 (band v 0x80)) 0 zx-fN)
+                   (if (> k 0xff) (bor zx-fH zx-fC) 0)
+                   (nth zx-par (bxor (band k 7) b))
+                   (nth zx-sz53 b))))
+
+;; ---------------------------------------------------------------------------
+;; The tables — built once, here.
+;; ---------------------------------------------------------------------------
+(def zx-ops    (map (fn (op) (zx-decode op zx-H)) (range 256)))
+(def zx-ops-dd (map (fn (op) (zx-decode op zx-IX)) (range 256)))
+(def zx-ops-fd (map (fn (op) (zx-decode op zx-IY)) (range 256)))
+(def zx-ops-cb (map zx-decode-cb (range 256)))
+(def zx-ops-ed (map zx-decode-ed (range 256)))
+
+;; ---------------------------------------------------------------------------
+;; Interrupts, one instruction, one frame
+;; ---------------------------------------------------------------------------
+(defn zx-interrupt ()                    ; the ULA's 50 Hz INT, accepted
+  (do (if (= 1 (zx-r zx-HALT))
+          (do (zx-r! zx-HALT 0) (zx-rr! zx-PC (+ (zx-rr zx-PC) 1)))
+          nil)
+      (zx-r! zx-IFF1 0) (zx-r! zx-IFF2 0) (zx-inc-r)
+      (zx-push (zx-rr zx-PC))
+      (if (= 2 (zx-r zx-IM))
+          (do (zx-rr! zx-PC (zx-rd16 (bor (shl (zx-r zx-I) 8) 0xff))) 19)  ; IM 2: the bus reads 0xFF
+          (do (zx-rr! zx-PC 0x38) 13))))                                   ; IM 0/1: RST 38
+
+;; One instruction. `int` is true while the ULA holds INT low (the first 32 T-states of a frame).
+(defn zx-exec (int)
+  (let (t (if (and int (= 1 (zx-r zx-IFF1)) (= 0 (zx-r zx-EI))) (zx-interrupt) 0))
+    (do (zx-r! zx-EI 0)
+        (zx-inc-r)
+        (+ t ((nth zx-ops (zx-fetch)))))))
+
+(def zx-FRAME-T 69888)
+
+(defn zx-use (m)
+  (do (set! zx-mem (dict-get m :mem))
+      (set! zx-reg (dict-get m :reg))
+      (set! zx-keys (dict-get m :keys))
+      m))
+
+(defn zx-new ()
+  (let (m {:mem (make-bytes 65536) :reg (make-bytes zx-REGS) :keys (make-bytes 8 0xff)})
+    (do (zx-use m)
+        (zx-rr! zx-SP 0xffff) (zx-r! zx-A 0xff) (zx-r! zx-F 0xff) (zx-r! zx-BORDER 7)
+        m)))
+
+(defn zx-frame (m keys)
+  (do (zx-use m)
+      (cond (string? keys) (bcopy zx-keys 0 (base64->bytes keys) 0 8)
+            (nil? keys) nil
+            true (bcopy zx-keys 0 keys 0 8))
+      (let (end (loop (t (zx-r zx-TCARRY))
+                  (cond (>= t zx-FRAME-T) t
+                        ;; halted with nothing left to do until the next interrupt
+                        (and (= 1 (zx-r zx-HALT)) (>= t 32)) zx-FRAME-T
+                        true (recur (+ t (zx-exec (< t 32)))))))
+        (do (zx-r! zx-TCARRY (- end zx-FRAME-T))
+            (zx-r! zx-FRAME (+ (zx-r zx-FRAME) 1))
+            {"kind" "screen"
+             "pixels" (bytes->base64 zx-mem 0x4000 6912)
+             "border" (zx-r zx-BORDER)
+             "frame" (zx-r zx-FRAME)}))))
+
+(defn zx-step (m) (do (zx-use m) (zx-exec false)))
+
+;; ---------------------------------------------------------------------------
+;; Loading and inspecting
+;; ---------------------------------------------------------------------------
+(defn zx-load (m addr data)
+  (let (src (if (string? data) (base64->bytes data) data))
+    (do (bcopy (dict-get m :mem) addr src 0 (bytes-len src)) (bytes-len src))))
+
+(defn zx-peek (m a) (bget (dict-get m :mem) (band a 0xffff)))
+(defn zx-poke (m a v) (bset (dict-get m :mem) (band a 0xffff) v))
+
+(def zx-reg-names
+  {"a" zx-A "f" zx-F "b" zx-B "c" zx-C "d" zx-D "e" zx-E "h" zx-H "l" zx-L
+   "i" zx-I "r" zx-R "im" zx-IM "iff1" zx-IFF1 "iff2" zx-IFF2 "halted" zx-HALT "border" zx-BORDER})
+(def zx-pair-names
+  {"af" zx-A "bc" zx-B "de" zx-D "hl" zx-H "ix" zx-IX "iy" zx-IY "sp" zx-SP "pc" zx-PC
+   "af'" 8 "bc'" 10 "de'" 12 "hl'" 14})
+
+(defn zx-regs (m)
+  (do (zx-use m)
+      (dict-merge
+        (reduce (fn (d k) (dict-set d k (zx-rr (dict-get zx-pair-names k)))) {} (dict-keys zx-pair-names))
+        (reduce (fn (d k) (dict-set d k (zx-r (dict-get zx-reg-names k)))) {} (dict-keys zx-reg-names)))))
+
+(defn zx-set-reg (m name v)
+  (do (zx-use m)
+      (cond (dict-has zx-pair-names name) (zx-rr! (dict-get zx-pair-names name) v)
+            (dict-has zx-reg-names name) (zx-r! (dict-get zx-reg-names name) v)
+            true (str "zx-set-reg: no register " name))))
