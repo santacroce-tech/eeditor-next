@@ -13,6 +13,7 @@ there by making EELisp faster, not by moving the CPU out of it.
 | | |
 |---|---|
 | `src/spectrum/zx.eelisp` | The 48K machine. The Z80, including every prefix, the undocumented flags, and IM 1 and 2. Plus the memory map, the ULA, frames, and `.sna` loading. |
+| `zx-type`, `zx-listing` (in `zx.eelisp`) | BASIC as text. A line is tokenized, written into the ROM's edit line, and ENTER is pressed, so the ROM stores or runs it. The listing reads the program back from memory. |
 | `src/spectrum/screen.ts` | Painting a frame, and the PC keyboard → Spectrum key matrix. |
 | `src/ui/formrun.ts` | The `screen` form control: evaluates `:frame` about 50 times a second and paints it. |
 | `workspace/examples/Spectrum.eeform` | The example form: Load ROM…, Load .sna…, Demo, Reset, Pause. |

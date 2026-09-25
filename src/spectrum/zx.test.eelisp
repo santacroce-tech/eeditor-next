@@ -96,6 +96,35 @@
       (check ".sna: A, IM, border" (list (dict-get (zx-regs m) "a") (dict-get (zx-regs m) "im") (dict-get (zx-regs m) "border")) (list 0x42 1 5))
       (check "a file of the wrong size is refused" (string? (zx-load-sna m (make-bytes 10))) true)))
 
+;; BASIC as text: tokenized the way the editor holds it
+(check "PRINT and GO TO become tokens, numbers stay digits"
+       (zx-tokenize "10 PRINT AT 5,3: GOTO 10") (list 0x31 0x30 0xf5 0xac 0x35 0x2c 0x33 0x3a 0xec 0x31 0x30))
+(check "a keyword at the start of the line" (first (zx-tokenize "RUN")) 0xf7)
+(check "TOTAL is a variable, not TO" (zx-tokenize "LET total=1 TO 2") (list 0xf1 0x74 0x6f 0x74 0x61 0x6c 0x3d 0x31 0xcc 0x32))
+(check "ATTR wins over AT, INKEY$ over IN" (list (first (zx-tokenize "ATTR")) (first (zx-tokenize "INKEY$"))) (list 0xab 0xa6))
+(check "<= is one token" (zx-tokenize "a<=b") (list 0x61 0xc7 0x62))
+(check "strings are kept as written" (zx-tokenize "PRINT \"print TO\"") (list 0xf5 0x22 0x70 0x72 0x69 0x6e 0x74 0x20 0x54 0x4f 0x22))
+(check "after REM, everything is kept" (zx-tokenize "REM go to") (list 0xea 0x67 0x6f 0x20 0x74 0x6f))
+(check "£ is the Spectrum's 0x60" (zx-tokenize "\"£\"") (list 0x22 0x60 0x22))
+
+;; …and read back: a program line built by hand — 10 PRINT 42, with 42's hidden binary form
+(let (m (zx-new))
+  (do (zx-use m)
+      (zx-wr16 zx-PROG 0x5ccb)
+      (zx-load m 0x5ccb (list->bytes '(0x00 0x0a 0x0a 0x00 0xf5 0x34 0x32 0x0e 0x00 0x00 0x2a 0x00 0x00 0x0d)))
+      (zx-wr16 zx-VARS (+ 0x5ccb 14))
+      (check "zx-listing reads the program back as text" (zx-listing m) "10 PRINT 42")))
+
+;; Typing in: the next line goes into E_LINE, with ENTER pressed, once the editor has sat idle
+(let (m (machine-with '(0x76)))
+  (do (zx-use m)
+      (zx-wr16 zx-E-LINE 0x6000) (zx-wr 0x6000 0x0d) (zx-wr 0x6001 0x80)
+      (check "zx-type queues a line per line of text" (zx-type m "PRINT 1\n\n  CLS  ") 2)
+      (zx-frame m nil) (zx-frame m nil) (zx-frame m nil)
+      (check "the first line is in the edit line" (list (zx-peek m 0x6000) (zx-peek m 0x6001) (zx-peek m 0x6002)) (list 0xf5 0x31 0x0d))
+      (check "and ENTER pressed" (list (zx-peek m zx-LAST-K) (band (zx-peek m zx-FLAGS) 0x20)) (list 13 0x20))
+      (check "the second waits for the editor" (zx-typing? m) true)))
+
 ;; registers by name
 (let (m (zx-new))
   (do (zx-set-reg m "hl" 0x1234)

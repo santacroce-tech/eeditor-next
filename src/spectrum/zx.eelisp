@@ -585,10 +585,12 @@
   (let (m {:mem (make-bytes 65536) :reg (make-bytes zx-REGS) :keys (make-bytes 8 0xff)})
     (do (zx-use m)
         (zx-rr! zx-SP 0xffff) (zx-r! zx-A 0xff) (zx-r! zx-F 0xff) (zx-r! zx-BORDER 7)
+        (set! zx-queue '())
         m)))
 
 (defn zx-frame (m keys)
   (do (zx-use m)
+      (zx-feed)
       (cond (string? keys) (bcopy zx-keys 0 (base64->bytes keys) 0 8)
             (nil? keys) nil
             true (bcopy zx-keys 0 keys 0 8))
@@ -662,3 +664,158 @@
       (cond (dict-has zx-pair-names name) (zx-rr! (dict-get zx-pair-names name) v)
             (dict-has zx-reg-names name) (zx-r! (dict-get zx-reg-names name) v)
             true (str "zx-set-reg: no register " name))))
+
+;; ---------------------------------------------------------------------------
+;; BASIC as text: typing lines in, and reading the program back out.
+;;
+;; The 48K stores BASIC tokenized — PRINT is the byte 0xF5 — and its editor types a whole keyword
+;; from one key. So a line isn't typed key by key: it's tokenized here, written into the ROM's
+;; edit line (E_LINE) as if typed, and ENTER is pressed. The ROM does the rest — checks it, adds
+;; the hidden binary form of each number, and stores it (a line number first) or runs it.
+;; Lines wait in a queue and go in one at a time, whenever the editor is idle with an empty line.
+;; ---------------------------------------------------------------------------
+
+;; The 48K's keywords, tokens 0xA5..0xFF (the ROM's own table, at 0x0096).
+(def zx-keywords
+  (list "RND" "INKEY$" "PI" "FN" "POINT" "SCREEN$" "ATTR" "AT" "TAB" "VAL$" "CODE" "VAL" "LEN"
+        "SIN" "COS" "TAN" "ASN" "ACS" "ATN" "LN" "EXP" "INT" "SQR" "SGN" "ABS" "PEEK" "IN" "USR"
+        "STR$" "CHR$" "NOT" "BIN" "OR" "AND" "<=" ">=" "<>" "LINE" "THEN" "TO" "STEP" "DEF FN"
+        "CAT" "FORMAT" "MOVE" "ERASE" "OPEN #" "CLOSE #" "MERGE" "VERIFY" "BEEP" "CIRCLE" "INK"
+        "PAPER" "FLASH" "BRIGHT" "INVERSE" "OVER" "OUT" "LPRINT" "LLIST" "STOP" "READ" "DATA"
+        "RESTORE" "NEW" "BORDER" "CONTINUE" "DIM" "REM" "FOR" "GO TO" "GO SUB" "INPUT" "LOAD"
+        "LIST" "LET" "PAUSE" "NEXT" "POKE" "PRINT" "PLOT" "RUN" "SAVE" "RANDOMIZE" "IF" "CLS"
+        "DRAW" "CLEAR" "RETURN" "COPY"))
+(def zx-REM 0xEA)
+
+;; Characters and their codes. The Spectrum's own: 0x5E is ↑, 0x60 is £, 0x7F is ©.
+(def zx-printable
+  " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~")
+(def zx-char-codes
+  (dict-merge
+    (reduce (fn (d i) (dict-set d (substr zx-printable i (+ i 1)) (+ 32 i))) {} (range 95))
+    {"↑" 0x5e "£" 0x60 "©" 0x7f}))
+(def zx-code-chars
+  (map (fn (c) (cond (< c 32) "" (= c 0x5e) "↑" (= c 0x60) "£" (= c 0x7f) "©" true (substr zx-printable (- c 32) (- c 31))))
+       (range 128)))
+(def zx-word-chars "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+
+;; Longest first, so ATTR wins over AT and INKEY$ over IN; GOTO, GOSUB, DEFFN accepted unspaced.
+(def zx-keyword-table
+  (sort-by (fn (e) (- 0 (str-len (first e))))
+    (reduce (fn (acc i)
+              (let (k (nth zx-keywords i) code (+ 0xa5 i) bare (str-replace k " " ""))
+                (if (= bare k) (cons (list k code) acc) (cons (list k code) (cons (list bare code) acc)))))
+            '() (range (length zx-keywords)))))
+
+(defn zx-word-char? (ch) (and (!= ch "") (str-contains zx-word-chars ch)))
+
+;; The keyword at position i of `up` (the line in capitals), as (code length), or nil. A keyword
+;; that ends in a letter needs a non-letter after it, and one that starts with a letter a
+;; non-letter before it — so TOTAL is a variable, not TO TAL.
+(defn zx-keyword-at (up i)
+  (let (before (if (= i 0) "" (substr up (- i 1) i))
+        n (str-len up))
+    (loop (es zx-keyword-table)
+      (if (empty? es) nil
+          (let (k (first (first es)) len (str-len k) end (+ i len))
+            (if (and (<= end n)
+                     (= (substr up i end) k)
+                     (or (not (zx-word-char? (substr k 0 1))) (= before "") (not (str-contains "ABCDEFGHIJKLMNOPQRSTUVWXYZ" before)))
+                     (or (not (zx-word-char? (substr k (- len 1) len))) (not (zx-word-char? (if (< end n) (substr up end (+ end 1)) "")))))
+                (list (second (first es)) len)
+                (recur (tail es))))))))
+
+;; One line of BASIC as the bytes the editor would hold. Spaces next to a keyword are dropped —
+;; the Spectrum prints its own; inside "…" and after REM everything is kept as it is.
+(defn zx-tokenize (line)
+  (let (up (str-upper line) n (str-len line))
+    (loop (i 0 out '() quoted false rem false)
+      (if (>= i n)
+          (reverse out)
+          (let (ch (substr line i (+ i 1)) code (dict-get zx-char-codes ch))
+            (cond
+              (or quoted rem)
+              (recur (+ i 1) (if code (cons code out) out) (and quoted (!= ch "\"")) rem)
+              (= ch "\"")
+              (recur (+ i 1) (cons 0x22 out) true false)
+              true
+              (let (kw (zx-keyword-at up i))
+                (if kw
+                    (let (out (if (and (not (empty? out)) (= (first out) 32)) (tail out) out)
+                          j (loop (j (+ i (second kw))) (if (and (< j n) (= (substr line j (+ j 1)) " ")) (recur (+ j 1)) j)))
+                      (recur j (cons (first kw) out) false (= (first kw) zx-REM)))
+                    (recur (+ i 1) (if code (cons code out) out) false false)))))))))
+
+;; System variables
+(def zx-LAST-K 0x5c08) (def zx-FLAGS 0x5c3b) (def zx-FLAGX 0x5c71)
+(def zx-VARS 0x5c4b) (def zx-PROG 0x5c53) (def zx-E-LINE 0x5c59) (def zx-K-CUR 0x5c5b)
+(def zx-WORKSP 0x5c61) (def zx-STKBOT 0x5c63) (def zx-STKEND 0x5c65)
+
+(def zx-queue '())      ; lines waiting to be entered, each a list of bytes
+(def zx-idle 0)         ; frames the editor has sat idle — two in a row before the next line goes in
+
+;; Queue BASIC to be typed: one line per line of text, blank ones skipped. Returns how many.
+(defn zx-type (m text)
+  (let (lines (filter (fn (l) (!= l "")) (map str-trim (str-split (str-replace text "\r" "") "\n"))))
+    (do (set! zx-queue (append zx-queue (map zx-tokenize lines)))
+        (length lines))))
+
+(defn zx-typing? (m) (not (empty? zx-queue)))
+
+;; The editor is waiting with an empty line, no key pending, and not in an INPUT.
+(defn zx-editor-idle? ()
+  (and (= 0 (band (zx-rd zx-FLAGS) 0x20))
+       (= 0 (band (zx-rd zx-FLAGX) 0x20))
+       (= 0x0d (zx-rd (zx-rd16 zx-E-LINE)))))
+
+;; Write a tokenized line into E_LINE — the layout the ROM's SET-MIN leaves, with the line in it —
+;; and press ENTER by handing the editor the key directly (LAST_K, and FLAGS' new-key bit).
+(defn zx-enter-line (codes)
+  (let (e (zx-rd16 zx-E-LINE) end (+ e (length codes)))
+    (do (loop (a e cs codes)
+          (if (empty? cs) nil (do (zx-wr a (first cs)) (recur (+ a 1) (tail cs)))))
+        (zx-wr end 0x0d) (zx-wr (+ end 1) 0x80)
+        (zx-wr16 zx-K-CUR end)
+        (zx-wr16 zx-WORKSP (+ end 2)) (zx-wr16 zx-STKBOT (+ end 2)) (zx-wr16 zx-STKEND (+ end 2))
+        (zx-wr zx-LAST-K 13)
+        (zx-wr zx-FLAGS (bor (zx-rd zx-FLAGS) 0x20)))))
+
+;; Once a frame: the next queued line, if the editor has been idle long enough to take it.
+(defn zx-feed ()
+  (cond (empty? zx-queue) nil
+        (not (zx-editor-idle?)) (set! zx-idle 0)
+        (< zx-idle 2) (set! zx-idle (+ zx-idle 1))
+        true (do (zx-enter-line (first zx-queue))
+                 (set! zx-queue (tail zx-queue))
+                 (set! zx-idle 0))))
+
+;; The program in memory as text, a line per line — what LIST would show.
+(defn zx-detokenize (a end)
+  (loop (a a out "")
+    (if (>= a end)
+        out
+        (let (b (zx-rd a))
+          (cond
+            (= b 0x0d) out
+            (= b 0x0e) (recur (+ a 6) out)                             ; a number's hidden binary form
+            (and (>= b 0x10) (<= b 0x15)) (recur (+ a 2) out)          ; INK … OVER control codes
+            (or (= b 0x16) (= b 0x17)) (recur (+ a 3) out)             ; AT, TAB control codes
+            (>= b 0xa5)
+            (let (k (nth zx-keywords (- b 0xa5))
+                  word (zx-word-char? (substr k 0 1))
+                  lead (if (and word (!= out "") (not (str-ends-with out " "))) " " ""))
+              (recur (+ a 1) (str out lead k (if word " " ""))))
+            (< b 0x80) (recur (+ a 1) (str out (nth zx-code-chars b)))
+            true (recur (+ a 1) out))))))
+
+(defn zx-listing (m)
+  (do (zx-use m)
+      (let (end (zx-rd16 zx-VARS))
+        (loop (a (zx-rd16 zx-PROG) lines '())
+          (if (or (>= a end) (>= (zx-rd a) 0x40))                     ; past the last line
+              (str-join "\n" (reverse lines))
+              (let (num (bor (shl (zx-rd a) 8) (zx-rd (+ a 1)))
+                    len (zx-rd16 (+ a 2))
+                    body (+ a 4))
+                (recur (+ body len)
+                       (cons (str num " " (str-trim (zx-detokenize body (+ body len)))) lines))))))))

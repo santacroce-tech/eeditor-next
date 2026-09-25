@@ -406,7 +406,8 @@ export const CONTROLS: Record<ControlType, ControlDef> = {
       { key: "frame", kind: "text", label: "Each frame", default: "" },
       { key: "keyboard", kind: "bool", label: "Keyboard on screen", default: false },
     ],
-    events: [],
+    // :on-paste — text pasted on the screen, in (ui-get f "$text")
+    events: ["paste"],
     initial: { frame: "(zx-frame zx ui-keys)" },
   },
   tabs: {

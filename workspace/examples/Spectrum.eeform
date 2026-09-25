@@ -13,15 +13,25 @@
 ;; +, whatever your keyboard needs for it (the Spectrum's SYMBOL SHIFT + K). Ctrl or Alt is SYMBOL
 ;; SHIFT, the arrows are the cursor keys, Backspace is DELETE. ⌨ in the screen's corner shows the
 ;; Spectrum's own keyboard under it: click CAPS SHIFT or SYMBOL SHIFT, then a key.
+;;
+;; BASIC: write a program in the box on the right and press Send — each line is entered as if
+;; typed, keywords and all (a numbered line joins the program, anything else runs). Get listing
+;; reads the Spectrum's program back into the box. Pasting on the screen (⌘V) types it the same way.
 
-(form "Spectrum" :size (560 448) :on-load spectrum-load
+(form "Spectrum" :size (920 448) :on-load spectrum-load
   (button btnRom :text "Load ROM…" :at (16 12) :size (96 24) :on-click spectrum-pick-rom)
   (button btnSna :text "Load .sna…" :at (120 12) :size (96 24) :on-click spectrum-pick-sna)
   (button btnDemo :text "Demo" :at (224 12) :size (64 24) :on-click spectrum-demo)
   (button btnReset :text "Reset" :at (296 12) :size (64 24) :on-click spectrum-reset)
   (button btnPause :text "Pause" :at (368 12) :size (64 24) :on-click spectrum-pause)
   (label lblStatus :at (440 16) :size (104 24))
-  (screen scrZX :frame "(zx-frame zx ui-keys)" :at (16 48) :size (528 384)))
+  (screen scrZX :frame "(zx-frame zx ui-keys)" :at (16 48) :size (528 384) :on-paste spectrum-paste)
+  (label lblBasic :text "BASIC" :at (560 16) :size (120 24))
+  (textbox txtBasic :multiline true :mono true :at (560 48) :size (344 344))
+  (button btnSend :text "Send" :at (560 408) :size (72 24) :on-click spectrum-send)
+  (button btnList :text "Get listing" :at (640 408) :size (96 24) :on-click spectrum-get-listing)
+  (button btnRun :text "RUN" :at (744 408) :size (56 24) :on-click spectrum-run)
+  (button btnNew :text "NEW" :at (808 408) :size (56 24) :on-click spectrum-new))
 
 (def zx (zx-new))
 (def spectrum-rom nil)        ; the ROM last loaded, so Reset boots it again
@@ -29,8 +39,34 @@
 
 (defn spectrum-say (text) (ui-set "lblStatus" :text text))
 
+(def spectrum-sample
+  (str-join "\n"
+    (list "10 BORDER 1: PAPER 1: INK 7: CLS"
+          "20 FOR n=1 TO 10"
+          "30 PRINT AT n,n; \"EELISP \"; n*n"
+          "40 NEXT n")))
+
 (defn spectrum-load (f)
-  (spectrum-say (if spectrum-rom "running" "no ROM")))
+  (do (spectrum-say (if spectrum-rom "running" "no ROM"))
+      (ui-set "txtBasic" :value spectrum-sample)))
+
+;; BASIC in: typed into the Spectrum a line at a time, as if at its keyboard.
+(defn spectrum-type (text)
+  (if spectrum-rom
+      (let (n (zx-type zx text))
+        (do (spectrum-say (str "typing " n (if (= n 1) " line" " lines")))
+            (ui-focus "scrZX")))
+      (ui-message "Load a ROM first — BASIC lives in it")))
+
+(defn spectrum-send (f) (spectrum-type (ui-get f "txtBasic")))
+(defn spectrum-paste (f) (spectrum-type (ui-get f "$text")))
+(defn spectrum-run (f) (spectrum-type "RUN"))
+(defn spectrum-new (f) (spectrum-type "NEW"))
+(defn spectrum-get-listing (f)
+  (let (text (zx-listing zx))
+    (if (= text "")
+        (ui-message "The Spectrum has no program")
+        (ui-set "txtBasic" :value text))))
 
 ;; Reset: a fresh machine, with the ROM in if there is one — which boots it.
 (defn spectrum-reset (f)

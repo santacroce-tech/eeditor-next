@@ -873,7 +873,8 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
         };
         // The keys go to the machine, not to the form (Enter, Escape) or the editor's bindings.
         view.addEventListener("keydown", (e) => {
-          if (e.metaKey || !keys.press(e.code, e.key)) return;
+          // ⌘ is the OS's; Ctrl+V pastes (a typed / is still the Spectrum's /)
+          if (e.metaKey || (e.ctrlKey && e.key.toLowerCase() === "v") || !keys.press(e.code, e.key)) return;
           pressed(e.code);
           e.preventDefault();
           e.stopPropagation();
@@ -884,6 +885,25 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
           release(e.code);
         });
         view.addEventListener("pointerdown", () => view.focus());
+
+        // Text pasted on the screen goes to :on-paste, in "$text". A canvas isn't editable, and a
+        // webview may not send it a paste event: after ⌘V/Ctrl+V with none, the clipboard is read.
+        let pasteSeen = false;
+        const pasted = (text: string) => {
+          if (text && c.events.paste) void fire(c.events.paste, undefined, { $text: text });
+        };
+        view.addEventListener("paste", (e) => {
+          pasteSeen = true;
+          e.preventDefault();
+          pasted(e.clipboardData?.getData("text/plain") ?? "");
+        });
+        view.addEventListener("keydown", (e) => {
+          if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "v" || !c.events.paste) return;
+          pasteSeen = false;
+          setTimeout(() => {
+            if (!pasteSeen) void navigator.clipboard?.readText?.().then(pasted, () => {});
+          }, 150);
+        });
 
         // The Spectrum's own keyboard, on screen, under the picture: ⌨ in the corner, or :keyboard.
         const board = createZxKeyboard({

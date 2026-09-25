@@ -142,3 +142,18 @@ test("the on-screen keyboard: ⌨ shows it, SYMBOL SHIFT latches for the next ke
   await form.locator(".formrun-screen-kbtoggle").click();
   await expect(board).toBeHidden();
 });
+
+test("BASIC: text pasted on the screen, and the editor's Send, go to the machine to be typed", async ({ page }) => {
+  const form = await withKeysRom(page);
+  await expect(ctl(form, "txtBasic").locator("textarea")).toHaveValue(/10 BORDER 1/);
+  await form.locator(".formrun-screen").evaluate((el) => {
+    const data = new DataTransfer();
+    data.setData("text/plain", '10 PRINT "HI"\n20 GO TO 10');
+    el.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+  });
+  await expect(ctl(form, "lblStatus")).toHaveText("typing 2 lines");
+  await ctl(form, "btnSend").locator("button").click();
+  await expect(ctl(form, "lblStatus")).toHaveText("typing 4 lines");
+  await ctl(form, "btnRun").locator("button").click();
+  await expect(ctl(form, "lblStatus")).toHaveText("typing 1 line");
+});
