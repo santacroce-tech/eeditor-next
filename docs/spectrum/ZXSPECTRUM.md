@@ -9,7 +9,7 @@ in the same spirit as `SPREADSHEET.md` and `FORMS.md`.
 ```
 Tauri shell (Rust)      window, filesystem (load .tap/.z80), hosts EngineHandle in-process
   └── eelisp engine     the CPU + RAM live here as EELisp; a few compute primitives are Rust
-        └── emu/*.eelisp CPU core, decode tables, step-frame   ← the part we write
+        └── src/spectrum/zx.eelisp  CPU core, decode tables, frames   ← the part we write
   └── TS frontend        the "host": drives the loop, captures keys, paints the canvas
 ```
 
@@ -19,7 +19,7 @@ inside the machine. Instead — exactly like a keybinding — **input is injecte
 before each eval, and the frame is returned as data.** Nothing crosses the thread
 boundary in the wrong direction.
 
-## Engine primitives to add (Rust, pure compute — no I/O, no view types)
+## Engine primitives (Rust, pure compute — no I/O, no view types; in eelisp-rs since this work)
 
 These are the whole delegation. They are small, general, and unlock the emulator; none
 of them touch the `$tableView`/host-callback machinery.
@@ -53,16 +53,17 @@ with `* / mod` on the host's full-width integers, but it's slow and ugly — add
 
 ## The per-frame protocol
 
-The TS frontend owns the clock. Once per frame (~50 Hz) it calls `eelisp_eval` with the
-current input injected as `def`s ahead of the body — the same shape as `*cursor*`/`*date*`:
+The TS frontend owns the clock. Once per frame (~50 Hz) the form's `screen` control evaluates
+its `:frame` expression with the keys held down bound to `ui-keys`:
 
 ```
-(def *keys* "<base64 of the 8-byte keyboard matrix>")
-(def *frame* 1234)                 ; frame counter, drives FLASH phase
-(zx-step-frame *machine*)          ; runs one frame of T-states, returns a screen
+(let (ui-keys "<base64 of the 8-byte keyboard matrix>")
+  (zx-frame zx ui-keys))           ; runs one frame of T-states, returns a screen
 ```
 
-`zx-step-frame` returns an **ordinary dict** (serialises as `$dict` — no engine change
+The machine keeps its own frame counter (FLASH) and T-state budget; nothing else is injected.
+
+`zx-frame` returns an **ordinary dict** (serialises as `$dict` — no engine change
 needed) that the frontend switches on by `"kind"`:
 
 ```clojure
@@ -76,13 +77,10 @@ needed) that the frontend switches on by `"kind"`:
 > `engine/types.ts` next to `$tableView`. Not required for v1 — the `"kind"` field does
 > the same job with zero engine changes.
 
-### Injected context
+### The keys
 
-| Symbol | Type | Meaning |
-|---|---|---|
-| `*keys*` | base64(8 bytes) | keyboard matrix, one byte per half-row, bit clear = pressed |
-| `*frame*` | int | monotonic frame counter (FLASH toggles every 16 frames) |
-| `*tstates*` | int | T-states per frame — `69888` (48K) or `70908` (128K) |
+`ui-keys` is the keyboard matrix as base64 of 8 bytes, one per half-row, a clear bit for a key
+held down. `(zx-frame m keys)` also takes a byte buffer, or nil to keep the last matrix.
 
 ## Rendering the view (TS, in the webview `<canvas>`)
 
@@ -109,16 +107,16 @@ attr = pixels[6144 + (y >> 3) * 32 + col]
 
 For each of the 8 pixels in a byte: bit set → INK colour, clear → PAPER colour; BRIGHT
 picks the brighter palette; if FLASH is set and the frame's flash phase is on
-(`(frame >> 4) & 1`), INK and PAPER swap. Reference implementation: `src/zx-screen.ts`.
+(`(frame >> 4) & 1`), INK and PAPER swap. Implementation: `src/spectrum/screen.ts`.
 
-## Keyboard matrix (frontend → `*keys*`)
+## Keyboard matrix (frontend → `ui-keys`)
 
 The Spectrum reads the keyboard by `IN A,(0xFE)` with an address line selecting one of 8
 half-rows; each returns 5 key bits, **0 = pressed**. The frontend keeps a pressed-set from
-`keydown`/`keyup`, builds the 8-byte matrix, and base64s it into `*keys*`. The emulated
-`IN A,(port)` (see `zx-in` in `emu/zx-cpu.eelisp`) reads the selected rows from it.
+`keydown`/`keyup`, builds the 8-byte matrix, and base64s it into `ui-keys`. The emulated
+`IN A,(port)` (see `zx-in` in `src/spectrum/zx.eelisp`) reads the selected rows from it.
 
-| Half-row (A15..A8 line low) | Bit4 … Bit0 |
+| Half-row (A15..A8 line low) | Bit0 … Bit4 |
 |---|---|
 | 0xFE | Shift Z X C V |
 | 0xFD | A S D F G |
@@ -131,7 +129,9 @@ half-rows; each returns 5 key bits, **0 = pressed**. The frontend keeps a presse
 
 ## Timing
 
-This is an interpreter (Z80) inside an interpreter (EELisp) inside Rust. Expect it to run
-**below** a real 3.5 MHz Spectrum. That's fine for a stepper/debugger and for exercising
-routines; it is not a target for real-time games. If you want speed later, move the inner
-fetch-decode-dispatch into a Rust builtin — the boundary above doesn't change.
+This is an interpreter (Z80) inside an interpreter (EELisp) inside Rust. It was expected to
+run below a real 3.5 MHz Spectrum; after the interpreter work in eelisp-rs it runs at about
+real speed — a busy loop of loads, ALU, stores and branches at 3.57 MHz (19.6 ms a frame), and
+the Demo in `workspace/examples/Spectrum.eeform` at 50 frames/s end to end in the browser.
+Heavier code (the ROM's BASIC, prefixed and block instructions) may dip below; the boundary
+above doesn't change whatever the speed. See PLAN.md.
