@@ -1,0 +1,348 @@
+;; zx-cpu.eelisp — Z80 CPU core for the EELisp ZX Spectrum machine.
+;;
+;; Runs on the HOST eelisp engine (eelisp-rs), whose integers are full-width — so this
+;; file has no 15-bit-fixnum worries; it just emulates a Z80 with full-size Lisp ints.
+;;
+;; Depends on the primitives specified in docs/ZXSPECTRUM.md:
+;;   make-bytes bget bset bfill bcopy          (O(1) RAM + register file)
+;;   band bor bxor bnot shl shr                 (bitwise)
+;;   bytes->base64 base64->bytes                (JSON bridge for the screen / loading)
+;;
+;; NOTE ON SYNTAX: `fn` params use ( ) — confirmed by the engine README:
+;;   (map (fn (x) (* x x)) (range 1 6)). This file assumes `(let (a e1 b e2) body)`
+;;   flat pairs and `0x..` hex literals; adjust both to your reader if they differ.
+;;
+;; This is a CORRECT SKELETON, not the full 700-opcode set: it implements every
+;; *mechanism* (loads, ALU with real flags, jumps, calls, stack, I/O, interrupts) over a
+;; representative opcode subset, with a one-line pattern for adding the rest. Unimplemented
+;; opcodes raise a precise error naming the byte and PC, so you extend by running programs
+;; and filling the gaps they hit.
+
+;; ---------------------------------------------------------------------------
+;; Register file layout (offsets into the :reg byte buffer)
+;; ---------------------------------------------------------------------------
+(def rA 0)  (def rF 1)  (def rB 2)  (def rC 3)
+(def rD 4)  (def rE 5)  (def rH 6)  (def rL 7)
+(def rA2 8) (def rF2 9) (def rB2 10)(def rC2 11)   ; shadow set (') 
+(def rD2 12)(def rE2 13)(def rH2 14)(def rL2 15)
+(def rIXL 16)(def rIXH 17)(def rIYL 18)(def rIYH 19)
+(def rSPL 20)(def rSPH 21)(def rPCL 22)(def rPCH 23)
+(def rI 24) (def rR 25) (def rIFF 26)(def rIM 27)(def rHALT 28)
+
+;; Flag bit masks (F register)
+(def fS 0x80)(def fZ 0x40)(def f5 0x20)(def fH 0x10)
+(def f3 0x08)(def fPV 0x04)(def fN 0x02)(def fC 0x01)
+
+;; ---------------------------------------------------------------------------
+;; Machine constructor
+;; ---------------------------------------------------------------------------
+;; A machine is an immutable dict of buffer handles — never mutated after creation;
+;; all state changes go through bset into these buffers.
+(defn zx-new ()
+  {:mem (make-bytes 65536)
+   :reg (make-bytes 32)
+   :ops (zx-optable)})
+
+;; ---------------------------------------------------------------------------
+;; 8-bit register access
+;; ---------------------------------------------------------------------------
+(defn g8 (m i)   (bget (get m :reg) i))
+(defn s8 (m i v) (bset (get m :reg) i (band v 0xff)))
+
+;; 16-bit pairs (hi<<8 | lo)
+(defn g16 (m lo hi) (bor (g8 m lo) (shl (g8 m hi) 8)))
+(defn s16 (m lo hi v)
+  (do (s8 m lo (band v 0xff))
+      (s8 m hi (band (shr v 8) 0xff))))
+
+(defn bc (m) (g16 m rC rB))   (defn set-bc (m v) (s16 m rC rB v))
+(defn de (m) (g16 m rE rD))   (defn set-de (m v) (s16 m rE rD v))
+(defn hl (m) (g16 m rL rH))   (defn set-hl (m v) (s16 m rL rH v))
+(defn sp (m) (g16 m rSPL rSPH))(defn set-sp (m v) (s16 m rSPL rSPH v))
+(defn pc (m) (g16 m rPCL rPCH))(defn set-pc (m v) (s16 m rPCL rPCH v))
+
+;; flags
+(defn flag? (m mask) (not (eq? 0 (band (g8 m rF) mask))))
+(defn set-flag (m mask on)
+  (s8 m rF (if on (bor (g8 m rF) mask)
+                  (band (g8 m rF) (bnot mask)))))
+
+;; ---------------------------------------------------------------------------
+;; Memory. Writes below 0x4000 hit ROM and are ignored (as on real hardware);
+;; `poke` bypasses that so the host can load ROM and program images.
+;; ---------------------------------------------------------------------------
+(defn rd  (m a)   (bget (get m :mem) (band a 0xffff)))
+(defn wr  (m a v) (if (< a 0x4000) nil
+                      (bset (get m :mem) (band a 0xffff) (band v 0xff))))
+(defn poke (m a v)(bset (get m :mem) (band a 0xffff) (band v 0xff)))
+
+(defn rd16 (m a) (bor (rd m a) (shl (rd m (+ a 1)) 8)))
+(defn wr16 (m a v)(do (wr m a (band v 0xff)) (wr m (+ a 1) (shr v 8))))
+
+;; instruction fetch (advances PC)
+(defn fetch8 (m)
+  (let (p (pc m))
+    (do (set-pc m (+ p 1)) (rd m p))))
+(defn fetch16 (m)
+  (let (lo (fetch8 m) hi (fetch8 m)) (bor lo (shl hi 8))))
+
+;; stack
+(defn push16 (m v)
+  (let (s (band (- (sp m) 2) 0xffff))
+    (do (set-sp m s) (wr16 m s v))))
+(defn pop16 (m)
+  (let (s (sp m) v (rd16 m s))
+    (do (set-sp m (band (+ s 2) 0xffff)) v)))
+
+;; ---------------------------------------------------------------------------
+;; Flag helpers — the fiddly heart. Get these right and most bugs disappear.
+;; ---------------------------------------------------------------------------
+(defn parity (v)                       ; true when the number of set bits is even
+  (let (x (band v 0xff))
+    (eq? 0 (band (+ (band x 1) (shr (band x 2) 1) (shr (band x 4) 2)
+                    (shr (band x 8) 3) (shr (band x 16) 4) (shr (band x 32) 5)
+                    (shr (band x 64) 6) (shr (band x 128) 7))
+                 1))))
+
+(defn set-sz53 (m r)                    ; S, Z, and the undocumented F5/F3 from a result
+  (let (r8v (band r 0xff))
+    (do (set-flag m fS (not (eq? 0 (band r8v 0x80))))
+        (set-flag m fZ (eq? 0 r8v))
+        (set-flag m f5 (not (eq? 0 (band r8v f5))))
+        (set-flag m f3 (not (eq? 0 (band r8v f3)))))))
+
+;; A = A + n (+ carry?) with full flags
+(defn alu-add (m n carry)
+  (let (a (g8 m rA)
+        cin (if (and carry (flag? m fC)) 1 0)
+        raw (+ a n cin)
+        res (band raw 0xff))
+    (do (set-sz53 m res)
+        (set-flag m fH (not (eq? 0 (band (+ (band a 0x0f) (band n 0x0f) cin) 0x10))))
+        (set-flag m fPV (not (eq? 0 (band (bxor (bxor a n) 0x80)
+                                          (bxor a res) ) 0x80)))  ; overflow
+        (set-flag m fN false)
+        (set-flag m fC (not (eq? 0 (band raw 0x100))))
+        (s8 m rA res))))
+
+;; A = A - n (- borrow?) with full flags
+(defn alu-sub (m n carry)
+  (let (a (g8 m rA)
+        cin (if (and carry (flag? m fC)) 1 0)
+        raw (- a n cin)
+        res (band raw 0xff))
+    (do (set-sz53 m res)
+        (set-flag m fH (not (eq? 0 (band (- (band a 0x0f) (band n 0x0f) cin) 0x10))))
+        (set-flag m fPV (not (eq? 0 (band (bxor a n) (bxor a res)) 0x80)))
+        (set-flag m fN true)
+        (set-flag m fC (not (eq? 0 (band raw 0x100))))
+        (s8 m rA res))))
+
+(defn alu-cp (m n)                      ; compare = subtract, discard result
+  (let (a (g8 m rA)) (do (alu-sub m n false) (s8 m rA a))))
+
+(defn alu-and (m n)
+  (let (res (band (g8 m rA) n))
+    (do (set-sz53 m res)(set-flag m fH true)(set-flag m fPV (parity res))
+        (set-flag m fN false)(set-flag m fC false)(s8 m rA res))))
+(defn alu-or (m n)
+  (let (res (bor (g8 m rA) n))
+    (do (set-sz53 m res)(set-flag m fH false)(set-flag m fPV (parity res))
+        (set-flag m fN false)(set-flag m fC false)(s8 m rA res))))
+(defn alu-xor (m n)
+  (let (res (bxor (g8 m rA) n))
+    (do (set-sz53 m res)(set-flag m fH false)(set-flag m fPV (parity res))
+        (set-flag m fN false)(set-flag m fC false)(s8 m rA res))))
+
+(defn inc8 (m v)                         ; INC r — note: does NOT touch carry
+  (let (res (band (+ v 1) 0xff))
+    (do (set-sz53 m res)
+        (set-flag m fH (eq? 0 (band res 0x0f)))
+        (set-flag m fPV (eq? v 0x7f))
+        (set-flag m fN false) res)))
+(defn dec8 (m v)
+  (let (res (band (- v 1) 0xff))
+    (do (set-sz53 m res)
+        (set-flag m fH (eq? (band res 0x0f) 0x0f))
+        (set-flag m fPV (eq? v 0x80))
+        (set-flag m fN true) res)))
+
+;; ---------------------------------------------------------------------------
+;; I/O ports. Reads consult *keys* (injected); writes to 0xFE latch the border.
+;; ---------------------------------------------------------------------------
+(defn zx-in (m port)
+  (if (eq? 0 (band port 1))              ; even port → ULA / keyboard
+    (zx-key-rows m (shr port 8))
+    0xff))
+(defn zx-out (m port v)
+  (if (eq? 0 (band port 1))
+    (s8 m rIM (band v 7))                ; reuse rIM slot to stash border (0..7); rename later
+    nil))
+
+;; keyboard matrix comes in as base64 in the global *keys*; decode lazily per frame
+(defn zx-key-rows (m addr-hi)
+  (let (mtx (base64->bytes *keys*) acc 0xff i 0)
+    ;; AND together every selected half-row (a 0 address bit selects that row)
+    (do (loop i 0 8
+          (if (eq? 0 (band addr-hi (shl 1 i)))
+              (set! acc (band acc (bget mtx i)))
+              nil))
+        (bor 0xe0 (band acc 0x1f)))))    ; top 3 bits read high
+
+;; ---------------------------------------------------------------------------
+;; Opcode table.  (defop table 0x00 (fn (m) ...cycles...))
+;; Each handler mutates m and returns the T-states it took.
+;; ---------------------------------------------------------------------------
+(defn defop (tbl code h) (dict-set tbl code h))
+
+(defn zx-optable ()
+  (let (t {})
+    (do
+      ;; --- misc ---
+      (defop t 0x00 (fn (m) 4))                                   ; NOP
+      (defop t 0x76 (fn (m) (do (s8 m rHALT 1) 4)))               ; HALT
+      (defop t 0xF3 (fn (m) (do (s8 m rIFF 0) 4)))                ; DI
+      (defop t 0xFB (fn (m) (do (s8 m rIFF 3) 4)))                ; EI (IFF1|IFF2)
+
+      ;; --- 8-bit immediate loads: LD r,n ---
+      (defop t 0x3E (fn (m) (do (s8 m rA (fetch8 m)) 7)))         ; LD A,n
+      (defop t 0x06 (fn (m) (do (s8 m rB (fetch8 m)) 7)))         ; LD B,n
+      (defop t 0x0E (fn (m) (do (s8 m rC (fetch8 m)) 7)))         ; LD C,n
+      (defop t 0x16 (fn (m) (do (s8 m rD (fetch8 m)) 7)))         ; LD D,n
+      (defop t 0x1E (fn (m) (do (s8 m rE (fetch8 m)) 7)))         ; LD E,n
+      (defop t 0x26 (fn (m) (do (s8 m rH (fetch8 m)) 7)))         ; LD H,n
+      (defop t 0x2E (fn (m) (do (s8 m rL (fetch8 m)) 7)))         ; LD L,n
+      (defop t 0x36 (fn (m) (do (wr m (hl m) (fetch8 m)) 10)))    ; LD (HL),n
+
+      ;; --- 16-bit immediate loads: LD rr,nn ---
+      (defop t 0x01 (fn (m) (do (set-bc m (fetch16 m)) 10)))      ; LD BC,nn
+      (defop t 0x11 (fn (m) (do (set-de m (fetch16 m)) 10)))      ; LD DE,nn
+      (defop t 0x21 (fn (m) (do (set-hl m (fetch16 m)) 10)))      ; LD HL,nn
+      (defop t 0x31 (fn (m) (do (set-sp m (fetch16 m)) 10)))      ; LD SP,nn
+
+      ;; --- A <-> memory ---
+      (defop t 0x3A (fn (m) (do (s8 m rA (rd m (fetch16 m))) 13)));; LD A,(nn)
+      (defop t 0x32 (fn (m) (do (wr m (fetch16 m) (g8 m rA)) 13)));; LD (nn),A
+      (defop t 0x0A (fn (m) (do (s8 m rA (rd m (bc m))) 7)))      ; LD A,(BC)
+      (defop t 0x1A (fn (m) (do (s8 m rA (rd m (de m))) 7)))      ; LD A,(DE)
+      (defop t 0x02 (fn (m) (do (wr m (bc m) (g8 m rA)) 7)))      ; LD (BC),A
+      (defop t 0x12 (fn (m) (do (wr m (de m) (g8 m rA)) 7)))      ; LD (DE),A
+
+      ;; --- the LD r,r' block 0x40..0x7F built programmatically ---
+      (zx-install-ld-block t)
+
+      ;; --- INC/DEC 8-bit ---
+      (defop t 0x3C (fn (m) (do (s8 m rA (inc8 m (g8 m rA))) 4))) ; INC A
+      (defop t 0x3D (fn (m) (do (s8 m rA (dec8 m (g8 m rA))) 4))) ; DEC A
+      (defop t 0x04 (fn (m) (do (s8 m rB (inc8 m (g8 m rB))) 4))) ; INC B
+      (defop t 0x05 (fn (m) (do (s8 m rB (dec8 m (g8 m rB))) 4))) ; DEC B
+      (defop t 0x0C (fn (m) (do (s8 m rC (inc8 m (g8 m rC))) 4))) ; INC C
+      (defop t 0x0D (fn (m) (do (s8 m rC (dec8 m (g8 m rC))) 4))) ; DEC C
+
+      ;; --- INC/DEC 16-bit (no flags) ---
+      (defop t 0x03 (fn (m) (do (set-bc m (+ (bc m) 1)) 6)))
+      (defop t 0x13 (fn (m) (do (set-de m (+ (de m) 1)) 6)))
+      (defop t 0x23 (fn (m) (do (set-hl m (+ (hl m) 1)) 6)))
+      (defop t 0x0B (fn (m) (do (set-bc m (- (bc m) 1)) 6)))
+      (defop t 0x1B (fn (m) (do (set-de m (- (de m) 1)) 6)))
+      (defop t 0x2B (fn (m) (do (set-hl m (- (hl m) 1)) 6)))
+
+      ;; --- ALU on immediate ---
+      (defop t 0xC6 (fn (m) (do (alu-add m (fetch8 m) false) 7))) ; ADD A,n
+      (defop t 0xCE (fn (m) (do (alu-add m (fetch8 m) true) 7)))  ; ADC A,n
+      (defop t 0xD6 (fn (m) (do (alu-sub m (fetch8 m) false) 7))) ; SUB n
+      (defop t 0xDE (fn (m) (do (alu-sub m (fetch8 m) true) 7)))  ; SBC A,n
+      (defop t 0xE6 (fn (m) (do (alu-and m (fetch8 m)) 7)))       ; AND n
+      (defop t 0xF6 (fn (m) (do (alu-or  m (fetch8 m)) 7)))       ; OR n
+      (defop t 0xEE (fn (m) (do (alu-xor m (fetch8 m)) 7)))       ; XOR n
+      (defop t 0xFE (fn (m) (do (alu-cp  m (fetch8 m)) 7)))       ; CP n
+      (defop t 0xAF (fn (m) (do (alu-xor m (g8 m rA)) 4)))        ; XOR A (zero A)
+
+      ;; --- jumps ---
+      (defop t 0xC3 (fn (m) (do (set-pc m (fetch16 m)) 10)))      ; JP nn
+      (defop t 0x18 (fn (m) (zx-jr m true)))                      ; JR e
+      (defop t 0x20 (fn (m) (zx-jr m (not (flag? m fZ)))))        ; JR NZ,e
+      (defop t 0x28 (fn (m) (zx-jr m (flag? m fZ))))              ; JR Z,e
+      (defop t 0x30 (fn (m) (zx-jr m (not (flag? m fC)))))        ; JR NC,e
+      (defop t 0x38 (fn (m) (zx-jr m (flag? m fC))))              ; JR C,e
+      (defop t 0x10 (fn (m)                                       ; DJNZ e
+        (do (s8 m rB (band (- (g8 m rB) 1) 0xff))
+            (zx-jr m (not (eq? 0 (g8 m rB)))))))
+
+      ;; --- call / ret ---
+      (defop t 0xCD (fn (m) (let (a (fetch16 m)) (do (push16 m (pc m))(set-pc m a) 17))))
+      (defop t 0xC9 (fn (m) (do (set-pc m (pop16 m)) 10)))        ; RET
+
+      ;; --- stack ---
+      (defop t 0xC5 (fn (m) (do (push16 m (bc m)) 11)))          ; PUSH BC
+      (defop t 0xD5 (fn (m) (do (push16 m (de m)) 11)))          ; PUSH DE
+      (defop t 0xE5 (fn (m) (do (push16 m (hl m)) 11)))          ; PUSH HL
+      (defop t 0xC1 (fn (m) (do (set-bc m (pop16 m)) 10)))       ; POP BC
+      (defop t 0xD1 (fn (m) (do (set-de m (pop16 m)) 10)))       ; POP DE
+      (defop t 0xE1 (fn (m) (do (set-hl m (pop16 m)) 10)))       ; POP HL
+
+      ;; --- I/O ---
+      (defop t 0xD3 (fn (m) (do (zx-out m (bor (fetch8 m) (shl (g8 m rA) 8)) (g8 m rA)) 11)))
+      (defop t 0xDB (fn (m) (do (s8 m rA (zx-in m (bor (fetch8 m) (shl (g8 m rA) 8)))) 11)))
+      t)))
+
+;; relative jump helper: reads the signed displacement, branches if cond
+(defn zx-jr (m take)
+  (let (e (fetch8 m))
+    (if take
+        (do (set-pc m (band (+ (pc m) (if (> e 127) (- e 256) e)) 0xffff)) 12)
+        7)))
+
+;; LD r,r' for the 0x40..0x7F block (skipping 0x76 = HALT).
+;; Register order for the low/high 3-bit fields: B C D E H L (HL) A
+(defn zx-install-ld-block (t)
+  (let (regs [rB rC rD rE rH rL nil rA] hi 0)
+    (loop hi 0 8
+      (loop lo 0 8
+        (let (code (+ 0x40 (shl hi 3) lo))
+          (if (eq? code 0x76) nil
+            (defop t code
+              (fn (m)
+                (let (src (if (eq? lo 6) (rd m (hl m)) (g8 m (nth regs lo)))
+                      dsti (nth regs hi))
+                  (if (eq? hi 6)
+                      (do (wr m (hl m) src) 7)      ; LD (HL),r
+                      (do (s8 m dsti src)            ; LD r,r' / LD r,(HL)
+                          (if (eq? lo 6) 7 4))))))))))))
+
+;; ---------------------------------------------------------------------------
+;; One instruction.  Looks up the opcode; unknown → precise error to extend from.
+;; ---------------------------------------------------------------------------
+(defn zx-step (m)
+  (if (eq? 1 (g8 m rHALT))
+      4                                   ; halted: burn 4 T-states doing nothing
+      (let (op (fetch8 m) h (dict-get (get m :ops) op))
+        (if h (h m)
+            (error (str "unimplemented opcode 0x" (hex op)
+                        " at PC=0x" (hex (band (- (pc m) 1) 0xffff))))))))
+
+;; ---------------------------------------------------------------------------
+;; One frame: run T-states, then fire the 50Hz maskable interrupt (IM 1 → RST 38),
+;; then hand back the screen as data (docs/ZXSPECTRUM.md "per-frame protocol").
+;; ---------------------------------------------------------------------------
+(defn zx-step-frame (m)
+  (let (budget (if (defined? '*tstates*) *tstates* 69888) spent 0)
+    (do
+      (loop-while (< spent budget)
+        (set! spent (+ spent (zx-step m))))
+      ;; maskable interrupt (only IM 1 modelled here)
+      (if (not (eq? 0 (band (g8 m rIFF) 1)))
+          (do (s8 m rHALT 0) (s8 m rIFF 0) (push16 m (pc m)) (set-pc m 0x0038))
+          nil)
+      {"kind"   "screen"
+       "pixels" (bytes->base64 (get m :mem) 0x4000 6912)
+       "border" (band (g8 m rIM) 7)
+       "frame"  (if (defined? '*frame*) *frame* 0)})))
+
+;; ---------------------------------------------------------------------------
+;; Loading: the host reads a raw 48K memory image (or a decoded snapshot) and hands
+;; it over as base64; we splat it into RAM starting at `addr` (use for ROM at 0x0000).
+;; ---------------------------------------------------------------------------
+(defn zx-load (m addr b64)
+  (let (src (base64->bytes b64))
+    (bcopy (get m :mem) addr src 0 (bytes-len src))))

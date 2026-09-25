@@ -5,6 +5,7 @@ import type { EngineClient } from "./client";
 import { isDict, isKeyword, isRecord, isResultSet, type JsonValue } from "./types";
 import { formState, type StateValue } from "../core/form";
 import PRELUDE from "../forms/prelude.eelisp?raw";
+import SPECTRUM from "../spectrum/zx.eelisp?raw";
 
 /** One row of a grid: the record's fields, and its id when it came from a table. */
 export type Row = Record<string, StateValue>;
@@ -16,7 +17,9 @@ export type UiChange =
   | { kind: "close" }
   | { kind: "open"; path: string; into?: string; copy?: boolean }
   /** A public variable was written: the host tells the other forms of the same main. */
-  | { kind: "public"; name: string };
+  | { kind: "public"; name: string }
+  /** `(ui-pick handler)`: let the user pick a file, then run the handler with its bytes. */
+  | { kind: "pick"; handler: string };
 
 /**
  * Which open form a handler runs for — handed to it in `f` as `$form`, `$main`, `$key` and `$app`,
@@ -56,7 +59,16 @@ export interface FormClient {
   call(handler: string, state: Record<string, StateValue>): Promise<{ changes: UiChange[]; output: string }>;
   /** Ask `handler` whether the form may go ahead: the message it returned, or null for yes. */
   check(handler: string, state: Record<string, StateValue>): Promise<string | null>;
+  /** Evaluate one expression — a screen control's `:frame` — and give back its value. */
+  evalExpr(src: string): Promise<JsonValue>;
 }
+
+/**
+ * A form with a screen control runs the ZX Spectrum (src/spectrum/zx.eelisp): the machine is
+ * loaded into the engine, once, before the form is. Found by the control in the layout —
+ * `(screen scrName …)` — which is how the printer always writes one.
+ */
+const usesScreen = (src: string): boolean => /\(screen\s/.test(src);
 
 const text = (v: JsonValue | undefined): string => (typeof v === "string" ? v : v == null ? "" : String(v));
 const asStr = (s: StateValue): string => (typeof s === "string" ? s : s == null ? "" : typeof s === "object" ? JSON.stringify(s) : String(s));
@@ -81,6 +93,12 @@ export function parseChange(v: JsonValue): UiChange | undefined {
     }
     case "public":
       return { kind: "public", name: text(v[1]) };
+    case "pick": {
+      // (ui-pick my-handler) passes the function — {"$fn": name} — or 'my-handler, or its name
+      const h = v[1];
+      const name = h && typeof h === "object" && !Array.isArray(h) ? (h as { $fn?: string; $sym?: string }).$fn ?? (h as { $sym?: string }).$sym : text(h);
+      return name && name !== "anonymous" ? { kind: "pick", handler: name } : undefined;
+    }
     default:
       return undefined;
   }
@@ -117,6 +135,7 @@ export function rowsOf(v: JsonValue): { rows: Row[]; columns?: string[] } {
 
 export function createFormClient(engine: EngineClient): FormClient {
   let preludeLoaded = false;
+  let spectrumLoaded = false;
 
   async function ev(src: string): Promise<{ result: JsonValue; output: string }> {
     const env = await engine.evalSrc(src);
@@ -133,6 +152,10 @@ export function createFormClient(engine: EngineClient): FormClient {
   return {
     async load(src, key = "") {
       await ensurePrelude();
+      if (usesScreen(src) && !spectrumLoaded) {
+        await ev(SPECTRUM);
+        spectrumLoaded = true;
+      }
       await ev(`(set! ui-loading ${JSON.stringify(key)})`);
       try {
         await ev(src);
@@ -154,6 +177,9 @@ export function createFormClient(engine: EngineClient): FormClient {
       await ensurePrelude();
       const { result } = await ev(`(ui-check ${handler} ${formState(state)})`);
       return typeof result === "string" && result !== "" ? result : null;
+    },
+    async evalExpr(src) {
+      return (await ev(src)).result;
     },
   };
 }

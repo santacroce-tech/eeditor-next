@@ -8,7 +8,8 @@ export default defineConfig({
     outDir: "dist",
     target: "es2022",
     emptyOutDir: true,
-    // Two pages: the app, and a form running on its own over the WebAssembly engine.
-    rollupOptions: { input: { main: "index.html", runtime: "runtime.html" } },
+    // The app; a form running on its own over the WebAssembly engine; and a form's screen control
+    // in a window of its own, over the app's engine.
+    rollupOptions: { input: { main: "index.html", runtime: "runtime.html", screen: "screen.html" } },
   },
 });

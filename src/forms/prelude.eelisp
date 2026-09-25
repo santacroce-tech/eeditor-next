@@ -25,6 +25,9 @@
           (= (first o) key) (second o)
           true (recur (tail o)))))
 (defn ui-open (path . opts) (ui-queue (list "open" path (ui-opt opts :in) (ui-opt opts :new))))
+;; Let the user pick a file; then `handler` runs with its bytes as base64 in (ui-get f "$file") and
+;; its name in (ui-get f "$filename") — (base64->bytes …) makes a buffer of it.
+(defn ui-pick (handler) (ui-queue (list "pick" handler)))
 
 ;; ── Variables: local to one open form, public to a main form and the forms it opens ──
 ;;

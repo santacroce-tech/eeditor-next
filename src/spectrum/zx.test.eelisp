@@ -1,0 +1,137 @@
+;; zx.test.eelisp — the machine around the Z80: memory map, ULA, interrupts, frames.
+;; (The Z80 itself is checked against the FUSE suite: dev/spectrum-fuse.mjs.)
+;; Run with: npm run spectrum:test
+
+(def zx-failures 0)
+(defn check (name got want)
+  (if (= got want)
+      (println "ok   " name)
+      (do (set! zx-failures (+ zx-failures 1))
+          (println "FAIL " name " — got " got ", want " want))))
+
+;; a machine with `code` at 0x8000 and PC there
+(defn machine-with (code)
+  (let (m (zx-new))
+    (do (zx-load m 0x8000 (list->bytes code))
+        (zx-set-reg m "pc" 0x8000)
+        m)))
+
+(defn pixel-byte (screen i) (bget (base64->bytes (dict-get screen "pixels")) i))
+
+;; LD HL,0x4000 / LD (HL),0xFF / HALT
+(let (m (machine-with '(0x21 0x00 0x40 0x36 0xff 0x76)) s (zx-frame m nil))
+  (do (check "a frame is a screen" (dict-get s "kind") "screen")
+      (check "the screen is 6912 bytes" (bytes-len (base64->bytes (dict-get s "pixels"))) 6912)
+      (check "a write to 0x4000 shows in the first pixel byte" (pixel-byte s 0) 255)
+      (check "HALT holds the machine" (dict-get (zx-regs m) "halted") 1)))
+
+;; LD A,2 / OUT (0xFE),A / HALT
+(let (m (machine-with '(0x3e 0x02 0xd3 0xfe 0x76)))
+  (check "OUT (0xFE) sets the border" (dict-get (zx-frame m nil) "border") 2))
+
+;; the frame counter drives FLASH
+(let (m (machine-with '(0x76)))
+  (do (zx-frame m nil)
+      (check "frames count" (dict-get (zx-frame m nil) "frame") 2)))
+
+;; a frame of NOPs is 69888 T-states = 17472 NOPs, interrupts off
+(let (m (machine-with '()))
+  (do (zx-frame m nil)
+      (check "one frame runs 69888 T-states" (dict-get (zx-regs m) "pc") (+ 0x8000 17472))))
+
+;; the ROM ignores writes; zx-load doesn't
+;; LD A,1 / LD (0x1000),A / LD (0x5000),A / HALT
+(let (m (machine-with '(0x3e 0x01 0x32 0x00 0x10 0x32 0x00 0x50 0x76)))
+  (do (zx-frame m nil)
+      (check "a write below 0x4000 is ignored" (zx-peek m 0x1000) 0)
+      (check "a write above it lands" (zx-peek m 0x5000) 1)))
+
+;; IM 1: EI / HALT / JR -4, and at 0x38: LD A,0x55 / LD (0x9000),A / EI / RETI
+(let (m (machine-with '(0xfb 0x76 0x18 0xfc)))
+  (do (zx-load m 0x38 (list->bytes '(0x3e 0x55 0x32 0x00 0x90 0xfb 0xed 0x4d)))
+      (zx-frame m nil)
+      ;; INT is held for the first 32 T-states: an EI that early still takes it this frame
+      (check "IM 1 calls 0x38 while INT is held" (zx-peek m 0x9000) 0x55)
+      (zx-poke m 0x9000 0)
+      (zx-frame m nil)
+      (check "and again at the next frame's start" (zx-peek m 0x9000) 0x55)
+      (check "and RETI comes back past the HALT, to halt again" (dict-get (zx-regs m) "pc") 0x8001)))
+
+;; IM 2: LD A,0x90 / LD I,A / IM 2 / EI / HALT; the vector at 0x90FF points at 0xA000:
+;; LD A,0x77 / LD (0x9100),A / EI / RETI
+(let (m (machine-with '(0x3e 0x90 0xed 0x47 0xed 0x5e 0xfb 0x76)))
+  (do (zx-load m 0x90ff (list->bytes '(0x00 0xa0)))
+      (zx-load m 0xa000 (list->bytes '(0x3e 0x77 0x32 0x00 0x91 0xfb 0xed 0x4d)))
+      (zx-frame m nil)
+      (zx-frame m nil)
+      (check "IM 2 jumps through the vector at I*256+0xFF" (zx-peek m 0x9100) 0x77)
+      (check "IM is 2" (dict-get (zx-regs m) "im") 2)))
+
+;; no interrupt while DI: DI / HALT stays halted
+(let (m (machine-with '(0xf3 0x76)))
+  (do (zx-frame m nil) (zx-frame m nil)
+      (check "DI keeps the interrupt out" (dict-get (zx-regs m) "pc") 0x8001)))
+
+;; keyboard: LD A,0xFD / IN A,(0xFE) / LD (0x9000),A / HALT — with A (row 0xFD, bit 0) down
+(let (m (machine-with '(0x3e 0xfd 0xdb 0xfe 0x32 0x00 0x90 0x76))
+      keys (make-bytes 8 0xff))
+  (do (bset keys 1 0xfe)
+      (zx-frame m (bytes->base64 keys))
+      (check "IN (0xFE) reads the selected half-row" (zx-peek m 0x9000) 0xbe)))
+(let (m (machine-with '(0x3e 0xfe 0xdb 0xfe 0x32 0x00 0x90 0x76))
+      keys (make-bytes 8 0xff))
+  (do (bset keys 1 0xfe)
+      (zx-frame m keys)
+      (check "a row that isn't selected reads as nothing pressed" (zx-peek m 0x9000) 0xbf)))
+
+;; a .sna snapshot: registers from the header, RAM after it, PC off the stack
+(let (m (zx-new) b (make-bytes 49179))
+  (do (bset b 22 0x42)                                   ; A
+      (bset b 23 0x00) (bset b 24 0x80)                  ; SP = 0x8000
+      (bset b (+ 27 0x4000) 0x34) (bset b (+ 27 0x4001) 0x12)  ; (0x8000) = 0x1234
+      (bset b 25 1) (bset b 26 5)                        ; IM 1, border 5
+      (check "a 48K .sna loads" (zx-load-sna m b) true)
+      (check ".sna: PC comes off the stack" (dict-get (zx-regs m) "pc") 0x1234)
+      (check ".sna: and SP moves past it" (dict-get (zx-regs m) "sp") 0x8002)
+      (check ".sna: A, IM, border" (list (dict-get (zx-regs m) "a") (dict-get (zx-regs m) "im") (dict-get (zx-regs m) "border")) (list 0x42 1 5))
+      (check "a file of the wrong size is refused" (string? (zx-load-sna m (make-bytes 10))) true)))
+
+;; BASIC as text: tokenized the way the editor holds it
+(check "PRINT and GO TO become tokens, numbers stay digits"
+       (zx-tokenize "10 PRINT AT 5,3: GOTO 10") (list 0x31 0x30 0xf5 0xac 0x35 0x2c 0x33 0x3a 0xec 0x31 0x30))
+(check "a keyword at the start of the line" (first (zx-tokenize "RUN")) 0xf7)
+(check "TOTAL is a variable, not TO" (zx-tokenize "LET total=1 TO 2") (list 0xf1 0x74 0x6f 0x74 0x61 0x6c 0x3d 0x31 0xcc 0x32))
+(check "ATTR wins over AT, INKEY$ over IN" (list (first (zx-tokenize "ATTR")) (first (zx-tokenize "INKEY$"))) (list 0xab 0xa6))
+(check "<= is one token" (zx-tokenize "a<=b") (list 0x61 0xc7 0x62))
+(check "strings are kept as written" (zx-tokenize "PRINT \"print TO\"") (list 0xf5 0x22 0x70 0x72 0x69 0x6e 0x74 0x20 0x54 0x4f 0x22))
+(check "after REM, everything is kept" (zx-tokenize "REM go to") (list 0xea 0x67 0x6f 0x20 0x74 0x6f))
+(check "£ is the Spectrum's 0x60" (zx-tokenize "\"£\"") (list 0x22 0x60 0x22))
+
+;; …and read back: a program line built by hand — 10 PRINT 42, with 42's hidden binary form
+(let (m (zx-new))
+  (do (zx-use m)
+      (zx-wr16 zx-PROG 0x5ccb)
+      (zx-load m 0x5ccb (list->bytes '(0x00 0x0a 0x0a 0x00 0xf5 0x34 0x32 0x0e 0x00 0x00 0x2a 0x00 0x00 0x0d)))
+      (zx-wr16 zx-VARS (+ 0x5ccb 14))
+      (check "zx-listing reads the program back as text" (zx-listing m) "10 PRINT 42")))
+
+;; Typing in: the next line goes into E_LINE, with ENTER pressed, once the editor has sat idle
+(let (m (machine-with '(0x76)))
+  (do (zx-use m)
+      (zx-wr16 zx-E-LINE 0x6000) (zx-wr 0x6000 0x0d) (zx-wr 0x6001 0x80)
+      (check "zx-type queues a line per line of text" (zx-type m "PRINT 1\n\n  CLS  ") 2)
+      (zx-frame m nil) (zx-frame m nil) (zx-frame m nil)
+      (check "the first line is in the edit line" (list (zx-peek m 0x6000) (zx-peek m 0x6001) (zx-peek m 0x6002)) (list 0xf5 0x31 0x0d))
+      (check "and ENTER pressed" (list (zx-peek m zx-LAST-K) (band (zx-peek m zx-FLAGS) 0x20)) (list 13 0x20))
+      (check "the second waits for the editor" (zx-typing? m) true)))
+
+;; registers by name
+(let (m (zx-new))
+  (do (zx-set-reg m "hl" 0x1234)
+      (zx-set-reg m "a" 0x42)
+      (check "zx-set-reg / zx-regs, a pair" (dict-get (zx-regs m) "hl") 0x1234)
+      (check "zx-set-reg / zx-regs, a register" (dict-get (zx-regs m) "a") 0x42)
+      (check "zx-step runs one instruction" (zx-step m) 4)))
+
+(println)
+(println (if (= zx-failures 0) "all passed" (str zx-failures " failed")))

@@ -292,6 +292,8 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
   document.addEventListener(
     "keydown",
     (e) => {
+      // A running form's screen control is a machine's keyboard: its keys are its own.
+      if ((e.target as Element | null)?.closest?.(".formrun-screen")) return;
       const binding = map.get(eventKeyId(e));
       if (!binding) return;
       // claim the key even when we won't act on it, so it never falls through to CodeMirror

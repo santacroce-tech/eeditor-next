@@ -154,6 +154,11 @@ describe("the layout", () => {
     expect(dgs.controls[1].props).toEqual({ file: "x", toolbar: false });
     expect(printFormSpec(dgs)).toContain(":page-size 25");
     expect(readFormSpec(printFormSpec(spec))).toMatchObject({ spec });
+    const [sc] = readAll('(form (screen scrZX :frame "(zx-frame zx ui-keys)" :at (8 8) :size (320 240)))');
+    const screened = parseFormSpec(sc) as FormSpec;
+    expect(screened.controls[0].props).toEqual({ frame: "(zx-frame zx ui-keys)" });
+    expect(printFormSpec(screened)).toContain('(screen scrZX :frame "(zx-frame zx ui-keys)" :at (8 8) :size (320 240))');
+    expect(nextName("screen", [])).toBe("scr1");
     expect(nextName("radio", [])).toBe("opt1");
     expect(nextName("date", ["dtp1"])).toBe("dtp2");
   });

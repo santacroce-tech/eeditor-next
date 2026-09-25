@@ -588,6 +588,50 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-s
 .fd-p-image { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; box-sizing: border-box;
   border: 1px dashed var(--border); border-radius: 4px; color: var(--muted); font: 11px var(--mono); overflow: hidden; }
 .fd-p-image img, .formrun-image { width: 100%; height: 100%; object-fit: contain; display: block; }
+/* a screen: the machine's 256×192 picture inside its border, scaled in whole-looking pixels */
+.fd-p-screen { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; box-sizing: border-box;
+  background: #000; color: #d7d7d7; font: 11px var(--mono); padding: 8px; text-align: center; overflow: hidden; }
+.zx-host { box-sizing: border-box; }
+.zx-stage { position: relative; width: 100%; height: 100%; box-sizing: border-box; padding: 8% 10%; background: #000;
+  display: flex; align-items: center; justify-content: center; }
+.formrun-screen { width: 100%; height: 100%; min-height: 0; object-fit: contain; image-rendering: pixelated; display: block; outline: none; }
+.formrun-ctl.screen:focus-within .zx-stage { box-shadow: 0 0 0 2px var(--accent); }
+/* in a form the keyboard opens below the box; filling a window (or full screen) it sits at the bottom */
+.zx-host:not(.zx-fill):not(.zx-expanded) > .formrun-zxkb { position: absolute; left: 0; top: calc(100% + 8px); width: 100%; }
+.zx-host.zx-fill, .zx-host.zx-expanded { display: flex; flex-direction: column; background: #000; }
+.zx-fill > .zx-stage, .zx-expanded > .zx-stage { flex: 1; min-height: 0; height: auto; padding: 0; }
+/* filling, the picture takes what the keyboard leaves: sized by the stage, never the other way round */
+.zx-fill > .zx-stage > .formrun-screen, .zx-expanded > .zx-stage > .formrun-screen {
+  position: absolute; left: 4%; top: 3%; width: 92%; height: 94%; }
+.zx-fill > .formrun-zxkb, .zx-expanded > .formrun-zxkb { position: static; align-self: center; width: min(100%, 900px); margin: 8px; }
+.zx-host.zx-expanded { position: fixed !important; left: 0 !important; top: 0 !important; width: 100vw !important; height: 100vh !important;
+  z-index: 5000; }
+.zx-bar { position: absolute; top: 4px; right: 4px; display: flex; gap: 4px; z-index: 2; }
+.zx-bar button { width: 26px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: rgba(0,0,0,.45); color: #fff;
+  font-size: 14px; line-height: 22px; cursor: pointer; opacity: .6; }
+.zx-bar button:hover, .zx-bar button.on { opacity: 1; }
+.zx-away { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; gap: 10px; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.82); color: #ddd; font: 13px system-ui, sans-serif; }
+.zx-away[hidden] { display: none; }
+.zx-away button { padding: 4px 12px; border-radius: 4px; border: 1px solid #666; background: #2a2a2a; color: #eee; cursor: pointer; }
+/* the 48K's keyboard: dark rubber keys, the letter in white, the keyword under it, SYMBOL SHIFT's red above */
+.zxkb { box-sizing: border-box; padding: 8px; background: #1b1b1b; border-radius: 6px; display: flex; flex-direction: column; gap: 5px;
+  user-select: none; -webkit-user-select: none; font: 9px system-ui, sans-serif; }
+.zxkb[hidden] { display: none; }
+.zxkb-row { display: flex; gap: 5px; }
+.zxkb-row:nth-child(2) { padding-left: 2.5%; }
+.zxkb-row:nth-child(3) { padding-left: 5%; }
+.zxkb-key { flex: 1 1 0; min-width: 0; height: 40px; padding: 2px 1px; border: 0; border-radius: 4px; background: #3b3b3b; color: #eee;
+  box-shadow: inset 0 -3px #262626; display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+  cursor: pointer; touch-action: none; }
+.zxkb-key.wide { flex-grow: 1.4; }
+.zxkb-key.space { flex-grow: 1.4; }
+.zxkb-key.down, .zxkb-key.latched { background: #5a5a5a; box-shadow: inset 0 2px #262626; }
+.zxkb-key.latched { outline: 2px solid var(--accent); }
+.zxkb-red { color: #ff5a4a; font-size: 9px; line-height: 1; white-space: nowrap; }
+.zxkb-main { font-size: 13px; font-weight: 600; line-height: 1; white-space: nowrap; }
+.zxkb-key.wide .zxkb-main { font-size: 8px; }
+.zxkb-kw { color: #bbb; font-size: 7px; line-height: 1; white-space: nowrap; overflow: hidden; max-width: 100%; }
 .fd-p-gridhead { display: flex; background: var(--bg-2); border-bottom: 1px solid var(--border); }
 .fd-p-gridhead span { flex: 1; padding: 3px 6px; font-weight: 600; border-right: 1px solid var(--border); white-space: nowrap; overflow: hidden; }
 .fd-status { padding: 6px 12px; font: 12px var(--mono); color: var(--err); background: var(--bg-2); border-top: 1px solid var(--border); }
@@ -1096,3 +1140,11 @@ body.runtime #app { min-height: 100vh; display: flex; flex-direction: column; }
 :root[data-theme="vb6"] ::-webkit-scrollbar-button:vertical:end { height: 17px; background-image: var(--vb-icon-down); }
 :root[data-theme="vb6"] ::-webkit-scrollbar-button:horizontal:start { width: 16px; background-image: var(--vb-icon-left); }
 :root[data-theme="vb6"] ::-webkit-scrollbar-button:horizontal:end { width: 16px; background-image: var(--vb-icon-right); }
+
+/* screen.html: a screen control filling a window of its own */
+body.screen-window { margin: 0; background: #000; overflow: hidden; }
+body.screen-window #app { position: fixed; inset: 0; }
+body.screen-window .zx-host { width: 100%; height: 100%; }
+.screen-window-problem { position: fixed; left: 8px; right: 8px; bottom: 8px; padding: 6px 10px; border-radius: 4px;
+  background: #5a1d1d; color: #fdd; font: 12px var(--mono); }
+.screen-window-problem[hidden] { display: none; }

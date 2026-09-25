@@ -1,0 +1,112 @@
+;; Spectrum.eeform — a ZX Spectrum 48K, running in a form.
+;;
+;; The machine is EELisp (src/spectrum/zx.eelisp, loaded for any form with a screen control). The
+;; screen control evaluates its :frame expression fifty times a second — one frame of the machine,
+;; with the keys you hold in `ui-keys` — and paints the screen that comes back.
+;;
+;; Press ▶ run, then Load ROM… and pick a 48K ROM (48.rom, 16384 bytes — Amstrad's, so it isn't
+;; bundled; every emulator carries it). The Spectrum boots to © 1982 Sinclair Research Ltd; click
+;; the screen and type. Load .sna… restores a 48K snapshot over it. Demo runs a small program with
+;; no ROM at all.
+;;
+;; Typing: letters, digits, Enter, Space and Shift are the Spectrum's. A symbol types itself — + is
+;; +, whatever your keyboard needs for it (the Spectrum's SYMBOL SHIFT + K). Ctrl or Alt is SYMBOL
+;; SHIFT, the arrows are the cursor keys, Backspace is DELETE. ⌨ in the screen's corner shows the
+;; Spectrum's own keyboard under it: click CAPS SHIFT or SYMBOL SHIFT, then a key.
+;;
+;; BASIC: write a program in the box on the right and press Send — each line is entered as if
+;; typed, keywords and all (a numbered line joins the program, anything else runs). Get listing
+;; reads the Spectrum's program back into the box. Pasting on the screen (⌘V) types it the same way.
+
+(form "Spectrum" :size (920 448) :on-load spectrum-load
+  (button btnRom :text "Load ROM…" :at (16 12) :size (96 24) :on-click spectrum-pick-rom)
+  (button btnSna :text "Load .sna…" :at (120 12) :size (96 24) :on-click spectrum-pick-sna)
+  (button btnDemo :text "Demo" :at (224 12) :size (64 24) :on-click spectrum-demo)
+  (button btnReset :text "Reset" :at (296 12) :size (64 24) :on-click spectrum-reset)
+  (button btnPause :text "Pause" :at (368 12) :size (64 24) :on-click spectrum-pause)
+  (label lblStatus :at (440 16) :size (104 24))
+  (screen scrZX :frame "(zx-frame zx ui-keys)" :at (16 48) :size (528 384) :on-paste spectrum-paste)
+  (label lblBasic :text "BASIC" :at (560 16) :size (120 24))
+  (textbox txtBasic :multiline true :mono true :at (560 48) :size (344 344))
+  (button btnSend :text "Send" :at (560 408) :size (72 24) :on-click spectrum-send)
+  (button btnList :text "Get listing" :at (640 408) :size (96 24) :on-click spectrum-get-listing)
+  (button btnRun :text "RUN" :at (744 408) :size (56 24) :on-click spectrum-run)
+  (button btnNew :text "NEW" :at (808 408) :size (56 24) :on-click spectrum-new))
+
+(def zx (zx-new))
+(def spectrum-rom nil)        ; the ROM last loaded, so Reset boots it again
+(def spectrum-paused false)
+
+(defn spectrum-say (text) (ui-set "lblStatus" :text text))
+
+(def spectrum-sample
+  (str-join "\n"
+    (list "10 BORDER 1: PAPER 1: INK 7: CLS"
+          "20 FOR n=1 TO 10"
+          "30 PRINT AT n,n; \"EELISP \"; n*n"
+          "40 NEXT n")))
+
+(defn spectrum-load (f)
+  (do (spectrum-say (if spectrum-rom "running" "no ROM"))
+      (ui-set "txtBasic" :value spectrum-sample)))
+
+;; BASIC in: typed into the Spectrum a line at a time, as if at its keyboard.
+(defn spectrum-type (text)
+  (if spectrum-rom
+      (let (n (zx-type zx text))
+        (do (spectrum-say (str "typing " n (if (= n 1) " line" " lines")))
+            (ui-focus "scrZX")))
+      (ui-message "Load a ROM first — BASIC lives in it")))
+
+(defn spectrum-send (f) (spectrum-type (ui-get f "txtBasic")))
+(defn spectrum-paste (f) (spectrum-type (ui-get f "$text")))
+(defn spectrum-run (f) (spectrum-type "RUN"))
+(defn spectrum-new (f) (spectrum-type "NEW"))
+(defn spectrum-get-listing (f)
+  (let (text (zx-listing zx))
+    (if (= text "")
+        (ui-message "The Spectrum has no program")
+        (ui-set "txtBasic" :value text))))
+
+;; Reset: a fresh machine, with the ROM in if there is one — which boots it.
+(defn spectrum-reset (f)
+  (do (set! zx (zx-new))
+      (when spectrum-rom (zx-load zx 0 spectrum-rom))
+      (spectrum-say (if spectrum-rom "running" "no ROM"))))
+
+(defn spectrum-pick-rom (f) (ui-pick spectrum-got-rom))
+(defn spectrum-got-rom (f)
+  (let (rom (base64->bytes (ui-get f "$file")))
+    (if (= (bytes-len rom) 16384)
+        (do (set! spectrum-rom rom) (spectrum-reset f) (ui-focus "scrZX"))
+        (ui-message (str (ui-get f "$filename") " is " (bytes-len rom) " bytes — a 48K ROM is 16384")))))
+
+(defn spectrum-pick-sna (f) (ui-pick spectrum-got-sna))
+(defn spectrum-got-sna (f)
+  (let (ok (zx-load-sna zx (ui-get f "$file")))
+    (if (= ok true)
+        (do (spectrum-say (ui-get f "$filename")) (ui-focus "scrZX"))
+        (ui-message ok))))
+
+(defn spectrum-pause (f)
+  (do (set! spectrum-paused (not spectrum-paused))
+      (ui-set "scrZX" :enabled (not spectrum-paused))
+      (ui-set "btnPause" :text (if spectrum-paused "Resume" "Pause"))))
+
+;; No ROM needed: colour bars that roll, and a border that changes every eight frames. At 0x8000:
+;;   LD HL,0x5800 / LD BC,768 / LD A,(0x9000)
+;;   loop: LD (HL),A / INC HL / ADD A,8 / AND 0x3F / LD D,A / DEC BC / LD A,B / OR C / LD A,D / JR NZ,loop
+;;   LD A,(0x9000) / INC A / LD (0x9000),A / RRCA / RRCA / RRCA / AND 7 / OUT (0xFE),A / EI / HALT / JR 0x8000
+;; and at 0x38, where the frame's interrupt lands: EI / RETI.
+(def spectrum-demo-code
+  '(0x21 0x00 0x58 0x01 0x00 0x03 0x3a 0x00 0x90
+    0x77 0x23 0xc6 0x08 0xe6 0x3f 0x57 0x0b 0x78 0xb1 0x7a 0x20 0xf3
+    0x3a 0x00 0x90 0x3c 0x32 0x00 0x90 0x0f 0x0f 0x0f 0xe6 0x07 0xd3 0xfe 0xfb 0x76 0x18 0xd8))
+
+(defn spectrum-demo (f)
+  (do (set! zx (zx-new))
+      (zx-load zx 0x38 (list->bytes '(0xfb 0xed 0x4d)))
+      (zx-load zx 0x8000 (list->bytes spectrum-demo-code))
+      (zx-set-reg zx "pc" 0x8000)
+      (spectrum-say "demo")
+      (ui-focus "scrZX")))
