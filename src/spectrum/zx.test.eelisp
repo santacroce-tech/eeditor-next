@@ -84,6 +84,18 @@
       (zx-frame m keys)
       (check "a row that isn't selected reads as nothing pressed" (zx-peek m 0x9000) 0xbf)))
 
+;; a .sna snapshot: registers from the header, RAM after it, PC off the stack
+(let (m (zx-new) b (make-bytes 49179))
+  (do (bset b 22 0x42)                                   ; A
+      (bset b 23 0x00) (bset b 24 0x80)                  ; SP = 0x8000
+      (bset b (+ 27 0x4000) 0x34) (bset b (+ 27 0x4001) 0x12)  ; (0x8000) = 0x1234
+      (bset b 25 1) (bset b 26 5)                        ; IM 1, border 5
+      (check "a 48K .sna loads" (zx-load-sna m b) true)
+      (check ".sna: PC comes off the stack" (dict-get (zx-regs m) "pc") 0x1234)
+      (check ".sna: and SP moves past it" (dict-get (zx-regs m) "sp") 0x8002)
+      (check ".sna: A, IM, border" (list (dict-get (zx-regs m) "a") (dict-get (zx-regs m) "im") (dict-get (zx-regs m) "border")) (list 0x42 1 5))
+      (check "a file of the wrong size is refused" (string? (zx-load-sna m (make-bytes 10))) true)))
+
 ;; registers by name
 (let (m (zx-new))
   (do (zx-set-reg m "hl" 0x1234)

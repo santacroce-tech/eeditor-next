@@ -3,7 +3,8 @@
 
 import { frameMode, humanName, onOpenPage, openPages, type Control, type FormSpec, type FrameMode, type StateValue } from "../core/form";
 import { rowsOf, stateValue, type Row, type UiChange } from "../engine/form";
-import type { JsonValue } from "../engine/types";
+import { dictGet, isDict, type JsonValue } from "../engine/types";
+import { borderCss, bytesToB64, frameOf, H, KeyMatrix, screenRgba, W } from "../spectrum/screen";
 
 export interface FormRunner {
   readonly el: HTMLElement;
@@ -86,6 +87,8 @@ export interface FormRunnerOptions {
   onPopOut?: () => void;
   /** Drawn to fit a floating window rather than to fill a tab. */
   windowed?: boolean;
+  /** Evaluate a screen control's `:frame` expression; its value. Without it a screen stays dark. */
+  frame?: (src: string) => Promise<JsonValue>;
 }
 
 /** What the runner needs of a sheet grid: the element, loading, writing what is being typed, and letting go. */
@@ -403,9 +406,13 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
   let pending = 0;
   /** Running timers, stopped when the form is rebuilt or destroyed. */
   let timers: ReturnType<typeof setInterval>[] = [];
+  /** Running screens' frame loops — each entry stops one. */
+  let loops: (() => void)[] = [];
   const stopTimers = () => {
     for (const t of timers) clearInterval(t);
     timers = [];
+    for (const stop of loops) stop();
+    loops = [];
   };
 
   /** The `:default` button on Enter in a single-line box, the `:cancel` one on Escape — as VB had it. */
@@ -512,7 +519,7 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
       case "set": {
         const c = live.get(ch.control);
         if (!c) return opts.onError(`no control named "${ch.control}"`);
-        if (ch.prop === "enabled" && c.spec.type !== "timer") setEnabled(c.box, truthy(ch.value));
+        if (ch.prop === "enabled" && c.spec.type !== "timer" && c.spec.type !== "screen") setEnabled(c.box, truthy(ch.value));
         else if (ch.prop === "visible") c.box.style.visibility = truthy(ch.value) ? "" : "hidden";
         else c.set(ch.prop, ch.value);
         return;
@@ -527,7 +534,30 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
         return opts.onOpen(ch.path, { into: ch.into, copy: ch.copy });
       case "public":
         return opts.onPublic?.(ch.name);
+      case "pick":
+        return void pickFile().then((file) => file && fire(ch.handler, undefined, file));
     }
+  }
+
+  /** `(ui-pick handler)`: the file the user picks, as base64 — or null if they didn't. */
+  function pickFile(): Promise<Record<string, StateValue> | null> {
+    return new Promise((resolve) => {
+      const input = el("input");
+      input.type = "file";
+      input.style.display = "none";
+      input.addEventListener("change", async () => {
+        const file = input.files?.[0];
+        input.remove();
+        if (!file) return resolve(null);
+        resolve({ $file: bytesToB64(new Uint8Array(await file.arrayBuffer())), $filename: file.name });
+      });
+      input.addEventListener("cancel", () => {
+        input.remove();
+        resolve(null);
+      });
+      root.append(input);
+      input.click();
+    });
   }
 
   function setEnabled(box: HTMLElement, on: boolean): void {
@@ -772,6 +802,78 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
             arm();
           },
           focus: () => {},
+        };
+        break;
+      }
+      case "screen": {
+        // Fifty frames a second — the Spectrum's rate — or as many as the engine manages: each
+        // one evaluates :frame with the keys held down in `ui-keys`, and paints the screen it
+        // returns. The next starts as soon as this one is back and its 20 ms are up; a slow frame
+        // delays the ones after it, it never piles them up.
+        const view = el("canvas", "formrun-screen");
+        view.width = W;
+        view.height = H;
+        view.tabIndex = 0;
+        box.append(view);
+        const g = view.getContext("2d");
+        const image = g?.createImageData(W, H);
+        const keys = new KeyMatrix();
+        let expr = asText(p.frame as string);
+        let on = p.enabled !== false;
+        let stopped = false;
+        let wait: ReturnType<typeof setTimeout> | undefined;
+        let due = 0;
+        let painted = 0;
+        const later = (ms: number) => (wait = setTimeout(step, ms));
+        const step = () => {
+          if (stopped) return;
+          if (!on || !expr || !opts.frame || !g || !image) return void later(100);
+          const now = performance.now();
+          if (now < due) return void later(due - now);
+          due = now - due > 100 ? now + 20 : due + 20;
+          opts
+            .frame(`(let (ui-keys ${JSON.stringify(keys.base64())}) ${expr})`)
+            .then(
+              (v) => {
+                const f = isDict(v) ? frameOf((k) => dictGet(v, k)) : null;
+                if (!f || stopped) return;
+                screenRgba(f, image.data);
+                g.putImageData(image, 0, 0);
+                box.style.background = borderCss(f.border);
+                view.dataset.frames = String(++painted); // how many it has painted: tests read it
+              },
+              (e) => {
+                on = false; // one message, not fifty a second
+                opts.onError(`${c.name} :frame: ${e instanceof Error ? e.message : String(e)}`);
+              },
+            )
+            .finally(step);
+        };
+        later(0);
+        loops.push(() => {
+          stopped = true;
+          clearTimeout(wait);
+        });
+        // The keys go to the machine, not to the form (Enter, Escape) or the editor's bindings.
+        view.addEventListener("keydown", (e) => {
+          if (e.metaKey || !keys.press(e.code)) return;
+          e.preventDefault();
+          e.stopPropagation();
+        });
+        view.addEventListener("keyup", (e) => {
+          if (keys.release(e.code)) e.preventDefault();
+        });
+        view.addEventListener("blur", () => keys.clear());
+        view.addEventListener("pointerdown", () => view.focus());
+        out = {
+          spec: c,
+          box,
+          value: () => on,
+          set: (k, v) => {
+            if (k === "frame") expr = asText(v);
+            else if (k === "enabled" || k === "value") on = truthy(v);
+          },
+          focus: () => view.focus(),
         };
         break;
       }

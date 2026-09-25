@@ -613,6 +613,34 @@
   (let (src (if (string? data) (base64->bytes data) data))
     (do (bcopy (dict-get m :mem) addr src 0 (bytes-len src)) (bytes-len src))))
 
+;; A 48K .sna snapshot: a 27-byte header of registers, then RAM from 0x4000 (49152 bytes). The PC
+;; isn't in the header — it's on the stack, and a RETN takes it off, which is what we do here.
+;; The ROM stays as it was: load it first.
+(defn zx-load-sna (m data)
+  (let (b (if (string? data) (base64->bytes data) data)
+        w (fn (i) (bor (bget b i) (shl (bget b (+ i 1)) 8))))
+    (if (!= (bytes-len b) 49179)
+        (str "zx-load-sna: a 48K snapshot is 49179 bytes, this is " (bytes-len b))
+        (do (zx-use m)
+            (bcopy zx-mem 0x4000 b 27 49152)
+            (zx-r! zx-I (bget b 0))
+            (zx-rr! zx-H (w 9)) (zx-rr! zx-D (w 11)) (zx-rr! zx-B (w 13))
+            (zx-exx)                                              ; the shadow set, through EXX
+            (zx-rr! zx-H (w 1)) (zx-rr! zx-D (w 3)) (zx-rr! zx-B (w 5))
+            (zx-exx)
+            (zx-r! zx-A (bget b 8)) (zx-r! zx-F (bget b 7)) (zx-exaf)  ; AF' then AF
+            (zx-r! zx-A (bget b 22)) (zx-r! zx-F (bget b 21))
+            (zx-rr! zx-IY (w 15)) (zx-rr! zx-IX (w 17))
+            (zx-r! zx-IFF2 (if (= 0 (band (bget b 19) 4)) 0 1))
+            (zx-r! zx-IFF1 (zx-r zx-IFF2))
+            (zx-r! zx-R (bget b 20))
+            (zx-rr! zx-SP (w 23))
+            (zx-r! zx-IM (band (bget b 25) 3))
+            (zx-r! zx-BORDER (band (bget b 26) 7))
+            (zx-r! zx-HALT 0)
+            (zx-rr! zx-PC (zx-pop))
+            true))))
+
 (defn zx-peek (m a) (bget (dict-get m :mem) (band a 0xffff)))
 (defn zx-poke (m a v) (bset (dict-get m :mem) (band a 0xffff) v))
 
