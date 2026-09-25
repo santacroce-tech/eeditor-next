@@ -17,7 +17,7 @@ import { createFormRunner, type FormRunner } from "./ui/formrun";
 import { createFormWindow, type FormWindow } from "./ui/formwindow";
 import { isolateHistory, redo, undo } from "@codemirror/commands";
 import { createWorkspaceClient, inTauri, type ExternalFile, type FileNode } from "./engine/workspace";
-import { createEditor, type ThemeName } from "./ui/editor";
+import { createEditor, isThemeName, THEMES, type ThemeName } from "./ui/editor";
 import { createRepl } from "./ui/repl";
 import { createSidebar } from "./ui/sidebar";
 import { createAgendaPanel } from "./ui/agenda";
@@ -155,7 +155,8 @@ function main(): void {
   agendaSec.head.appendChild(agendaBtns);
 
   // theme (persisted) — applied to <html> before the editor is created
-  let theme: ThemeName = localStorage.getItem("theme") === "light" ? "light" : "dark";
+  const saved = localStorage.getItem("theme");
+  let theme: ThemeName = isThemeName(saved) ? saved : "dark";
   document.documentElement.setAttribute("data-theme", theme);
 
   // ── editor pane (head = filename + theme/preview toggles) ──
@@ -735,17 +736,23 @@ function main(): void {
     else toast(`No note matching "${name}"`);
   };
 
-  // theme toggle (label shows the theme you'd switch TO)
+  // theme button — walks dark → light → vb6 → dark; the label shows the theme you'd switch TO
+  const THEME_LABEL: Record<ThemeName, string> = { dark: "☾ dark", light: "☀ light", vb6: "▦ VB6" };
+  const nextTheme = (): ThemeName => THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
+  const labelThemeBtn = (): void => {
+    themeBtn.textContent = THEME_LABEL[nextTheme()];
+    themeBtn.title = `Theme: ${theme} — click for ${nextTheme()}`;
+  };
   const applyTheme = (t: ThemeName): void => {
     theme = t;
     document.documentElement.setAttribute("data-theme", t);
     editor.setTheme(t);
     localStorage.setItem("theme", t);
-    themeBtn.textContent = t === "dark" ? "☀ light" : "☾ dark";
+    labelThemeBtn();
     if (previewing && !tabs[activeIdx]?.sheet) renderPreview(); // diagrams follow the theme
   };
-  themeBtn.textContent = theme === "dark" ? "☀ light" : "☾ dark";
-  themeBtn.addEventListener("click", () => applyTheme(theme === "dark" ? "light" : "dark"));
+  labelThemeBtn();
+  themeBtn.addEventListener("click", () => applyTheme(nextTheme()));
 
   const agenda = createAgendaPanel(agendaBody, engine);
   const calendar = createCalendar(engine);
@@ -1514,7 +1521,7 @@ function main(): void {
       focusDocument();
     },
     "toggle-preview": togglePreview,
-    "toggle-theme": () => applyTheme(theme === "dark" ? "light" : "dark"),
+    "toggle-theme": () => applyTheme(nextTheme()),
     "export-pdf": () => void exportCurrentPdf(),
     "insert-image": () => void images.pick(),
     snippets: () => snippets.open(),

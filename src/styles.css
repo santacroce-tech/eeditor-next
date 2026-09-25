@@ -747,3 +747,282 @@ body.runtime #app { min-height: 100vh; display: flex; flex-direction: column; }
 .export-save { display: flex; flex-direction: column; gap: 4px; }
 .export-save label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
 .export-note { font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.4; }
+
+/* ══ Theme: Visual Basic 6 ═══════════════════════════════════════════════════════════════════
+   Windows 98 as VB6 drew it: ButtonFace grey, square corners, 3D bevels built from four colours
+   (white · #dfdfdf · #808080 · black), navy title bars, white "fields", MS Sans Serif for the
+   chrome and Courier New for code. The bevels ride on a 1px border plus an inset shadow, so no
+   control changes size when the theme switches. */
+:root[data-theme="vb6"] {
+  --bg: #ffffff;       /* fields: text boxes, lists, the code window */
+  --bg-2: #c0c0c0;     /* ButtonFace */
+  --bg-3: #c0c0c0;
+  --fg: #000000;
+  --muted: #808080;    /* GrayText */
+  --accent: #000080;   /* Highlight */
+  --border: #808080;
+  --ok: #008000;
+  --err: #c00000;
+  --kw: #000080;
+  --vb-ui: "MS Sans Serif", "Microsoft Sans Serif", Tahoma, Geneva, Verdana, sans-serif;
+  --vb-code: "Courier New", Courier, monospace;
+  --mono: var(--vb-ui); /* the chrome uses --mono for labels; code gets --vb-code below */
+  --vb-raised: inset 1px 1px #dfdfdf, inset -1px -1px #808080;
+  --vb-sunken: inset 1px 1px #000000, inset -1px -1px #dfdfdf;
+  --vb-caption: linear-gradient(90deg, #000080, #1084d0);
+  color-scheme: light;
+}
+/* Square corners and hard edges everywhere — Windows 98 had no radius and no soft shadow. */
+:root[data-theme="vb6"] *, :root[data-theme="vb6"] *::before, :root[data-theme="vb6"] *::after {
+  border-radius: 0 !important;
+}
+:root[data-theme="vb6"] body { font: 12px/1.4 var(--vb-ui); }
+:root[data-theme="vb6"] ::selection { background: #000080; color: #fff; }
+:root[data-theme="vb6"] :focus-visible { outline: 1px dotted #000; outline-offset: -4px; }
+
+/* code surfaces: Courier New, like the code and Immediate windows */
+:root[data-theme="vb6"] .repl-echo, :root[data-theme="vb6"] .repl-output, :root[data-theme="vb6"] .repl-input,
+:root[data-theme="vb6"] .repl-prompt, :root[data-theme="vb6"] .result-scalar, :root[data-theme="vb6"] .result-error,
+:root[data-theme="vb6"] .snip-src, :root[data-theme="vb6"] .markdown-body code, :root[data-theme="vb6"] .markdown-body pre,
+:root[data-theme="vb6"] .formrun-input.mono, :root[data-theme="vb6"] .fd-p-input.mono, :root[data-theme="vb6"] .sheet-formula,
+:root[data-theme="vb6"] .sheet-editor, :root[data-theme="vb6"] .search-snippet, :root[data-theme="vb6"] .editor-host .cm-scroller {
+  font-family: var(--vb-code);
+}
+/* the form designer and runner spell out system-ui; VB6 forms are MS Sans Serif */
+:root[data-theme="vb6"] .fd, :root[data-theme="vb6"] .fd-tool, :root[data-theme="vb6"] .fd-title,
+:root[data-theme="vb6"] .formrun, :root[data-theme="vb6"] .formrun-title, :root[data-theme="vb6"] .fd-p-button,
+:root[data-theme="vb6"] .formrun-button, :root[data-theme="vb6"] .formrun-input:not(.mono), :root[data-theme="vb6"] .fd-p-tab,
+:root[data-theme="vb6"] .formrun-tab, :root[data-theme="vb6"] .fd-hint, :root[data-theme="vb6"] .fd-action,
+:root[data-theme="vb6"] .fd-menubar, :root[data-theme="vb6"] .formrun-menubar, :root[data-theme="vb6"] .formrun-menuitem,
+:root[data-theme="vb6"] .formrun-cell, :root[data-theme="vb6"] .formrun-filter, :root[data-theme="vb6"] .formrun-frametab button,
+:root[data-theme="vb6"] .sheet, :root[data-theme="vb6"] body.runtime {
+  font-family: var(--vb-ui);
+}
+
+/* ── raised: command buttons ── */
+:root[data-theme="vb6"] :is(.head-btn, .side-btn, .dlg-btn, .ag-btn, .ag-cat-add-btn, .setup-btn, .setup-add,
+  .snip-runall, .snip-run, .snip-srcbtn, .snip-copy, .sheet-tool, .sheet-colour, .fd-tool, .fd-action, .fd-go,
+  .fd-p-button, .formrun-button, .formrun-stop, .formrun-popout, .formrun-pagebtn, .rt-btn, .cal-nav, .tab,
+  .toast .toast-action) {
+  background: #c0c0c0; color: #000; border: 1px solid; border-color: #fff #000 #000 #fff;
+  box-shadow: var(--vb-raised); font-weight: 400;
+}
+:root[data-theme="vb6"] :is(.head-btn, .side-btn, .dlg-btn, .ag-btn, .ag-cat-add-btn, .setup-btn, .setup-add,
+  .snip-runall, .snip-run, .snip-srcbtn, .snip-copy, .sheet-tool, .fd-tool, .fd-action, .fd-go, .formrun-button,
+  .formrun-stop, .formrun-popout, .formrun-pagebtn, .rt-btn, .cal-nav, .tab, .toast .toast-action):active:not(:disabled) {
+  border-color: #000 #fff #fff #000; box-shadow: var(--vb-sunken); padding-top: 1px;
+}
+/* latched: a toggle that is down (design/code/run, the toolbox pointer, Bold) — sunken on a dither */
+:root[data-theme="vb6"] :is(.form-modes .head-btn.active, .fd-tool.active, .sheet-tool.on, .tab.active) {
+  border-color: #000 #fff #fff #000; box-shadow: var(--vb-sunken); color: #000;
+  background: repeating-conic-gradient(#c0c0c0 0 25%, #fff 0 50%) 0 0 / 2px 2px;
+}
+:root[data-theme="vb6"] :is(.dlg-btn, .ag-btn):disabled,
+:root[data-theme="vb6"] .formrun-pagebtn:disabled { color: #808080; text-shadow: 1px 1px #fff; }
+/* the default button in a dialog carries the extra black frame */
+:root[data-theme="vb6"] .dlg-primary { outline: 1px solid #000; outline-offset: 0; }
+:root[data-theme="vb6"] .dlg-danger { color: #000; }
+:root[data-theme="vb6"] .dlg-danger:hover { background: #c0c0c0; color: #000; }
+:root[data-theme="vb6"] .ag-btn.ag-done, :root[data-theme="vb6"] .snip-run { color: #000; }
+:root[data-theme="vb6"] .fd-tool svg { color: #000; }
+:root[data-theme="vb6"] .fd-tool.active svg, :root[data-theme="vb6"] .fd-tool:hover svg { color: #000; }
+
+/* ── sunken: fields ── */
+:root[data-theme="vb6"] :is(.agenda-input, .ag-field, .ag-notes, .ag-cat-input, .dlg-input, .qo-input, .repl-input,
+  .setup-input, .setup-tree, .snip-src, .sheet-namebox, .sheet-formula, .sheet-num, .fd-input, .formrun-input,
+  .formrun-list, .formrun-grid, .formrun-filter, .fd-p-input, .fd-p-list, .fd-p-grid, .table-scroll, .form-input,
+  .side-body, .preview-host, .sheet-grid) {
+  background: #fff; color: #000; border: 1px solid; border-color: #808080 #fff #fff #808080;
+  box-shadow: var(--vb-sunken);
+}
+:root[data-theme="vb6"] .formrun-input[readonly], :root[data-theme="vb6"] .formrun-input:disabled { background: #c0c0c0; }
+:root[data-theme="vb6"] .side-body { margin: 0 2px 2px; }
+:root[data-theme="vb6"] .qo-input { border-width: 1px; margin: 0; }
+
+/* ── windows: dialogs, palettes, menus, form windows ── */
+:root[data-theme="vb6"] :is(.dlg-panel, .qo-panel, .cal-panel, .setup-panel, .snip-panel, .ctx-menu, .toast,
+  .formrun-menulist, .drop-badge, .fd-window, .formrun-window, .formwin) {
+  background: #c0c0c0; color: #000; border: 1px solid; border-color: #dfdfdf #000 #000 #dfdfdf;
+  box-shadow: inset 1px 1px #fff, inset -1px -1px #808080; padding: 2px;
+}
+:root[data-theme="vb6"] :is(.dlg-panel, .cal-panel, .setup-panel, .snip-panel) { padding: 16px; }
+:root[data-theme="vb6"] .formrun.windowed .formrun-window, :root[data-theme="vb6"] .formrun-framebody > .formrun.in-frame .formrun-window {
+  border: 0; box-shadow: none; padding: 0;
+}
+:root[data-theme="vb6"] .qo-overlay { background: transparent; }
+/* a dialog's title becomes its caption bar (16px padding − the 2px frame) */
+:root[data-theme="vb6"] .dlg-title { margin: -14px -14px 12px; padding: 3px 6px; background: var(--vb-caption);
+  color: #fff; font-weight: 700; }
+:root[data-theme="vb6"] .dlg-detail { color: #000; }
+
+/* ── caption bars: the form windows, and the sidebar's docked tool windows ── */
+:root[data-theme="vb6"] .fd-title, :root[data-theme="vb6"] .formrun-title {
+  background: var(--vb-caption); color: #fff; border-bottom: 0; font-weight: 700; padding: 3px 4px 3px 6px;
+}
+:root[data-theme="vb6"] .formrun-ctl.frame.mode-windows .formrun.in-frame:not(.front) .formrun-title {
+  background: linear-gradient(90deg, #808080, #b5b5b5); color: #c0c0c0;
+}
+/* the designer's form shows the three caption buttons a VB6 form has; they do nothing there */
+:root[data-theme="vb6"] .fd-title { display: flex; align-items: center; justify-content: space-between; }
+:root[data-theme="vb6"] .fd-title::after {
+  content: ""; flex: 0 0 auto; width: 50px; height: 14px; margin-left: 12px;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='14'%3E%3Crect width='16' height='14' fill='%23c0c0c0'/%3E%3Cpath d='M0 13.5h16M15.5 0v14' stroke='%23000'/%3E%3Cpath d='M0 .5h15M.5 0v13' stroke='%23fff'/%3E%3Cpath d='M1 12.5h14M14.5 1v12' stroke='%23808080'/%3E%3Cpath d='M4 10h6v2H4z' fill='%23000'/%3E%3C/svg%3E") 0 0 / 16px 14px no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='14'%3E%3Crect width='16' height='14' fill='%23c0c0c0'/%3E%3Cpath d='M0 13.5h16M15.5 0v14' stroke='%23000'/%3E%3Cpath d='M0 .5h15M.5 0v13' stroke='%23fff'/%3E%3Cpath d='M1 12.5h14M14.5 1v12' stroke='%23808080'/%3E%3Cpath d='M3.5 3.5h8v7h-8z' fill='none' stroke='%23000'/%3E%3Cpath d='M3 4h9' stroke='%23000'/%3E%3C/svg%3E") 16px 0 / 16px 14px no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='14'%3E%3Crect width='16' height='14' fill='%23c0c0c0'/%3E%3Cpath d='M0 13.5h16M15.5 0v14' stroke='%23000'/%3E%3Cpath d='M0 .5h15M.5 0v13' stroke='%23fff'/%3E%3Cpath d='M1 12.5h14M14.5 1v12' stroke='%23808080'/%3E%3Cpath d='M4.5 3.5l6 6M10.5 3.5l-6 6' stroke='%23000' stroke-width='1.6'/%3E%3C/svg%3E") 34px 0 / 16px 14px no-repeat;
+}
+:root[data-theme="vb6"] .side-head {
+  margin: 2px 2px 0; padding: 2px 3px 2px 6px; background: var(--vb-caption); color: #fff;
+  font: 700 11px var(--vb-ui); letter-spacing: 0; text-transform: none;
+}
+:root[data-theme="vb6"] .side-btn { padding: 0 5px; font-size: 11px; }
+:root[data-theme="vb6"] .side-section.tags-section, :root[data-theme="vb6"] .side-section.agenda-section { border-top: 0; }
+:root[data-theme="vb6"] .sidebar { border-right: 0; box-shadow: inset -1px 0 #808080, inset -2px 0 #fff; padding-right: 2px; }
+
+/* ── toolbars: the pane heads, tab strips, sheet bars ── */
+:root[data-theme="vb6"] :is(.pane-head, .sheet-bar, .sheet-tools, .fd-menubar, .formrun-menubar, .etabbar) {
+  background: #c0c0c0; color: #000; border-bottom: 1px solid #808080; box-shadow: 0 1px #fff;
+}
+:root[data-theme="vb6"] .pane-head { font: 11px var(--vb-ui); letter-spacing: 0; position: relative; z-index: 1; }
+:root[data-theme="vb6"] .editor-pane { border-right: 0; box-shadow: inset -1px 0 #808080; }
+:root[data-theme="vb6"] .etabbar { padding: 3px 3px 0; border-bottom: 1px solid #fff; box-shadow: none; }
+:root[data-theme="vb6"] .etab {
+  margin-right: -1px; padding: 2px 4px 2px 8px; border: 1px solid; border-bottom: 0;
+  border-color: #fff #000 transparent #fff; box-shadow: inset -1px 0 #808080; color: #000; background: #c0c0c0;
+}
+:root[data-theme="vb6"] .etab.active { position: relative; top: 1px; margin-top: -2px; padding-top: 3px; font-weight: 700; }
+:root[data-theme="vb6"] .etab-close:hover { background: #c0c0c0; color: #000; }
+:root[data-theme="vb6"] .etab-ext { color: #000080; }
+:root[data-theme="vb6"] .backlinks-bar { background: #c0c0c0; color: #000; border-top: 1px solid #fff;
+  box-shadow: 0 -1px #808080; }
+:root[data-theme="vb6"] .backlinks-bar .backlink { color: #0000ff; text-decoration: underline; }
+:root[data-theme="vb6"] .form-modes .head-btn { margin-left: 0; }
+
+/* ── selection: navy with white text, the way Windows drew it ── */
+:root[data-theme="vb6"] :is(.tree-file.active, .qo-row.active, .search-row.active, .ctx-item:hover,
+  .formrun-menuitem:hover:not(:disabled), .formrun-menu.open, .formrun-grid tr.selected td,
+  .formrun-item.selected, .fd-p-item.selected) { background: #000080; color: #fff; }
+:root[data-theme="vb6"] :is(.tree-file:hover, .qo-row:hover, .search-row:hover, .result-table tbody tr:hover,
+  .formrun-item:hover, .formrun-grid tbody tr:hover) { background: transparent; }
+:root[data-theme="vb6"] .tree-file:hover:not(.active) { background: transparent; }
+:root[data-theme="vb6"] .formrun-menu:hover { background: transparent; box-shadow: inset 1px 1px #fff, inset -1px -1px #808080; }
+:root[data-theme="vb6"] .tree-dir { color: #000; }
+:root[data-theme="vb6"] .ctx-menu { padding: 2px; }
+:root[data-theme="vb6"] .ctx-item { padding: 3px 20px; font-size: 12px; }
+:root[data-theme="vb6"] .ctx-item.danger { color: #000; }
+:root[data-theme="vb6"] .ctx-item.danger:hover { background: #000080; color: #fff; }
+:root[data-theme="vb6"] .formrun-menusep { height: 0; border-top: 1px solid #808080; border-bottom: 1px solid #fff; background: none; }
+
+/* ── the REPL: the Immediate window ── */
+:root[data-theme="vb6"] .repl-scrollback { background: #fff; margin: 2px 2px 0; border: 1px solid;
+  border-color: #808080 #fff #fff #808080; box-shadow: var(--vb-sunken); }
+:root[data-theme="vb6"] .repl-input-row { border-top: 0; }
+:root[data-theme="vb6"] .repl-echo, :root[data-theme="vb6"] .repl-prompt { color: #000080; }
+:root[data-theme="vb6"] .repl-output { color: #000; }
+:root[data-theme="vb6"] .result-scalar { background: transparent; color: #000; padding: 0; }
+:root[data-theme="vb6"] .result-error { background: transparent; color: #c00000; padding: 0; }
+:root[data-theme="vb6"] .result-table th, :root[data-theme="vb6"] .formrun-grid th, :root[data-theme="vb6"] .fd-p-gridhead {
+  background: #c0c0c0; color: #000; box-shadow: inset 1px 1px #fff, inset -1px -1px #808080;
+}
+
+/* ── the form designer: a grey form on the dark MDI workspace, dotted grid, navy handles ── */
+:root[data-theme="vb6"] .fd-stage { background: #808080; }
+:root[data-theme="vb6"] .fd-canvas {
+  background-color: #c0c0c0;
+  background-image: radial-gradient(#000 0.6px, transparent 0.8px);
+  background-size: 8px 8px; background-position: 0 0;
+}
+:root[data-theme="vb6"] .formrun-canvas { background: #c0c0c0; }
+/* a running form sits on the Windows 98 desktop */
+:root[data-theme="vb6"] .formrun-stage { background: #008080; }
+:root[data-theme="vb6"] .formrun.windowed .formrun-stage, :root[data-theme="vb6"] .formrun.in-frame .formrun-stage { background: none; }
+:root[data-theme="vb6"] .fd-toolbox, :root[data-theme="vb6"] .fd-props { background: #c0c0c0; border-color: #808080; }
+:root[data-theme="vb6"] .fd-tool { color: #000; }
+:root[data-theme="vb6"] .fd-props-head { background: var(--vb-caption); color: #fff; padding: 2px 6px; font-weight: 700; }
+:root[data-theme="vb6"] .fd-field > label, :root[data-theme="vb6"] .fd-props-sub { color: #000; }
+:root[data-theme="vb6"] .fd-ctl.selected { outline: 1px dotted #000; }
+:root[data-theme="vb6"] .fd-ctl.reference { outline: 1px solid #000; }
+:root[data-theme="vb6"] .fd-h { width: 6px; height: 6px; background: #000080; border: 0; }
+:root[data-theme="vb6"] .fd-h.nw, :root[data-theme="vb6"] .fd-h.sw, :root[data-theme="vb6"] .fd-h.w { left: -3px; }
+:root[data-theme="vb6"] .fd-h.ne, :root[data-theme="vb6"] .fd-h.se, :root[data-theme="vb6"] .fd-h.e { right: -3px; }
+:root[data-theme="vb6"] .fd-h.nw, :root[data-theme="vb6"] .fd-h.ne, :root[data-theme="vb6"] .fd-h.n { top: -3px; }
+:root[data-theme="vb6"] .fd-h.sw, :root[data-theme="vb6"] .fd-h.se, :root[data-theme="vb6"] .fd-h.s { bottom: -3px; }
+:root[data-theme="vb6"] .fd-h.n, :root[data-theme="vb6"] .fd-h.s { left: calc(50% - 3px); }
+:root[data-theme="vb6"] .fd-h.e, :root[data-theme="vb6"] .fd-h.w { top: calc(50% - 3px); }
+:root[data-theme="vb6"] .fd-ghost { border: 1px dotted #000; background: transparent; }
+:root[data-theme="vb6"] .fd-formhandle { background: #000080; border: 0; width: 6px; height: 6px; right: -3px; bottom: -3px; }
+:root[data-theme="vb6"] .fd-p-label, :root[data-theme="vb6"] .formrun-label, :root[data-theme="vb6"] .fd-p-check,
+:root[data-theme="vb6"] .formrun-check { color: #000; }
+:root[data-theme="vb6"] .fd-p-input.placeholder { color: #808080; }
+/* frames, timers, images: VB6's etched group box */
+:root[data-theme="vb6"] :is(.fd-p-frame, .fd-p-timer, .fd-p-image, .fd-p-tabs, .formrun-ctl.tabs, .formrun-ctl.frame,
+  .formrun-ctl.sheet) { border: 1px solid #808080; box-shadow: 1px 1px #fff, inset 1px 1px #fff; }
+:root[data-theme="vb6"] :is(.fd-p-tab, .formrun-tab, .formrun-frametab) {
+  background: #c0c0c0; color: #000; border: 1px solid; border-bottom: 0; border-color: #fff #000 transparent #fff;
+  box-shadow: inset -1px 0 #808080;
+}
+:root[data-theme="vb6"] :is(.fd-p-tab.active, .formrun-tab.active, .formrun-frametab.active) { font-weight: 700; }
+:root[data-theme="vb6"] :is(.fd-p-tabhead, .formrun-tabhead, .formrun-framehead) { background: #c0c0c0; border-bottom: 1px solid #fff; }
+:root[data-theme="vb6"] .formrun-ctl.invalid .formrun-input { border-color: #c00000; }
+:root[data-theme="vb6"] .formrun-input { color-scheme: light; }
+:root[data-theme="vb6"] .formrun-check input, :root[data-theme="vb6"] .dlg-check input, :root[data-theme="vb6"] .setup-auto input {
+  accent-color: #000;
+}
+:root[data-theme="vb6"] body.runtime { background: #808080; }
+
+/* ── the rest: chips, calendar, agenda, snippets, sheets ── */
+:root[data-theme="vb6"] :is(.tag-chip, .ag-cat, .snip-fn, .snip-row, .setup-row, .cal-item) {
+  background: #c0c0c0; color: #000; border: 1px solid; border-color: #fff #808080 #808080 #fff;
+}
+:root[data-theme="vb6"] .ag-pri, :root[data-theme="vb6"] .cal-dot { background: #000080; color: #fff; }
+:root[data-theme="vb6"] .ag-item { border-bottom: 1px dotted #808080; }
+:root[data-theme="vb6"] .cal-day { background: #fff; border: 1px solid #c0c0c0; }
+:root[data-theme="vb6"] .cal-day.today { background: #000080; color: #fff; border-color: #000080; }
+:root[data-theme="vb6"] .cal-day:hover { border-color: #000; }
+:root[data-theme="vb6"] .search-loc, :root[data-theme="vb6"] .markdown-body a, :root[data-theme="vb6"] .wikilink { color: #0000ff; }
+:root[data-theme="vb6"] .markdown-body pre, :root[data-theme="vb6"] .markdown-body code { background: #fff; }
+:root[data-theme="vb6"] .markdown-body pre { border: 1px solid #808080; }
+:root[data-theme="vb6"] .markdown-body h1, :root[data-theme="vb6"] .markdown-body h2, :root[data-theme="vb6"] .markdown-body h3 {
+  font-family: var(--vb-ui); color: #000080;
+}
+:root[data-theme="vb6"] .preview-host { margin: 2px; }
+:root[data-theme="vb6"] .sheet-colhead, :root[data-theme="vb6"] .sheet-rowhead, :root[data-theme="vb6"] .sheet-corner { background: #c0c0c0; }
+:root[data-theme="vb6"] .sheet-colname, :root[data-theme="vb6"] .sheet-rowname { color: #000; }
+:root[data-theme="vb6"] .sheet-colname.on, :root[data-theme="vb6"] .sheet-rowname.on { background: #a0a0a0; font-weight: 700; }
+:root[data-theme="vb6"] .sheet-vline, :root[data-theme="vb6"] .sheet-hline { background: #c0c0c0; opacity: 1; }
+:root[data-theme="vb6"] .sheet-sel { background: rgba(0, 0, 128, .15); border-color: #000; }
+:root[data-theme="vb6"] .sheet-active, :root[data-theme="vb6"] .sheet-editor { border-color: #000; }
+:root[data-theme="vb6"] .sheet-handle { background: #000; }
+:root[data-theme="vb6"] .toast { color: #000; }
+:root[data-theme="vb6"] .drop-overlay { background: transparent; backdrop-filter: none; }
+:root[data-theme="vb6"] .drop-badge { padding: 22px 34px; }
+:root[data-theme="vb6"] .tabbar { background: #c0c0c0; border-top: 1px solid #fff; }
+
+/* ── classic scrollbars: 16px, bevelled thumb and arrows, dithered track ── */
+:root[data-theme="vb6"] ::-webkit-scrollbar { width: 16px; height: 16px; }
+:root[data-theme="vb6"] ::-webkit-scrollbar-track { background: repeating-conic-gradient(#c0c0c0 0 25%, #fff 0 50%) 0 0 / 2px 2px; }
+:root[data-theme="vb6"] ::-webkit-scrollbar-corner { background: #c0c0c0; }
+:root[data-theme="vb6"] ::-webkit-scrollbar-thumb {
+  background: #c0c0c0; border: 1px solid; border-color: #dfdfdf #000 #000 #dfdfdf;
+  box-shadow: inset 1px 1px #fff, inset -1px -1px #808080;
+}
+:root[data-theme="vb6"] ::-webkit-scrollbar-button:single-button {
+  display: block; width: 16px; height: 16px; background-color: #c0c0c0; background-repeat: no-repeat;
+  background-position: center; border: 1px solid; border-color: #dfdfdf #000 #000 #dfdfdf;
+  box-shadow: inset 1px 1px #fff, inset -1px -1px #808080;
+}
+:root[data-theme="vb6"] ::-webkit-scrollbar-button:single-button:vertical:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4'%3E%3Cpath d='M3.5 0L7 4H0z'/%3E%3C/svg%3E");
+}
+:root[data-theme="vb6"] ::-webkit-scrollbar-button:single-button:vertical:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4'%3E%3Cpath d='M0 0h7L3.5 4z'/%3E%3C/svg%3E");
+}
+:root[data-theme="vb6"] ::-webkit-scrollbar-button:single-button:horizontal:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='7'%3E%3Cpath d='M0 3.5L4 0v7z'/%3E%3C/svg%3E");
+}
+:root[data-theme="vb6"] ::-webkit-scrollbar-button:single-button:horizontal:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='7'%3E%3Cpath d='M0 0l4 3.5L0 7z'/%3E%3C/svg%3E");
+}
+:root[data-theme="vb6"] ::-webkit-scrollbar-button:single-button:active {
+  border-color: #808080; box-shadow: none;
+}
