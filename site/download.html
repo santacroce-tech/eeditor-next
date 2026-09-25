@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Download EEditor 2.0 — macOS, Windows, Linux, iOS</title>
-<meta name="description" content="Download EEditor 2.2.0 for macOS (Intel and Apple Silicon), Windows 10/11, and Linux. Free, no account required.">
+<title>Download EEditor — macOS, Windows, Linux</title>
+<meta name="description" content="Download EEditor for macOS (Intel and Apple Silicon), Windows 10/11, and Linux. Free, no account required.">
 <link rel="icon" type="image/png" href="assets/favicon.png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <link rel="stylesheet" href="assets/style.css">
@@ -28,7 +28,7 @@
 
 <header class="hero" style="padding-bottom:40px">
   <div class="wrap">
-    <p class="eyebrow">Version 2.2.0 · 24 September 2026</p>
+    <p class="eyebrow" id="release-line">The latest release</p>
     <h1>Download EEditor</h1>
     <p class="lede">Free, no account, no telemetry. Pick your platform.</p>
   </div>
@@ -41,22 +41,22 @@
       <div class="card">
         <h3>macOS</h3>
         <p class="muted"><small>macOS 11 Big Sur or later · Intel &amp; Apple Silicon in one image</small></p>
-        <p><a class="btn" href="https://github.com/santacroce-tech/eeditor-next/releases/download/v2.2.0/eeditor-next_2.2.0_universal.dmg">Download .dmg</a></p>
-        <p><small class="muted">17.1 MB</small></p>
+        <p><a class="btn" href="https://github.com/santacroce-tech/eeditor-next/releases/latest/download/EEditor-macOS.dmg" data-asset="EEditor-macOS.dmg">Download .dmg</a></p>
+        <p><small class="muted"><span data-size="EEditor-macOS.dmg"></span></small></p>
       </div>
 
       <div class="card">
         <h3>Windows</h3>
         <p class="muted"><small>Windows 10 or 11, 64-bit</small></p>
-        <p><a class="btn" href="https://github.com/santacroce-tech/eeditor-next/releases/download/v2.2.0/eeditor-next_2.2.0_x64-setup.exe">Download installer</a></p>
-        <p><small class="muted">6.2 MB · or the <a href="https://github.com/santacroce-tech/eeditor-next/releases/download/v2.2.0/eeditor-next_2.2.0_x64_en-US.msi">.msi package</a> (7.9 MB)</small></p>
+        <p><a class="btn" href="https://github.com/santacroce-tech/eeditor-next/releases/latest/download/EEditor-Windows-setup.exe" data-asset="EEditor-Windows-setup.exe">Download installer</a></p>
+        <p><small class="muted"><span data-size="EEditor-Windows-setup.exe" data-fmt="{} · "></span>or the <a href="https://github.com/santacroce-tech/eeditor-next/releases/latest/download/EEditor-Windows.msi" data-asset="EEditor-Windows.msi">.msi package</a><span data-size="EEditor-Windows.msi" data-fmt=" ({})"></span></small></p>
       </div>
 
       <div class="card">
         <h3>Linux</h3>
         <p class="muted"><small>x86-64 · glibc 2.35+ (Ubuntu 22.04 and newer)</small></p>
-        <p><a class="btn" href="https://github.com/santacroce-tech/eeditor-next/releases/download/v2.2.0/eeditor-next_2.2.0_amd64.AppImage">Download AppImage</a></p>
-        <p><small class="muted">82.6 MB · or the <a href="https://github.com/santacroce-tech/eeditor-next/releases/download/v2.2.0/eeditor-next_2.2.0_amd64.deb">.deb package</a> (8.3 MB)</small></p>
+        <p><a class="btn" href="https://github.com/santacroce-tech/eeditor-next/releases/latest/download/EEditor-Linux.AppImage" data-asset="EEditor-Linux.AppImage">Download AppImage</a></p>
+        <p><small class="muted"><span data-size="EEditor-Linux.AppImage" data-fmt="{} · "></span>or the <a href="https://github.com/santacroce-tech/eeditor-next/releases/latest/download/EEditor-Linux.deb" data-asset="EEditor-Linux.deb">.deb package</a><span data-size="EEditor-Linux.deb" data-fmt=" ({})"></span></small></p>
       </div>
 
       <div class="card">
@@ -107,10 +107,10 @@
 
       <h3>Linux</h3>
       <p>The AppImage needs no installation — mark it executable and run it:</p>
-<pre><code>chmod +x eeditor-next_2.2.0_amd64.AppImage
-./eeditor-next_2.2.0_amd64.AppImage</code></pre>
+<pre><code>chmod +x EEditor-Linux.AppImage
+./EEditor-Linux.AppImage</code></pre>
       <p>Or install the Debian package:</p>
-<pre><code>sudo apt install ./eeditor-next_2.2.0_amd64.deb</code></pre>
+<pre><code>sudo apt install ./EEditor-Linux.deb</code></pre>
       <p>
         Both need a WebKitGTK runtime, which every mainstream desktop already ships. On a minimal
         install: <code>sudo apt install libwebkit2gtk-4.1-0</code>.
@@ -136,10 +136,10 @@
 
       <h2>Verifying a download</h2>
       <p>
-        GitHub publishes a SHA-256 digest for every asset — open the release, expand the asset list,
-        and compare it with what you have:
+        Every release carries <a href="https://github.com/santacroce-tech/eeditor-next/releases/latest/download/SHA256SUMS.txt">SHA256SUMS.txt</a>, the SHA-256 digest of
+        each file. Compute yours and compare it with the line for that file:
       </p>
-<pre><code>shasum -a 256 eeditor-next_2.2.0_universal.dmg</code></pre>
+<pre><code>shasum -a 256 EEditor-macOS.dmg</code></pre>
 
       <h2>Release notes</h2>
       <p><strong>2.2.0</strong> — forms, sheets, and apps that run anywhere. <a href="https://github.com/santacroce-tech/eeditor-next/releases/tag/v2.2.0">Full notes</a>.</p>
@@ -173,5 +173,42 @@
   <div class="wrap" style="margin-top:22px"><p id="mitline"><small>EEditor and EELisp are free software under the <a href="https://github.com/santacroce-tech/eeditor-next/blob/main/LICENSE">MIT licence</a>. © 2026 Roberto Santacroce Martins.</small></p></div>
 </footer>
 
+<script>
+// The links above work on their own: they name the newest published release's fixed-name files.
+// This fills in the version, date and sizes from GitHub, and, for a release made before the
+// fixed names existed, points each link at that release's own file instead.
+(function () {
+  var SUFFIX = {
+    "EEditor-macOS.dmg": "_universal.dmg",
+    "EEditor-Windows-setup.exe": "_x64-setup.exe",
+    "EEditor-Windows.msi": "_x64_en-US.msi",
+    "EEditor-Linux.AppImage": "_amd64.AppImage",
+    "EEditor-Linux.deb": "_amd64.deb"
+  };
+  fetch("https://api.github.com/repos/santacroce-tech/eeditor-next/releases/latest")
+    .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+    .then(function (rel) {
+      var byName = {};
+      rel.assets.forEach(function (a) { byName[a.name] = a; });
+      function find(name) {
+        if (byName[name]) return byName[name];
+        return rel.assets.filter(function (a) { return a.name.slice(-SUFFIX[name].length) === SUFFIX[name]; })[0];
+      }
+      document.querySelectorAll("[data-asset]").forEach(function (el) {
+        var a = find(el.getAttribute("data-asset"));
+        if (a) el.href = a.browser_download_url;
+      });
+      document.querySelectorAll("[data-size]").forEach(function (el) {
+        var a = find(el.getAttribute("data-size"));
+        if (!a) return;
+        var mb = (a.size / 1048576).toFixed(1) + " MB";
+        el.textContent = (el.getAttribute("data-fmt") || "{}").replace("{}", mb);
+      });
+      var when = new Date(rel.published_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+      document.getElementById("release-line").textContent = "Version " + rel.tag_name.replace(/^v/, "") + " · " + when;
+    })
+    .catch(function () { /* offline or rate-limited: the static links still work */ });
+})();
+</script>
 </body>
 </html>
