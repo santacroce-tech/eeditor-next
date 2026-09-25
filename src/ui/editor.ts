@@ -1,12 +1,14 @@
 // CodeMirror 6 Markdown/code editor. Solves the biggest Apple-text-system coupling from the Swift
 // app (highlighting, undo, find) for free (ANALYSIS §7.2). Mod-Shift-Enter runs the selection as
-// EELisp, or the ```eelisp block under the cursor when nothing is selected. The editor theme is switchable (dark / light) via a Compartment.
+// EELisp, or the ```eelisp block under the cursor when nothing is selected. The editor theme is switchable (dark / light / vb6) via a Compartment.
 
 import { EditorView, keymap } from "@codemirror/view";
 import { EditorState, Compartment, Transaction } from "@codemirror/state";
 import { basicSetup } from "codemirror";
 import { markdown } from "@codemirror/lang-markdown";
 import { oneDark } from "@codemirror/theme-one-dark";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { tags as t } from "@lezer/highlight";
 import { indentLess, insertTab } from "@codemirror/commands";
 import {
   acceptCompletion,
@@ -18,7 +20,14 @@ import {
 import { codeToRun } from "../core/blocks";
 import { wikiLinkAt } from "../core/wikilink";
 
-export type ThemeName = "dark" | "light";
+export type ThemeName = "dark" | "light" | "vb6";
+
+/** The order the theme button walks them in. */
+export const THEMES: readonly ThemeName[] = ["dark", "light", "vb6"];
+
+export function isThemeName(v: unknown): v is ThemeName {
+  return typeof v === "string" && (THEMES as readonly string[]).includes(v);
+}
 
 export interface Editor {
   view: EditorView;
@@ -55,7 +64,48 @@ const solarizedLight = EditorView.theme(
   { dark: false },
 );
 
+// The Visual Basic 6 code window: a white page in Courier New, the grey margin bar on the left,
+// keywords in navy, comments in green, everything else plain black. No current-line highlight —
+// VB6 never had one — and the selection in the classic Windows palette's sky blue, since
+// CodeMirror draws it under the text and navy would hide black letters.
+const vb6 = [
+  EditorView.theme(
+    {
+      "&": { backgroundColor: "#ffffff", color: "#000000" },
+      ".cm-scroller": { fontFamily: '"Courier New", Courier, monospace', fontSize: "13px" },
+      ".cm-content": { caretColor: "#000000" },
+      ".cm-gutters": { backgroundColor: "#c0c0c0", color: "#404040", borderRight: "1px solid #808080" },
+      ".cm-activeLine": { backgroundColor: "transparent" },
+      ".cm-activeLineGutter": { backgroundColor: "transparent" },
+      "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
+        backgroundColor: "#a6caf0",
+      },
+      ".cm-cursor": { borderLeftColor: "#000000", borderLeftWidth: "2px" },
+      ".cm-matchingBracket": { backgroundColor: "#c0c0c0", outline: "none" },
+      ".cm-tooltip": { backgroundColor: "#ffffe1", color: "#000", border: "1px solid #000", borderRadius: "0" },
+      ".cm-tooltip-autocomplete > ul > li[aria-selected]": { backgroundColor: "#000080", color: "#fff" },
+      ".cm-panels": { backgroundColor: "#c0c0c0", color: "#000" },
+    },
+    { dark: false },
+  ),
+  syntaxHighlighting(
+    HighlightStyle.define([
+      { tag: [t.keyword, t.controlKeyword, t.definitionKeyword, t.modifier, t.operatorKeyword], color: "#000080" },
+      { tag: [t.comment, t.lineComment, t.blockComment], color: "#008000" },
+      { tag: t.heading, color: "#000080", fontWeight: "bold" },
+      { tag: t.strong, fontWeight: "bold" },
+      { tag: t.emphasis, fontStyle: "italic" },
+      { tag: t.strikethrough, textDecoration: "line-through" },
+      { tag: [t.link, t.url], color: "#0000ff", textDecoration: "underline" },
+      { tag: [t.monospace, t.quote], color: "#800000" },
+      { tag: [t.processingInstruction, t.meta, t.contentSeparator], color: "#808080" },
+      { tag: t.invalid, color: "#ff0000" },
+    ]),
+  ),
+];
+
 function themeExt(name: ThemeName) {
+  if (name === "vb6") return vb6;
   return name === "light" ? solarizedLight : oneDark;
 }
 

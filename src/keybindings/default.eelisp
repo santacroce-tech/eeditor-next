@@ -96,6 +96,7 @@
 ;; ── built-in commands ──────────────────────────────────────────────────────
 ;; save · quick-open · search · daily-note · new-file · new-sheet · new-form · new-folder · open-keys
 ;; reload-keys · toggle-repl · focus-repl · toggle-preview · toggle-theme · export-pdf · snippets
+;; theme-dark · theme-light · theme-vb6   pick a theme (toggle-theme walks all three)
 ;; calendar · agenda-setup · agenda-refresh · close-tab · next-tab · prev-tab · focus-editor
 ;; form-design · form-code · form-run   the active form tab's mode
 ;; open-file           pick a file from anywhere; asks whether to copy it in or edit it in place

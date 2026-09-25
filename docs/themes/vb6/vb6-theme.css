@@ -1,0 +1,310 @@
+@charset "utf-8";
+/* ══ VB6 theme kit — portable ═══════════════════════════════════════════════════════════════
+   Windows 98 as the Visual Basic 6 IDE drew it. Framework-free: drop this file in, set
+   data-theme="vb6" on <html>, and either
+     · rely on the native-element rules below (button, input, select, textarea, check boxes,
+       option buttons, tables, pre, scrollbars), or
+     · add the recipe classes (.vb6-raised, .vb6-sunken, .vb6-window, .vb6-caption, …) to your
+       own markup, or copy a recipe's declarations into your own selectors.
+   Everything is scoped under :root[data-theme="vb6"], so other themes are untouched.
+
+   Built from EEditor (src/styles.css, "Theme: Visual Basic 6"), with the details of 98.css
+   (https://jdan.github.io/98.css/). The --vb-icon-* pixel art is 98.css's:
+     98.css — Copyright (c) 2020 Jordan Scales — MIT License
+     Permission is hereby granted, free of charge, to any person obtaining a copy of this software
+     and associated documentation files (the "Software"), to deal in the Software without
+     restriction, including without limitation the rights to use, copy, modify, merge, publish,
+     distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the
+     Software is furnished to do so, subject to the following conditions: The above copyright
+     notice and this permission notice shall be included in all copies or substantial portions of
+     the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. */
+
+/* ── 1 · tokens ─────────────────────────────────────────────────────────────────────────── */
+:root[data-theme="vb6"] {
+  /* the Windows 98 system colours */
+  --vb-face: #c0c0c0;       /* ButtonFace — every surface that isn't a field */
+  --vb-light: #dfdfdf;      /* ButtonLight — inner highlight of a bevel */
+  --vb-hilite: #ffffff;     /* ButtonHilight — outer highlight of a bevel */
+  --vb-shadow: #808080;     /* ButtonShadow — inner shadow; also GrayText */
+  --vb-dark: #0a0a0a;       /* ButtonDkShadow / WindowFrame — outer shadow */
+  --vb-window: #ffffff;     /* Window — fields: text boxes, lists, code */
+  --vb-text: #000000;
+  --vb-highlight: #000080;  /* Highlight — selected rows, menu hover, focused combo */
+  --vb-highlight-text: #ffffff;
+  --vb-caption: linear-gradient(90deg, #000080, #1084d0);          /* active title bar */
+  --vb-caption-inactive: linear-gradient(90deg, #808080, #b5b5b5); /* inactive title bar */
+  --vb-desktop: #008080;    /* the teal desktop, behind a running window */
+  --vb-workspace: #808080;  /* the MDI / designer background */
+  --vb-link: #0000ff;
+  --vb-ok: #008000;
+  --vb-err: #c00000;
+
+  --vb-ui: "MS Sans Serif", "Microsoft Sans Serif", Tahoma, Geneva, Verdana, sans-serif;
+  --vb-code: "Courier New", Courier, monospace;
+
+  /* Bevels, two ways.
+     A · border + inset shadow: the border is the outer ring, the shadow the inner one. Use it on
+         anything that already has a 1px border — the box keeps its size when the theme switches. */
+  --vb-raised-border: #fff #0a0a0a #0a0a0a #fff;     /* border-color: top right bottom left */
+  --vb-raised-inner: inset 1px 1px #dfdfdf, inset -1px -1px #808080;
+  --vb-sunken-border: #808080 #fff #fff #808080;
+  --vb-sunken-inner: inset 1px 1px #0a0a0a, inset -1px -1px #dfdfdf;
+  --vb-window-border: #dfdfdf #0a0a0a #0a0a0a #dfdfdf;
+  --vb-window-inner: inset 1px 1px #fff, inset -1px -1px #808080;
+  /* B · shadow only, 98.css's way, for elements with border: 0 (table headers, tabs, thumbs) */
+  --vb-raised-2: inset -1px -1px #0a0a0a, inset 1px 1px #fff, inset -2px -2px #808080, inset 2px 2px #dfdfdf;
+  --vb-sunken-2: inset -1px -1px #fff, inset 1px 1px #0a0a0a, inset -2px -2px #dfdfdf, inset 2px 2px #808080;
+  --vb-field-2: inset -1px -1px #fff, inset 1px 1px #808080, inset -2px -2px #dfdfdf, inset 2px 2px #0a0a0a;
+  --vb-window-2: inset -1px -1px #0a0a0a, inset 1px 1px #dfdfdf, inset -2px -2px #808080, inset 2px 2px #fff;
+  --vb-default-2: inset -2px -2px #0a0a0a, inset 1px 1px #0a0a0a, inset 2px 2px #fff, inset -3px -3px #808080, inset 3px 3px #dfdfdf;
+  --vb-default-pressed-2: inset 2px 2px #0a0a0a, inset -1px -1px #0a0a0a, inset -2px -2px #fff, inset 3px 3px #808080, inset -3px -3px #dfdfdf;
+  --vb-tab: inset -1px 0 #0a0a0a, inset 1px 1px #dfdfdf, inset -2px 0 #808080, inset 2px 2px #fff;
+  --vb-status: inset -1px -1px #dfdfdf, inset 1px 1px #808080;
+
+  /* 98.css's pixel art, as data URIs (no files to ship) */
+  --vb-icon-up: url("data:image/svg+xml,%3Csvg width='16' height='17' viewBox='0 0 16 17' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M15 0H0V1V16H1V1H15V0Z' fill='%23DFDFDF'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M2 1H1V15H2V2H14V1H2Z' fill='white'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M16 17H15H0V16H15V0H16V17Z' fill='black'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M15 1H14V15H1V16H14H15V1Z' fill='%23808080'/%3E%3Crect x='2' y='2' width='12' height='13' fill='%23C0C0C0'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M8 6H7V7H6V8H5V9H4V10H11V9H10V8H9V7H8V6Z' fill='black'/%3E%3C/svg%3E");
+  --vb-icon-down: url("data:image/svg+xml,%3Csvg width='16' height='17' viewBox='0 0 16 17' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M15 0H0V1V16H1V1H15V0Z' fill='%23DFDFDF'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M2 1H1V15H2V2H14V1H2Z' fill='white'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M16 17H15H0V16H15V0H16V17Z' fill='black'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M15 1H14V15H1V16H14H15V1Z' fill='%23808080'/%3E%3Crect x='2' y='2' width='12' height='13' fill='%23C0C0C0'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M11 6H4V7H5V8H6V9H7V10H8V9H9V8H10V7H11V6Z' fill='black'/%3E%3C/svg%3E");
+  --vb-icon-down-active: url("data:image/svg+xml,%3Csvg width='16' height='17' viewBox='0 0 16 17' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M0 0H15H16V17H15H0V16V1V0ZM1 16H15V1H1V16Z' fill='%23808080'/%3E%3Crect x='1' y='1' width='14' height='15' fill='%23C0C0C0'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M12 7H5V8H6V9H7V10H8V11H9V10H10V9H11V8H12V7Z' fill='black'/%3E%3C/svg%3E");
+  --vb-icon-left: url("data:image/svg+xml,%3Csvg width='16' height='17' viewBox='0 0 16 17' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M15 0H0V1V16H1V1H15V0Z' fill='%23DFDFDF'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M2 1H1V15H2V2H14V1H2Z' fill='white'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M16 17H15H0V16H15V0H16V17Z' fill='black'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M15 1H14V15H1V16H14H15V1Z' fill='%23808080'/%3E%3Crect x='2' y='2' width='12' height='13' fill='%23C0C0C0'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M9 4H8V5H7V6H6V7H5V8H6V9H7V10H8V11H9V4Z' fill='black'/%3E%3C/svg%3E");
+  --vb-icon-right: url("data:image/svg+xml,%3Csvg width='16' height='17' viewBox='0 0 16 17' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M15 0H0V1V16H1V1H15V0Z' fill='%23DFDFDF'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M2 1H1V15H2V2H14V1H2Z' fill='white'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M16 17H15H0V16H15V0H16V17Z' fill='black'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M15 1H14V15H1V16H14H15V1Z' fill='%23808080'/%3E%3Crect x='2' y='2' width='12' height='13' fill='%23C0C0C0'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M7 4H6V11H7V10H8V9H9V8H10V7H9V6H8V5H7V4Z' fill='black'/%3E%3C/svg%3E");
+  --vb-icon-track: url("data:image/svg+xml,%3Csvg width='2' height='2' viewBox='0 0 2 2' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M1 0H0V1H1V2H2V1H1V0Z' fill='%23C0C0C0'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M2 0H1V1H0V2H1V1H2V0Z' fill='white'/%3E%3C/svg%3E");
+  --vb-icon-check: url("data:image/svg+xml,%3Csvg width='7' height='7' viewBox='0 0 7 7' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M7 0H6V1H5V2H4V3H3V4H2V3H1V2H0V5H1V6H2V7H3V6H4V5H5V4H6V3H7V0Z' fill='black'/%3E%3C/svg%3E");
+  --vb-icon-check-disabled: url("data:image/svg+xml,%3Csvg width='7' height='7' viewBox='0 0 7 7' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M7 0H6V1H5V2H4V3H3V4H2V3H1V2H0V5H1V6H2V7H3V6H4V5H5V4H6V3H7V0Z' fill='%23808080'/%3E%3C/svg%3E");
+  --vb-icon-radio: url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M8 0H4V1H2V2H1V4H0V8H1V10H2V8H1V4H2V2H4V1H8V2H10V1H8V0Z' fill='%23808080'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M8 1H4V2H2V3V4H1V8H2V9H3V8H2V4H3V3H4V2H8V3H10V2H8V1Z' fill='black'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M9 3H10V4H9V3ZM10 8V4H11V8H10ZM8 10V9H9V8H10V9V10H8ZM4 10V11H8V10H4ZM4 10V9H2V10H4Z' fill='%23DFDFDF'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M11 2H10V4H11V8H10V10H8V11H4V10H2V11H4V12H8V11H10V10H11V8H12V4H11V2Z' fill='white'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M4 2H8V3H9V4H10V8H9V9H8V10H4V9H3V8H2V4H3V3H4V2Z' fill='white'/%3E%3C/svg%3E");
+  --vb-icon-radio-disabled: url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M8 0H4V1H2V2H1V4H0V8H1V10H2V8H1V4H2V2H4V1H8V2H10V1H8V0Z' fill='%23808080'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M8 1H4V2H2V3V4H1V8H2V9H3V8H2V4H3V3H4V2H8V3H10V2H8V1Z' fill='black'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M9 3H10V4H9V3ZM10 8V4H11V8H10ZM8 10V9H9V8H10V9V10H8ZM4 10V11H8V10H4ZM4 10V9H2V10H4Z' fill='%23DFDFDF'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M11 2H10V4H11V8H10V10H8V11H4V10H2V11H4V12H8V11H10V10H11V8H12V4H11V2Z' fill='white'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M4 2H8V3H9V4H10V8H9V9H8V10H4V9H3V8H2V4H3V3H4V2Z' fill='%23C0C0C0'/%3E%3C/svg%3E");
+  --vb-icon-radio-dot: url("data:image/svg+xml,%3Csvg width='4' height='4' viewBox='0 0 4 4' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M3 0H1V1H0V2V3H1V4H3V3H4V2V1H3V0Z' fill='black'/%3E%3C/svg%3E");
+  --vb-icon-radio-dot-disabled: url("data:image/svg+xml,%3Csvg width='4' height='4' viewBox='0 0 4 4' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M3 0H1V1H0V2V3H1V4H3V3H4V2V1H3V0Z' fill='%23808080'/%3E%3C/svg%3E");
+  --vb-icon-minimize: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='14' shape-rendering='crispEdges'%3E%3Crect width='16' height='14' fill='%23000'/%3E%3Crect width='15' height='13' fill='%23fff'/%3E%3Crect x='1' y='1' width='14' height='12' fill='%23808080'/%3E%3Crect x='1' y='1' width='13' height='11' fill='%23dfdfdf'/%3E%3Crect x='2' y='2' width='12' height='10' fill='%23c0c0c0'/%3E%3Crect x='4' y='9' width='6' height='2'/%3E%3C/svg%3E");
+  --vb-icon-maximize: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='14' shape-rendering='crispEdges'%3E%3Crect width='16' height='14' fill='%23000'/%3E%3Crect width='15' height='13' fill='%23fff'/%3E%3Crect x='1' y='1' width='14' height='12' fill='%23808080'/%3E%3Crect x='1' y='1' width='13' height='11' fill='%23dfdfdf'/%3E%3Crect x='2' y='2' width='12' height='10' fill='%23c0c0c0'/%3E%3Cpath fill-rule='evenodd' d='M3 2h9v9H3zM4 4h7v6H4z'/%3E%3C/svg%3E");
+  --vb-icon-close: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='14' shape-rendering='crispEdges'%3E%3Crect width='16' height='14' fill='%23000'/%3E%3Crect width='15' height='13' fill='%23fff'/%3E%3Crect x='1' y='1' width='14' height='12' fill='%23808080'/%3E%3Crect x='1' y='1' width='13' height='11' fill='%23dfdfdf'/%3E%3Crect x='2' y='2' width='12' height='10' fill='%23c0c0c0'/%3E%3Cpath transform='translate(4 3)' d='M0 0H2V1H3V2H5V1H6V0H8V1H7V2H6V3H5V4H6V5H7V6H8V7H6V6H5V5H3V6H2V7H0V6H1V5H2V4H3V3H2V2H1V1H0Z'/%3E%3C/svg%3E");
+  --vb-icon-slider: url("data:image/svg+xml,%3Csvg width='11' height='21' viewBox='0 0 11 21' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M0 0V16H2V18H4V20H5V19H3V17H1V1H10V0Z' fill='white'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M1 1V16H2V17H3V18H4V19H6V18H7V17H8V16H9V1Z' fill='%23C0C7C8'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M9 1H10V16H8V18H6V20H5V19H7V17H9Z' fill='%2387888F'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M10 0H11V16H9V18H7V20H5V21H6V19H8V17H10Z' fill='black'/%3E%3C/svg%3E");
+
+  color-scheme: light;
+}
+
+/* ── 2 · global rules ───────────────────────────────────────────────────────────────────── */
+/* Windows 98 had no rounded corners and no soft shadows. (Tabs opt back in to 3px, below.) */
+:root[data-theme="vb6"] *, :root[data-theme="vb6"] *::before, :root[data-theme="vb6"] *::after {
+  border-radius: 0 !important;
+}
+:root[data-theme="vb6"] body { background: var(--vb-face); color: var(--vb-text); font: 12px/1.4 var(--vb-ui); }
+:root[data-theme="vb6"] ::selection { background: var(--vb-highlight); color: var(--vb-highlight-text); }
+/* The dotted focus rectangle sits 4px inside a button. A field shows focus by its caret alone. */
+:root[data-theme="vb6"] :focus-visible { outline: 1px dotted #000; outline-offset: -4px; }
+:root[data-theme="vb6"] :is(input:not([type="checkbox"], [type="radio"], [type="button"], [type="submit"], [type="reset"]), textarea, select, [contenteditable]):focus-visible { outline: none; }
+:root[data-theme="vb6"] a { color: var(--vb-link); }
+:root[data-theme="vb6"] a:focus-visible { outline: 1px dotted var(--vb-link); outline-offset: 0; }
+:root[data-theme="vb6"] :is(code, pre, kbd, samp, .vb6-code) { font-family: var(--vb-code); }
+:root[data-theme="vb6"] :disabled, :root[data-theme="vb6"] input[readonly] { color: var(--vb-shadow); }
+
+/* ── 3 · buttons ────────────────────────────────────────────────────────────────────────── */
+:root[data-theme="vb6"] :is(.vb6-raised, button, input[type="button"], input[type="submit"], input[type="reset"]) {
+  background: var(--vb-face); color: var(--vb-text); font-family: var(--vb-ui);
+  border: 1px solid; border-color: var(--vb-raised-border); box-shadow: var(--vb-raised-inner);
+}
+/* a dialog's command button: at least 75 × 23 */
+:root[data-theme="vb6"] :is(.vb6-command, button, input[type="button"], input[type="submit"], input[type="reset"]) {
+  min-width: 75px; min-height: 23px; padding: 0 12px;
+}
+/* pressed — sunken while the mouse is down, and the label moves 1px right and down. The move is
+   drawn as a text shadow so nothing reflows. (An icon inside needs its own colour set.) */
+:root[data-theme="vb6"] :is(.vb6-raised, button, input[type="button"], input[type="submit"], input[type="reset"]):active:not(:disabled) {
+  border-color: var(--vb-sunken-border); box-shadow: var(--vb-sunken-inner);
+  color: transparent; text-shadow: 1px 1px var(--vb-text);
+}
+/* no hover on a touch screen: show the press on touch */
+@media (hover: none) {
+  :root[data-theme="vb6"] :is(.vb6-raised, button):hover:not(:disabled) {
+    border-color: var(--vb-sunken-border); box-shadow: var(--vb-sunken-inner);
+  }
+}
+/* latched — a toggle that stays down (Bold, the current mode, the toolbox pointer): sunken on a dither */
+:root[data-theme="vb6"] :is(.vb6-latched, [aria-pressed="true"]) {
+  border-color: var(--vb-sunken-border); box-shadow: var(--vb-sunken-inner); background: var(--vb-icon-track);
+}
+/* disabled text is etched: grey with a white drop */
+:root[data-theme="vb6"] :is(.vb6-raised, button, input[type="button"], input[type="submit"], input[type="reset"]):disabled {
+  color: var(--vb-shadow); text-shadow: 1px 1px #fff;
+}
+/* the default button (Enter presses it) carries an extra black frame */
+:root[data-theme="vb6"] :is(.vb6-default, button.default, [type="submit"]) {
+  border-color: #0a0a0a; box-shadow: inset 1px 1px #fff, inset -1px -1px #0a0a0a, inset 2px 2px #dfdfdf, inset -2px -2px #808080;
+}
+:root[data-theme="vb6"] :is(.vb6-default, button.default, [type="submit"]):active:not(:disabled) {
+  box-shadow: inset 1px 1px #808080, inset -1px -1px #808080;
+}
+
+/* ── 4 · fields ─────────────────────────────────────────────────────────────────────────── */
+:root[data-theme="vb6"] :is(.vb6-sunken, input:not([type="button"], [type="submit"], [type="reset"], [type="checkbox"], [type="radio"], [type="range"], [type="color"]), textarea, select) {
+  background-color: var(--vb-window); color: var(--vb-text); font-family: var(--vb-ui);
+  border: 1px solid; border-color: var(--vb-sunken-border); box-shadow: var(--vb-sunken-inner);
+}
+:root[data-theme="vb6"] :is(input, textarea):is(:disabled, [readonly]) { background-color: var(--vb-face); }
+:root[data-theme="vb6"] input[type="search"]::-webkit-search-cancel-button { display: none; }
+/* combo box: the drop-down button inside the right edge; focused, the field goes navy */
+:root[data-theme="vb6"] select {
+  -webkit-appearance: none; appearance: none; padding-right: 20px;
+  background-image: var(--vb-icon-down); background-position: right 2px center; background-size: 16px 17px; background-repeat: no-repeat;
+}
+:root[data-theme="vb6"] select:active { background-image: var(--vb-icon-down-active); }
+:root[data-theme="vb6"] select:focus { background-color: var(--vb-highlight); color: #fff; }
+:root[data-theme="vb6"] select option { background: #fff; color: #000; }
+:root[data-theme="vb6"] select:disabled { background-color: var(--vb-face); }
+/* check box: a 13px field with 98.css's 7px tick */
+:root[data-theme="vb6"] input[type="checkbox"] {
+  -webkit-appearance: none; appearance: none; flex: 0 0 auto; width: 13px; height: 13px; margin: 0 6px 0 0; border: 0;
+  background: #fff center / 7px 7px no-repeat; box-shadow: var(--vb-field-2); vertical-align: -2px;
+}
+:root[data-theme="vb6"] input[type="checkbox"]:checked { background-image: var(--vb-icon-check); }
+:root[data-theme="vb6"] input[type="checkbox"]:is(:active, :disabled) { background-color: var(--vb-face); }
+:root[data-theme="vb6"] input[type="checkbox"]:disabled:checked { background-image: var(--vb-icon-check-disabled); }
+/* option button: 98.css's 12px ring and 4px dot */
+:root[data-theme="vb6"] input[type="radio"] {
+  -webkit-appearance: none; appearance: none; flex: 0 0 auto; width: 12px; height: 12px; margin: 0 6px 0 0; border: 0;
+  background: var(--vb-icon-radio) 0 0 / 12px 12px no-repeat; vertical-align: -2px;
+}
+:root[data-theme="vb6"] input[type="radio"]:checked {
+  background: var(--vb-icon-radio-dot) 4px 4px / 4px 4px no-repeat, var(--vb-icon-radio) 0 0 / 12px 12px no-repeat;
+}
+:root[data-theme="vb6"] input[type="radio"]:is(:active, :disabled) { background-image: var(--vb-icon-radio-disabled); }
+:root[data-theme="vb6"] input[type="radio"]:disabled:checked {
+  background: var(--vb-icon-radio-dot-disabled) 4px 4px / 4px 4px no-repeat, var(--vb-icon-radio-disabled) 0 0 / 12px 12px no-repeat;
+}
+/* the focus rectangle goes round the label, not the box */
+:root[data-theme="vb6"] :is(input[type="checkbox"], input[type="radio"]):focus-visible { outline: none; }
+:root[data-theme="vb6"] :is(input[type="checkbox"], input[type="radio"]):focus-visible + label,
+:root[data-theme="vb6"] label:has(> :is(input[type="checkbox"], input[type="radio"]):focus-visible) { outline: 1px dotted #000; }
+/* slider: a 2px etched groove and 98.css's pointed thumb */
+:root[data-theme="vb6"] input[type="range"] { -webkit-appearance: none; appearance: none; background: transparent; }
+:root[data-theme="vb6"] input[type="range"]::-webkit-slider-runnable-track {
+  height: 2px; background: #000; border-right: 1px solid grey; border-bottom: 1px solid grey;
+  box-shadow: 1px 0 0 white, 1px 1px 0 white, 0 1px 0 white, -1px 0 0 darkgrey, -1px -1px 0 darkgrey, 0 -1px 0 darkgrey, -1px 1px 0 white, 1px -1px darkgrey;
+}
+:root[data-theme="vb6"] input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 11px; height: 21px; border: 0; background: var(--vb-icon-slider); transform: translateY(-8px);
+}
+:root[data-theme="vb6"] input[type="range"]::-moz-range-track { height: 2px; background: #000; border-right: 1px solid grey; border-bottom: 1px solid grey; }
+:root[data-theme="vb6"] input[type="range"]::-moz-range-thumb { width: 11px; height: 21px; border: 0; background: var(--vb-icon-slider); transform: translateY(2px); }
+/* progress bar: a sunken trough with navy blocks */
+:root[data-theme="vb6"] .vb6-progress { height: 20px; padding: 3px; box-shadow: var(--vb-sunken-2); background: var(--vb-face); }
+:root[data-theme="vb6"] .vb6-progress > span { display: block; height: 100%;
+  background: linear-gradient(90deg, var(--vb-highlight) 0 8px, transparent 0 10px) 0 0 / 10px 100% repeat-x; }
+
+/* ── 5 · windows ────────────────────────────────────────────────────────────────────────── */
+/* window — a dialog, a popup menu, a floating form */
+:root[data-theme="vb6"] .vb6-window {
+  background: var(--vb-face); color: var(--vb-text); padding: 3px;
+  border: 1px solid; border-color: var(--vb-window-border); box-shadow: var(--vb-window-inner);
+}
+/* caption — the title bar across the top of a .vb6-window, or a docked tool window's header.
+   Inside a window with padding P > 3px, give it margin: calc(3px - P) calc(3px - P) … */
+:root[data-theme="vb6"] .vb6-caption {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 3px 2px 3px 3px; background: var(--vb-caption); color: #fff; font: 700 11px var(--vb-ui); letter-spacing: 0;
+}
+:root[data-theme="vb6"] .vb6-caption.inactive { background: var(--vb-caption-inactive); color: var(--vb-face); }
+/* caption buttons: real buttons (<button aria-label="Close">…) or, decoratively, one strip */
+:root[data-theme="vb6"] .vb6-caption button {
+  min-width: 16px; min-height: 14px; width: 16px; height: 14px; padding: 0; border: 0; box-shadow: none;
+  background: var(--vb-face) center / 16px 14px no-repeat; font-size: 0;
+}
+:root[data-theme="vb6"] .vb6-caption button[aria-label="Minimize"] { background-image: var(--vb-icon-minimize); }
+:root[data-theme="vb6"] .vb6-caption button[aria-label="Maximize"] { background-image: var(--vb-icon-maximize); }
+:root[data-theme="vb6"] .vb6-caption button[aria-label="Close"] { background-image: var(--vb-icon-close); margin-left: 2px; }
+:root[data-theme="vb6"] .vb6-caption button:active { filter: brightness(.94); }
+:root[data-theme="vb6"] .vb6-caption button:focus-visible { outline: none; }
+:root[data-theme="vb6"] .vb6-caption-buttons {
+  flex: 0 0 auto; width: 50px; height: 14px;
+  background: var(--vb-icon-minimize) 0 0 / 16px 14px no-repeat, var(--vb-icon-maximize) 16px 0 / 16px 14px no-repeat,
+    var(--vb-icon-close) 34px 0 / 16px 14px no-repeat;
+}
+
+/* ── 6 · bars, panels, tabs, trees, tables ──────────────────────────────────────────────── */
+/* toolbar — a strip of buttons under the menu, etched off the content below */
+:root[data-theme="vb6"] .vb6-toolbar {
+  display: flex; align-items: center; gap: 4px; padding: 2px 4px;
+  background: var(--vb-face); border-bottom: 1px solid var(--vb-shadow); box-shadow: 0 1px #fff;
+}
+/* status bar — a row of shallow sunken fields */
+:root[data-theme="vb6"] .vb6-status-bar { display: flex; gap: 1px; margin: 0 1px; }
+:root[data-theme="vb6"] .vb6-status-field { flex: 1; padding: 2px 3px; background: var(--vb-face); box-shadow: var(--vb-status); }
+/* group box / frame — the etched line (grey over white) around a set of controls */
+:root[data-theme="vb6"] :is(.vb6-groupbox, fieldset) { border: 1px solid var(--vb-shadow); box-shadow: 1px 1px #fff, inset 1px 1px #fff; }
+:root[data-theme="vb6"] legend { background: var(--vb-face); padding: 0 2px; }
+/* separator in a menu */
+:root[data-theme="vb6"] .vb6-separator { height: 0; margin: 3px 0; border-top: 1px solid var(--vb-shadow); border-bottom: 1px solid #fff; }
+/* a sunken panel: a list view, a tree view, a code listing */
+:root[data-theme="vb6"] :is(.vb6-panel, pre) { background: #fff; box-shadow: var(--vb-field-2); padding: 8px; border: 0; }
+
+/* selection — a selected row, a menu item under the mouse. Classic Windows had no hover tint. */
+:root[data-theme="vb6"] :is(.vb6-selected, [aria-selected="true"]:not([role="tab"]), tr.highlighted) {
+  background: var(--vb-highlight); color: var(--vb-highlight-text);
+}
+:root[data-theme="vb6"] .vb6-menu-item:hover { background: var(--vb-highlight); color: var(--vb-highlight-text); }
+/* a menu bar item: a thin raised outline on hover, navy when open */
+:root[data-theme="vb6"] .vb6-menubar-item:hover { box-shadow: var(--vb-status), inset 1px 1px #fff; }
+
+/* tabs — 98.css's tab bevel with 3px top corners; the selected tab is 2px taller and covers the page's edge */
+:root[data-theme="vb6"] [role="tablist"] { display: flex; list-style: none; margin: 0; padding: 0 0 0 3px; }
+:root[data-theme="vb6"] :is(.vb6-tab, [role="tab"]) {
+  list-style: none;
+  padding: 3px 8px; background: var(--vb-face); color: #000; border: 0; box-shadow: var(--vb-tab);
+  border-top-left-radius: 3px !important; border-top-right-radius: 3px !important;
+}
+:root[data-theme="vb6"] :is(.vb6-tab.active, [role="tab"][aria-selected="true"]) {
+  position: relative; z-index: 1; margin: -2px 0 -1px -3px; padding: 5px 8px 5px 11px;
+}
+
+/* tree view — dotted connectors and the 9px +/- box. Markup: ul.vb6-tree > li > details > summary + ul */
+:root[data-theme="vb6"] ul.vb6-tree { background: #fff; box-shadow: var(--vb-field-2); padding: 6px; margin: 0; }
+:root[data-theme="vb6"] ul.vb6-tree li { list-style: none; margin-top: 3px; }
+:root[data-theme="vb6"] ul.vb6-tree ul { margin: 3px 0 0 16px; padding-left: 16px; border-left: 1px dotted #808080; }
+:root[data-theme="vb6"] ul.vb6-tree ul > li { position: relative; }
+:root[data-theme="vb6"] ul.vb6-tree ul > li::before { content: ""; position: absolute; left: -16px; top: 6px; width: 12px; border-bottom: 1px dotted #808080; }
+:root[data-theme="vb6"] ul.vb6-tree ul > li:last-child::after { content: ""; position: absolute; left: -20px; top: 7px; bottom: 0; width: 8px; background: #fff; }
+:root[data-theme="vb6"] ul.vb6-tree summary { list-style: none; cursor: default; }
+:root[data-theme="vb6"] ul.vb6-tree summary::-webkit-details-marker { display: none; }
+:root[data-theme="vb6"] :is(ul.vb6-tree summary, .vb6-expander)::before {
+  content: "+"; display: inline-block; box-sizing: border-box; width: 9px; height: 9px; margin-right: 5px;
+  border: 1px solid #808080; background: #fff; font: 9px/7px var(--vb-ui); text-align: center; vertical-align: middle;
+}
+:root[data-theme="vb6"] :is(ul.vb6-tree details[open] > summary, .vb6-expander.open)::before { content: "\2212"; }
+:root[data-theme="vb6"] ul.vb6-tree a { color: #000; text-decoration: none; }
+:root[data-theme="vb6"] ul.vb6-tree a:focus { background: var(--vb-highlight); color: #fff; outline: none; }
+
+/* tables — column headers are buttons (2px raised, regular weight); rows are compact; a
+   highlighted row is navy */
+:root[data-theme="vb6"] table { border-collapse: collapse; background: #fff; white-space: nowrap; }
+:root[data-theme="vb6"] :is(table > thead > tr > *, .vb6-colhead) {
+  position: sticky; top: 0; height: 17px; padding: 0 6px; background: var(--vb-face); color: #000;
+  font-weight: 400; text-align: left; box-shadow: var(--vb-raised-2); border: 0;
+}
+:root[data-theme="vb6"] :is(table > thead > tr > *, .vb6-colhead):active { box-shadow: var(--vb-status); }
+:root[data-theme="vb6"] table > tbody > tr > * { padding: 0 6px; height: 14px; }
+
+/* surfaces */
+:root[data-theme="vb6"] .vb6-desktop { background: var(--vb-desktop); }
+:root[data-theme="vb6"] .vb6-workspace { background: var(--vb-workspace); }
+/* the form designer's grid: black dots every 8px (120 twips) on ButtonFace */
+:root[data-theme="vb6"] .vb6-design-grid {
+  background-color: var(--vb-face);
+  background-image: radial-gradient(#000 0.6px, transparent 0.8px); background-size: 8px 8px;
+}
+/* designer selection handle: a small filled navy square; a rubber band is dotted, unfilled */
+:root[data-theme="vb6"] .vb6-handle { width: 6px; height: 6px; background: var(--vb-highlight); border: 0; }
+:root[data-theme="vb6"] .vb6-rubberband { border: 1px dotted #000; background: transparent; }
+
+/* ── 7 · scrollbars (WebKit / Blink: Chrome, Edge, Safari, WKWebView, WebView2) ─────────── */
+:root[data-theme="vb6"] ::-webkit-scrollbar { width: 16px; }
+:root[data-theme="vb6"] ::-webkit-scrollbar:horizontal { height: 17px; }
+:root[data-theme="vb6"] ::-webkit-scrollbar-track { background-image: var(--vb-icon-track); }
+:root[data-theme="vb6"] ::-webkit-scrollbar-corner { background: #dfdfdf; }
+:root[data-theme="vb6"] ::-webkit-scrollbar-thumb { background-color: #dfdfdf; box-shadow: var(--vb-raised-2); }
+:root[data-theme="vb6"] ::-webkit-scrollbar-button:horizontal:start:decrement,
+:root[data-theme="vb6"] ::-webkit-scrollbar-button:horizontal:end:increment,
+:root[data-theme="vb6"] ::-webkit-scrollbar-button:vertical:start:decrement,
+:root[data-theme="vb6"] ::-webkit-scrollbar-button:vertical:end:increment { display: block; }
+:root[data-theme="vb6"] ::-webkit-scrollbar-button:vertical:start { height: 17px; background-image: var(--vb-icon-up); }
+:root[data-theme="vb6"] ::-webkit-scrollbar-button:vertical:end { height: 17px; background-image: var(--vb-icon-down); }
+:root[data-theme="vb6"] ::-webkit-scrollbar-button:horizontal:start { width: 16px; background-image: var(--vb-icon-left); }
+:root[data-theme="vb6"] ::-webkit-scrollbar-button:horizontal:end { width: 16px; background-image: var(--vb-icon-right); }

@@ -82,6 +82,7 @@ export function createSidebar(
         const hidden = kids.style.display === "none";
         kids.style.display = hidden ? "" : "none";
         caret.textContent = hidden ? "▾" : "▸";
+        caret.classList.toggle("closed", !hidden);
       });
       head.addEventListener("contextmenu", (e) => {
         e.preventDefault();
