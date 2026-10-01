@@ -30,3 +30,9 @@ tauri-plugin-dialog = "2"
 tauri-plugin-ios-files = { path = "plugins" }
 # The Rust EELisp engine — the reusable core. EngineHandle is Send+Sync for Tauri state.
 eelisp = { path = "../../eelisp-rs" }
+
+# The engine is an interpreter: unoptimised, a program runs ~15× slower (a ZX Spectrum frame
+# written in EELisp takes 330 ms instead of 21). Optimise it even in `tauri dev`; the app's own
+# crate stays quick to rebuild.
+[profile.dev.package.eelisp]
+opt-level = 3

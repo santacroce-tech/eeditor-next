@@ -97,6 +97,14 @@ jobs:
           EELISP_BIN: ${{ github.workspace }}/eelisp-rs/target/release/eelisp
         run: npm run smoke
 
+      # The ZX Spectrum written in EELisp: the machine around its Z80 (the Z80 itself is checked
+      # against the FUSE suite, which is GPL and not vendored: npm run spectrum:fuse <dir>).
+      - name: The Spectrum machine
+        working-directory: eeditor-next
+        env:
+          EELISP_BIN: ${{ github.workspace }}/eelisp-rs/target/release/eelisp
+        run: npm run spectrum:test
+
       # The grid only exists in a browser: scrolling, the clipboard and a drag have no unit test.
       - name: The grid, in a browser
         working-directory: eeditor-next

@@ -81,7 +81,13 @@ row count), `date` (`:value` as `yyyy-mm-dd`;
 (`:interval` ms; nothing to see, fires `:on-tick` while enabled), `tabs` (`:pages`, `:value` the
 open one), `sheet` (`:file`, a `.eesheet` beside the form — the live grid, with its formula bar
 unless `:toolbar false`; handlers read and write its cells with `(sheet-get …)` / `(sheet-set …)`,
-and the grid follows).
+and the grid follows), `screen` (`:frame`, an expression evaluated fifty times a second while
+enabled — with the keys held on the screen in `ui-keys`, as the ZX Spectrum's 8-byte key matrix
+in base64 — whose value, `{"kind" "screen" "pixels" … "border" … "frame" …}`, is painted: a
+ZX Spectrum screen. The keys held on it are the Spectrum's — a typed symbol presses the Spectrum's
+own combination for it — and `:keyboard true` (or ⌨ in its corner) shows the Spectrum's keyboard
+under it, to click. `:on-paste` runs with text pasted on it in `(ui-get f "$text")`. Its corner has ⛶ — full screen, the picture scaled to fit, Esc back — and, in the app, ⧉: the screen in a window of its own (`screen.html`), resizable, over the same engine and so the same machine, while the form's screen waits. A form with one gets the Spectrum machine, `src/spectrum/zx.eelisp`, loaded
+first; `workspace/examples/Spectrum.eeform` runs it. See `docs/spectrum/`).
 
 **The menu bar.** `(form … :menu (("File" ("New" new-item) ("-") ("Quit" quit)) ("Help" ("About"
 about))))` puts menus under the title; an item names the handler it runs, `"-"` is a separator, an
@@ -114,11 +120,12 @@ form's frames are asked before the form itself).
 | | |
 |---|---|
 | `(ui-get f "txtName")` | A control's value: text, a bool, the chosen item, the selected row (a dict) — or nil. |
-| `(ui-set "ctl" :prop v)` | Queue a change: `:value`, `:text`, `:items`, `:rows` (a result-set, records or dicts), `:columns`, `:filter`, `:src`, `:file`, `:interval`, `:pages`, `:enabled`, `:visible`. |
+| `(ui-set "ctl" :prop v)` | Queue a change: `:value`, `:text`, `:items`, `:rows` (a result-set, records or dicts), `:columns`, `:filter`, `:src`, `:file`, `:interval`, `:frame`, `:pages`, `:enabled`, `:visible`. |
 | `(ui-message "…")` | A toast. |
 | `(ui-focus "ctl")` | Put the caret there. |
 | `(ui-close)` | Back to *Design*. |
 | `(ui-open "Other.eeform")` | Open and run another form — in a window, or `:in "frmBody"` inside a frame. It joins this form's *main* and shares its public variables. |
+| `(ui-pick handler)` | Let the user pick a file; `handler` then runs with its bytes as base64 in `(ui-get f "$file")` and its name in `(ui-get f "$filename")`. `(base64->bytes …)` makes a buffer of it. |
 | `(var "pos")` · `(var! "pos" 3)` | Read and write a variable declared with `local` or `public` (below). |
 
 `f` is the whole form as a dict, keyed by control name, so a handler is a function of plain data.

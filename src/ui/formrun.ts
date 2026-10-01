@@ -4,6 +4,8 @@
 import { frameMode, humanName, onOpenPage, openPages, type Control, type FormSpec, type FrameMode, type StateValue } from "../core/form";
 import { rowsOf, stateValue, type Row, type UiChange } from "../engine/form";
 import type { JsonValue } from "../engine/types";
+import { bytesToB64 } from "../spectrum/screen";
+import { createScreenView, type ScreenWindow } from "./screenview";
 
 export interface FormRunner {
   readonly el: HTMLElement;
@@ -86,6 +88,10 @@ export interface FormRunnerOptions {
   onPopOut?: () => void;
   /** Drawn to fit a floating window rather than to fill a tab. */
   windowed?: boolean;
+  /** Evaluate a screen control's `:frame` expression; its value. Without it a screen stays dark. */
+  frame?: (src: string) => Promise<JsonValue>;
+  /** Open a screen control in a native window of its own (⧉), over the same engine. Left out where there's none. */
+  popScreen?: (expr: string, title: string) => ScreenWindow;
 }
 
 /** What the runner needs of a sheet grid: the element, loading, writing what is being typed, and letting go. */
@@ -403,9 +409,13 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
   let pending = 0;
   /** Running timers, stopped when the form is rebuilt or destroyed. */
   let timers: ReturnType<typeof setInterval>[] = [];
+  /** Running screens' frame loops — each entry stops one. */
+  let loops: (() => void)[] = [];
   const stopTimers = () => {
     for (const t of timers) clearInterval(t);
     timers = [];
+    for (const stop of loops) stop();
+    loops = [];
   };
 
   /** The `:default` button on Enter in a single-line box, the `:cancel` one on Escape — as VB had it. */
@@ -512,7 +522,7 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
       case "set": {
         const c = live.get(ch.control);
         if (!c) return opts.onError(`no control named "${ch.control}"`);
-        if (ch.prop === "enabled" && c.spec.type !== "timer") setEnabled(c.box, truthy(ch.value));
+        if (ch.prop === "enabled" && c.spec.type !== "timer" && c.spec.type !== "screen") setEnabled(c.box, truthy(ch.value));
         else if (ch.prop === "visible") c.box.style.visibility = truthy(ch.value) ? "" : "hidden";
         else c.set(ch.prop, ch.value);
         return;
@@ -527,7 +537,30 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
         return opts.onOpen(ch.path, { into: ch.into, copy: ch.copy });
       case "public":
         return opts.onPublic?.(ch.name);
+      case "pick":
+        return void pickFile().then((file) => file && fire(ch.handler, undefined, file));
     }
+  }
+
+  /** `(ui-pick handler)`: the file the user picks, as base64 — or null if they didn't. */
+  function pickFile(): Promise<Record<string, StateValue> | null> {
+    return new Promise((resolve) => {
+      const input = el("input");
+      input.type = "file";
+      input.style.display = "none";
+      input.addEventListener("change", async () => {
+        const file = input.files?.[0];
+        input.remove();
+        if (!file) return resolve(null);
+        resolve({ $file: bytesToB64(new Uint8Array(await file.arrayBuffer())), $filename: file.name });
+      });
+      input.addEventListener("cancel", () => {
+        input.remove();
+        resolve(null);
+      });
+      root.append(input);
+      input.click();
+    });
   }
 
   function setEnabled(box: HTMLElement, on: boolean): void {
@@ -772,6 +805,35 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
             arm();
           },
           focus: () => {},
+        };
+        break;
+      }
+      case "screen": {
+        // A ZX Spectrum screen — the view (src/ui/screenview.ts) runs :frame and paints it.
+        const sv = createScreenView(box, {
+          frame: opts.frame,
+          expr: asText(p.frame as string),
+          running: p.enabled !== false,
+          onError: (m) => opts.onError(`${c.name} :frame: ${m}`),
+          onPaste: c.events.paste ? (text) => void fire(c.events.paste, undefined, { $text: text }) : undefined,
+          // The form's canvas clips, so it grows to hold the keyboard below the screen.
+          onBoard: (shown, height) => {
+            canvas.style.height = `${Math.max(current.h, shown ? c.y + c.h + 8 + height + 8 : 0)}px`;
+          },
+          popOut: opts.popScreen ? (expr) => opts.popScreen!(expr, current.title || humanName(c.name)) : undefined,
+        });
+        if (p.keyboard === true) queueMicrotask(() => sv.showKeyboard(true));
+        loops.push(() => sv.destroy());
+        out = {
+          spec: c,
+          box,
+          value: () => sv.running(),
+          set: (k, v) => {
+            if (k === "frame") sv.setExpr(asText(v));
+            else if (k === "keyboard") sv.showKeyboard(truthy(v));
+            else if (k === "enabled" || k === "value") sv.setRunning(truthy(v));
+          },
+          focus: () => sv.focus(),
         };
         break;
       }

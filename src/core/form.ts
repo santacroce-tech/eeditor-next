@@ -234,7 +234,7 @@ export function defnRange(src: string, name: string): Range | undefined {
 
 // ── the layout ────────────────────────────────────────────────────────────
 
-export type ControlType = "label" | "textbox" | "button" | "checkbox" | "radio" | "dropdown" | "listbox" | "grid" | "date" | "image" | "timer" | "tabs" | "sheet" | "frame";
+export type ControlType = "label" | "textbox" | "button" | "checkbox" | "radio" | "dropdown" | "listbox" | "grid" | "date" | "image" | "timer" | "tabs" | "sheet" | "frame" | "screen";
 
 /** How a frame shows the forms opened in it. `screens` — one at a time, the dBASE way — is the default. */
 export const FRAME_MODES = ["screens", "tabs", "windows"] as const;
@@ -395,6 +395,21 @@ export const CONTROLS: Record<ControlType, ControlDef> = {
     events: [],
     initial: {},
   },
+  // A screen the program draws: each animation frame the runner evaluates :frame — with the keys
+  // held down in `ui-keys` — and paints the ZX Spectrum screen it returns (src/spectrum).
+  screen: {
+    label: "Screen",
+    prefix: "scr",
+    w: 320,
+    h: 240,
+    props: [
+      { key: "frame", kind: "text", label: "Each frame", default: "" },
+      { key: "keyboard", kind: "bool", label: "Keyboard on screen", default: false },
+    ],
+    // :on-paste — text pasted on the screen, in (ui-get f "$text")
+    events: ["paste"],
+    initial: { frame: "(zx-frame zx ui-keys)" },
+  },
   tabs: {
     label: "Tabs",
     prefix: "tab",
@@ -459,7 +474,7 @@ export const CONTROLS: Record<ControlType, ControlDef> = {
 };
 
 /** The toolbox order: the everyday controls first, containers and the odd ones last. */
-export const CONTROL_TYPES: ControlType[] = ["label", "textbox", "button", "checkbox", "radio", "dropdown", "listbox", "grid", "date", "image", "tabs", "sheet", "frame", "timer"];
+export const CONTROL_TYPES: ControlType[] = ["label", "textbox", "button", "checkbox", "radio", "dropdown", "listbox", "grid", "date", "image", "screen", "tabs", "sheet", "frame", "timer"];
 export const isControlType = (s: string): s is ControlType => s in CONTROLS;
 
 export interface Control {

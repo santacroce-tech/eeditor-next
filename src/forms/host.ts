@@ -36,7 +36,7 @@ export interface FormHost {
    */
   identity(key: string, title: string, opener?: FormIdentity): FormIdentity;
   /** What every hosted form's runner shares: its identity on each call, ui-open, public variables, clean-up. */
-  wire(id: FormIdentity): Pick<FormRunnerOptions, "call" | "check" | "onOpen" | "onPublic" | "onDestroy">;
+  wire(id: FormIdentity): Pick<FormRunnerOptions, "call" | "check" | "onOpen" | "onPublic" | "onDestroy" | "frame">;
   /** A form is running: remember it, for public variables and frames. */
   track(id: FormIdentity, runner: FormRunner): void;
   /** `(ui-open "Orders" :in "frmBody")`: run Orders inside that frame, as one more form of the same main. */
@@ -87,11 +87,12 @@ export function createFormHost(o: FormHostOptions): FormHost {
     return o.exists(near) || !o.exists(name) ? near : name;
   }
 
-  function wire(id: FormIdentity): Pick<FormRunnerOptions, "call" | "check" | "onOpen" | "onPublic" | "onDestroy"> {
+  function wire(id: FormIdentity): Pick<FormRunnerOptions, "call" | "check" | "onOpen" | "onPublic" | "onDestroy" | "frame"> {
     const who = identityState(id);
     return {
       call: (handler: string, state: Record<string, StateValue>) => o.forms.call(handler, { ...state, ...who }),
       check: (handler: string, state: Record<string, StateValue>) => o.forms.check(handler, { ...state, ...who }),
+      frame: (src: string) => o.forms.evalExpr(src),
       onOpen: (other, how) => {
         const p = resolve(other, id);
         if (how?.into) void openInFrame(p, how.into, id, how.copy === true);

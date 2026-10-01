@@ -91,6 +91,7 @@ const ICONS: Record<ControlType | "select", IconPart[]> = {
   grid: [["rect", 2, 3, 12, 10], ["path", "M2 6.5h12M2 9.5h12M6 3v10M10 3v10"]],
   date: [["rect", 2, 3.5, 12, 10], ["path", "M2 6.5h12M5 2v3M11 2v3"], ["rect", 9, 8.5, 2.5, 2.5]],
   image: [["rect", 2, 3, 12, 10], ["circle", 5.5, 6, 1.2], ["path", "M2 11l3.5-3 2.5 2 2.5-2 3.5 3"]],
+  screen: [["rect", 1.5, 2.5, 13, 9.5], ["rect", 4, 4.5, 8, 5.5], ["path", "M6 14h4"]],
   tabs: [["rect", 2, 5, 12, 8], ["path", "M2 5V3h5v2M7 5V3"]],
   sheet: [["rect", 2, 3, 12, 10], ["path", "M2 6.5h12M6 3v10"], ["rect", 6.8, 7.3, 2.6, 2.4, ]],
   timer: [["circle", 8, 8.5, 5.5], ["path", "M8 5.5v3l2 1.5M6.5 1.5h3"]],
@@ -251,6 +252,8 @@ export function createFormDesigner(opts: FormDesignerOptions): FormDesigner {
       }
       case "timer":
         return el("span", "fd-p-timer", "⏱");
+      case "screen":
+        return el("div", "fd-p-screen", String(p.frame || "screen"));
       case "frame":
         return el("div", "fd-p-frame", `forms open here · ${frameMode(p.mode)}`);
       case "checkbox":
