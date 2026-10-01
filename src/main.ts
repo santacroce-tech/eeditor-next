@@ -669,10 +669,18 @@ function main(): void {
   // Code typed at the REPL, run from a snippet or bound to a key may change a sheet, so after each
   // one the sheet on screen checks its version. The grid's own calls go straight to `engine` — its
   // writes already carry the new version, and must not ask it to look again.
+  // The same code may add, finish or move agenda items (a capture form, a PIM keybinding), so the
+  // agenda panel reads them again too — unless you're typing in it, which a redraw would wipe.
+  // The panel's own calls go straight to `engine` as well.
   let sheetRefresh: ReturnType<typeof setTimeout> | undefined;
+  let agendaRefresh: ReturnType<typeof setTimeout> | undefined;
   const watched = observeEvals(engine, () => {
     clearTimeout(sheetRefresh);
     sheetRefresh = setTimeout(() => void activeSheet()?.refreshIfChanged(), 120);
+    clearTimeout(agendaRefresh);
+    agendaRefresh = setTimeout(() => {
+      if (!agendaBody.contains(document.activeElement)) void agenda.refresh();
+    }, 120);
   });
   // The REPL carries out editor commands too: (ed-form "Contacts") runs a form, (ed-insert …) types.
   const repl = createRepl(replPane.body, watched, { onResult: (v) => keys.applyResult(v) });

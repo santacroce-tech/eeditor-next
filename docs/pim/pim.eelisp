@@ -1,0 +1,471 @@
+;; ═══ EEditor PIM — org-mode habits in EELisp ════════════════════════════════════════════════
+;;
+;; Append this to .eeditor/keybindings.eelisp (⌘⇧K opens it). It replaces any (on-start …) you
+;; already have; keep your own (bind …) forms. Guide: docs/PIM.md.
+;;
+;; The (on-start …) body is the library: it runs once per launch. ⌘S reloads the (bind …) forms
+;; but NOT this one, so after editing it, select the whole (on-start …) form and press ⌘⇧Enter.
+;; That works because the first thing it does is make `on-start` an ordinary macro.
+;;
+;; Tasks are the built-in agenda's items: what you tick in a note is ticked in the agenda panel,
+;; the calendar shows it, your rules file it, recurrence rolls it forward. The notes are the view
+;; you write in; the agenda is where the tasks live.
+;;
+;; Everything is stored in the workspace database (.eeditor/eeditor.db), the one the agenda panel,
+;; the REPL and forms already use. Don't call open-agenda here: it swaps out that whole database.
+
+(on-start
+  (defmacro on-start (. body) (cons 'do body))
+
+  ;; ── tables ─────────────────────────────────────────────────────────────────
+  ;; clock: time spent on a task (org's CLOCK lines). A running clock has stop = 0.
+  ;; `item` is the agenda item the task line links to, or 0.
+  (deftable clock ((task  :type string) (item :type number) (file :type string) (day :type string)
+                   (start :type number) (stop :type number) (mins :type number)))
+  ;; done: every task you finish (org's CLOSED stamp + logbook). item-done forgets the item, so
+  ;; this table is what the weekly review reads.
+  (deftable done  ((at :type string) (day :type string) (task :type string) (item :type number)
+                   (file :type string)))
+
+  ;; ── the agenda's own furniture ─────────────────────────────────────────────
+  ;; An inbox category for capture, and two saved views — (show pim-overdue) at the REPL, and in
+  ;; the Views tab of examples/Agenda.eeform.
+  (eval (parse "(defcategory inbox)"))
+  (defview pim-overdue :filter (overdue?) :sort-by when)
+  (defview pim-inbox :filter (has-category "inbox") :sort-by when)
+  ;; log: the life tracker. A thing, an amount, at a time.
+  (deftable log   ((at :type string) (day :type string) (kind :type string) (item :type string)
+                   (qty :type number) (unit :type string) (note :type string)))
+
+  ;; ── text ───────────────────────────────────────────────────────────────────
+  ;; CodeMirror offsets count UTF-16 units; str-len counts characters. An emoji is one of the
+  ;; second and two of the first, so line ranges are measured with this.
+  (defn pim-u16 (s)
+    (reduce (fn (n c) (+ n (cond (= c "") 0
+                                 (str-matches c "[\\x{10000}-\\x{10FFFF}]") 2
+                                 true 1)))
+            0 (str-split s "")))
+  (defn pim-line-from () (- *cursor* (- *col* 1)))
+  (defn pim-set-line (text)
+    (ed-replace-range (pim-line-from) (+ (pim-line-from) (pim-u16 *line-text*)) text))
+
+  (defn pim-indent (s)
+    (loop (i 0)
+      (let (c (substr s i (+ i 1)))
+        (cond (or (= c " ") (= c "\t")) (recur (inc i))
+              true (substr s 0 i)))))
+  (defn pim-rest-after (s sep)   ;; everything after the first sep, or nil
+    (let (parts (str-split s sep))
+      (cond (> (length parts) 1) (str-join sep (tail parts)) true nil)))
+  (defn pim-before (s sep) (first (str-split s sep)))
+  (defn pim-number? (s) (and (string? s) (str-matches s "^-?[0-9]+(\\.[0-9]+)?$")))
+  (defn pim-words (s) (filter (fn (w) (!= w "")) (str-split (str-trim s) " ")))
+
+  ;; A line as (indent state body): state is "todo", "done", "item" (a bullet) or "text".
+  (defn pim-parse (line)
+    (let (ind (pim-indent line)
+          s   (substr line (str-len ind)))
+      (cond (str-starts-with s "- [ ] ") (list ind "todo" (substr s 6))
+            (str-starts-with s "- [x] ") (list ind "done" (substr s 6))
+            (str-starts-with s "- [X] ") (list ind "done" (substr s 6))
+            (str-starts-with s "- ")     (list ind "item" (substr s 2))
+            (str-starts-with s "* ")     (list ind "item" (substr s 2))
+            true                         (list ind "text" s))))
+
+  ;; The bits a task line carries: " {#12}" links it to agenda item 12, " ✓ 2026-09-30" is when
+  ;; it was done, a leading "!!!"/"!!"/"!" its priority (what the agenda's smart parser reads).
+  (defn pim-item-id (body)
+    (let (r (pim-rest-after body "{#"))
+      (cond (nil? r) nil
+            (pim-number? (pim-before r "}")) (->number (pim-before r "}"))
+            true nil)))
+  (defn pim-unstamp (body) (str-trim (pim-before body " ✓ ")))
+  (defn pim-unlink (body)
+    (let (id (pim-item-id body))
+      (cond (nil? id) body
+            true (str-trim (str-replace body (str "{#" id "}") "")))))
+  (defn pim-bangs (body)
+    (let (w (first (pim-words body)))
+      (cond (= w "!!!") "!!!" (= w "!!") "!!" (= w "!") "!" true "")))
+  (defn pim-unbang (body)
+    (let (b (pim-bangs body))
+      (cond (= b "") body true (str-trim (substr (str-trim body) (str-len b))))))
+  ;; The words of a task, with every marker gone — what a clock or the done log records.
+  (defn pim-title (body) (pim-unbang (pim-unlink (pim-unstamp body))))
+
+  (defn pim-log-done (task id)
+    (insert done (dict :at *now* :day *date* :task task :item (or id 0) :file *file*)))
+
+  ;; ── the agenda ─────────────────────────────────────────────────────────────
+  (defn pim-live-ids () (map record-id (records (items))))
+  (defn pim-live? (id) (some? (fn (x) (= x id)) (pim-live-ids)))
+  (defn pim-tags (s)
+    (map (fn (w) (substr w 1))
+         (filter (fn (w) (str-matches w "^#[A-Za-z_][A-Za-z0-9_/-]*$")) (pim-words s))))
+  (defn pim-untag (s) (str-join " " (filter (fn (w) (not (str-starts-with w "#"))) (pim-words s))))
+  ;; defcategory doesn't evaluate its argument, so the name goes in as source. Defining it first
+  ;; puts it in the agenda's category tree (the ⚙ panel, the item editor's list).
+  (defn pim-file-under (id cats)
+    (for-each c cats
+      (eval (parse (str "(defcategory " c ")")))
+      (assign id c)))
+  (defn pim-said (d)
+    (let (w (dict-get d :when))
+      (str "Agenda #" (dict-get d :id) (cond (or (nil? w) (= w "")) " (no date)" true (str " on " w)))))
+
+  ;; A task into the agenda. The words are parsed there — "tomorrow", "in 3 days", "2026-10-12",
+  ;; "urgent", "!!", "@Ana" — each #tag (and each of cats) files it under that category,
+  ;; " | …" becomes its notes, and your rules run over it. Returns the item as a dict.
+  (defn pim-add (text cats)
+    (let (s     (pim-before text " | ")
+          notes (pim-rest-after text " | ")
+          id    (dict-get (item->dict (add (pim-untag s))) :id))
+      (when notes (item-set id :notes (str-trim notes)))
+      (pim-file-under id (append (pim-tags s) cats))
+      (apply-rules id)
+      (item->dict (item-get id))))
+
+  ;; A linked line edited in the note → the item follows: text, date, priority, notes, tags.
+  (defn pim-resync (id body)
+    (let (plain  (pim-unstamp (pim-unlink body))
+          s      (pim-before plain " | ")
+          notes  (pim-rest-after plain " | ")
+          parsed (smart-parse (pim-untag s)))
+      (item-set id :text (dict-get parsed :text))
+      (when (dict-get parsed :when) (item-set id :when (dict-get parsed :when)))
+      (when (dict-get parsed :priority) (item-set id :priority (dict-get parsed :priority)))
+      (when notes (item-set id :notes (str-trim notes)))
+      (pim-file-under id (pim-tags s))
+      (apply-rules id)
+      (ed-message (str "Updated " (pim-said (item->dict (item-get id)))))))
+
+  ;; ── TODO cycling (org C-c C-t) ─────────────────────────────────────────────
+  ;; text → - [ ] … {#12} → - [x] … ✓ date → - …
+  ;; Making the task adds it to the agenda; ticking it is item-done there. A repeating item's line
+  ;; stays open and points at the next occurrence. A "- [ ]" you typed by hand has no {#id}: ⌃⌥A
+  ;; links it; ticked unlinked, it's just ticked. Back to "- ", the line lets go of its item.
+  (defn pim-cycle (line)
+    (let (p (pim-parse line) ind (nth p 0) state (nth p 1) body (nth p 2))
+      (cond
+        (or (= state "text") (= state "item"))
+          (let (plain (pim-unlink body))
+            (cond (= (pim-title plain) "") (pim-set-line (str ind "- [ ] "))
+                  true (let (d (pim-add plain (list)))
+                         (list (pim-set-line (str ind "- [ ] " plain " {#" (dict-get d :id) "}"))
+                               (ed-message (pim-said d))))))
+        (= state "todo")
+          (let (id   (pim-item-id body)
+                next (cond (nil? id) false true (item-done id)))
+            (pim-log-done (pim-title body) id)
+            (cond (= (type next) "item")
+                    (let (d (item->dict next))
+                      (list (pim-set-line (str ind "- [ ] " (str-replace body (str "{#" id "}")
+                                                                          (str "{#" (dict-get d :id) "}"))))
+                            (ed-message (str "Done — next one " (dict-get d :when)))))
+                  true (list (pim-set-line (str ind "- [x] " body " ✓ " *date*)))))
+        true
+          (list (pim-set-line (str ind "- " (pim-unlink (pim-unstamp body))))))))
+
+  ;; ── priority (org S-up / S-down) ───────────────────────────────────────────
+  ;; On a linked line the item's priority changes too.
+  (defn pim-next-bangs (b) (cond (= b "") "!!!" (= b "!!!") "!!" (= b "!!") "!" true ""))
+  (def pim-bang-priority (dict :!!! 1 :!! 2 :! 3))
+  (defn pim-priority (line)
+    (let (p (pim-parse line) ind (nth p 0) state (nth p 1) body (nth p 2)
+          nb (pim-next-bangs (pim-bangs body))
+          b2 (str (cond (= nb "") "" true (str nb " ")) (pim-unbang body))
+          id (pim-item-id body)
+          head (cond (= state "todo") "- [ ] " (= state "done") "- [x] " (= state "item") "- " true ""))
+      (when (and id (pim-live? id))
+        (item-set id :priority (cond (= nb "") "" true (dict-get pim-bang-priority nb))))
+      (pim-set-line (str ind head b2))))
+
+  ;; ── ⌃⌥A: link or update (org SCHEDULED/DEADLINE) ───────────────────────────
+  (defn pim-schedule (line)
+    (let (p (pim-parse line) ind (nth p 0) body (nth p 2) id (pim-item-id body))
+      (cond
+        (= (pim-title body) "") (ed-message "Nothing to schedule on this line")
+        (nil? id)
+          (let (d (pim-add (pim-unstamp body) (list)))
+            (list (pim-set-line (str ind "- [ ] " (pim-unstamp body) " {#" (dict-get d :id) "}"))
+                  (ed-message (pim-said d))))
+        (not (pim-live? id)) (ed-message (str "#" id " isn't in the agenda any more — ⌃⌥U ticks it here"))
+        true (pim-resync id body))))
+
+  ;; ── views (org-agenda) ─────────────────────────────────────────────────────
+  (defn pim-bang-of (pr) (cond (= pr "1") "!!! " (= pr "2") "!! " (= pr "3") "! " true ""))
+  (defn pim-item-line (r)
+    (str "- [ ] " (pim-bang-of (field-get r :priority)) (field-get r :text) " {#" (record-id r) "}"
+         (cond (= (field-get r :categories) "") "" true (str "  _" (field-get r :categories) "_"))))
+  (defn pim-by-priority (rows)
+    (sort-by (fn (r) (let (p (field-get r :priority)) (cond (= p "") 9 true (->number p)))) rows))
+  (defn pim-lines (rows empty)
+    (cond (empty? rows) empty true (str-join "\n" (map pim-item-line (pim-by-priority rows)))))
+  ;; Overdue (the pim-overdue view), then each of the next n days (items-between, what the
+  ;; calendar reads), by priority. Days with nothing are left out, except today.
+  (defn pim-agenda (n)
+    (let (overdue  (records (show pim-overdue))
+          upcoming (records (items-between *date* (date-add *date* (- n 1) :days)))
+          days     (map (fn (i) (date-add *date* i :days)) (range 0 n 1)))
+      (str-join "\n"
+        (filter (fn (s) (!= s ""))
+          (cons (cond (empty? overdue) ""
+                      true (str "**Overdue**\n\n" (pim-lines overdue "") "\n"))
+                (map (fn (day)
+                       (let (on (filter (fn (r) (= (field-get r :when) day)) upcoming))
+                         (cond (and (empty? on) (!= day *date*)) ""
+                               true (str "**" (date-format day "EEE d MMM") (cond (= day *date*) " — today" true "") "**\n\n"
+                                         (pim-lines on "_nothing scheduled_") "\n"))))
+                     days))))))
+  ;; Items with no date — org's unscheduled TODOs.
+  (defn pim-someday ()
+    (pim-lines (filter (fn (r) (= (field-get r :when) "")) (records (items))) "_nothing undated_"))
+  ;; What capture put in the inbox, still to sort — the pim-inbox view.
+  (defn pim-inbox () (pim-lines (records (show pim-inbox)) "_inbox empty_"))
+  ;; One category and its children — "work" takes in "work/calls", which (items :category …)
+  ;; alone doesn't.
+  (defn pim-in? (c r)
+    (some? (fn (x) (or (= x c) (str-starts-with x (str c "/"))))
+           (str-split (field-get r :categories) ", ")))
+  (defn pim-category (c)
+    (pim-lines (filter (fn (r) (pim-in? c r)) (records (items))) (str "_nothing in " c "_")))
+
+  ;; Lines whose item was finished elsewhere — the agenda panel's Done, the REPL — are ticked here.
+  (defn pim-sync (text)
+    (let (live (pim-live-ids))
+      (str-join "\n"
+        (map (fn (l)
+               (let (p (pim-parse l) id (pim-item-id (nth p 2)))
+                 (cond (and (= (nth p 1) "todo") id (not (some? (fn (x) (= x id)) live)))
+                         (do (pim-log-done (pim-title (nth p 2)) id)
+                             (str (nth p 0) "- [x] " (nth p 2) " ✓ " *date*))
+                       true l)))
+             (str-split text "\n")))))
+
+  ;; ── dynamic blocks (org #+BEGIN: … #+END) ──────────────────────────────────
+  ;;   <!-- eel: (pim-agenda 7) -->
+  ;;   …whatever the expression returns, rewritten by ⌃⌥U…
+  ;;   <!-- /eel -->
+  ;; The markers are HTML comments, so the preview and the PDF show only the result.
+  (def pim-open  "<!-- eel:")
+  (def pim-close "<!-- /eel -->")
+  (defn pim-block (expr) (str pim-open " " expr " -->\n" (eval (parse expr)) "\n" pim-close))
+  ;; A new block takes the caret's line when that is empty or only a bullet (Enter on a list
+  ;; line has already typed "- [ ] "), otherwise it goes on the line below.
+  (defn pim-insert-block (expr)
+    (cond (= (pim-title (nth (pim-parse *line-text*) 2)) "") (pim-set-line (pim-block expr))
+          true (ed-replace-range (+ (pim-line-from) (pim-u16 *line-text*)) (+ (pim-line-from) (pim-u16 *line-text*))
+                                 (str "\n" (pim-block expr)))))
+  (defn pim-update-blocks (text)
+    (let (parts (str-split text pim-open))
+      (str (first parts)
+           (str-join ""
+             (map (fn (part)
+                    (let (expr  (str-trim (pim-before part "-->"))
+                          after (pim-rest-after part "-->")
+                          rest  (cond (nil? after) "" true (pim-rest-after after pim-close)))
+                      ;; no closing marker: keep what followed, the block is inserted above it
+                      (str (pim-block expr) (cond (nil? rest) (str "\n" after) true rest))))
+                  (tail parts))))))
+
+  ;; ── clock (org C-c C-x C-i / C-o) ──────────────────────────────────────────
+  (defn pim-running () (records (query clock :where "stop = ?" :params (list 0))))
+  (defn pim-mins (r) (round (/ (- (now) (field-get r :start)) 60)))
+  ;; A linked task's total goes on its agenda item as :clocked "h:mm" (item->dict shows it).
+  (defn pim-note-clocked (id)
+    (when (and (> id 0) (pim-live? id))
+      (item-set id :clocked
+        (pim-hm (reduce (fn (a r) (+ a (field-get r :mins))) 0
+                        (records (query clock :where "item = ? AND stop > 0" :params (list id))))))))
+  (defn pim-stop-clocks ()
+    (map (fn (r)
+           (update clock (record-id r) (dict :stop (now) :mins (pim-mins r)))
+           (pim-note-clocked (field-get r :item))
+           (str (field-get r :task) " — " (pim-mins r) " min"))
+         (pim-running)))
+  (defn pim-task-at (line)
+    (let (s (str-trim line))
+      (cond (str-starts-with s "#") (str-trim (str-join " " (tail (str-split s " "))))
+            true (pim-title (nth (pim-parse line) 2)))))
+  (defn pim-item-at (line)
+    (cond (str-starts-with (str-trim line) "#") 0 true (or (pim-item-id (nth (pim-parse line) 2)) 0)))
+  (defn pim-clock-in (line)
+    (let (task (pim-task-at line))
+      (cond (= task "") (ed-message "Put the caret on a task or a heading first")
+            true (let (stopped (pim-stop-clocks))
+                   (insert clock (dict :task task :item (pim-item-at line) :file *file* :day *date*
+                                       :start (now) :stop 0 :mins 0))
+                   (ed-message (str "⏱ " task (cond (empty? stopped) "" true (str "  (stopped " (first stopped) ")"))))))))
+  (defn pim-clock-out ()
+    (let (stopped (pim-stop-clocks))
+      (ed-message (cond (empty? stopped) "No clock running" true (str "Stopped " (first stopped))))))
+  (defn pim-clock-status ()
+    (let (r (pim-running))
+      (ed-message (cond (empty? r) "No clock running"
+                        true (str "⏱ " (field-get (first r) :task) " — " (pim-mins (first r)) " min")))))
+  (defn pim-hm (m) (str (floor (/ m 60)) ":" (let (x (mod (round m) 60)) (cond (< x 10) (str "0" x) true x))))
+  ;; Time per task between two days (inclusive), as a markdown table — org's clock report.
+  (defn pim-clock-report (from to)
+    (let (rows  (records (query clock :where "day >= ? AND day <= ? AND stop > 0" :params (list from to)))
+          tasks (reduce (fn (acc r) (cond (some? (fn (x) (= x (field-get r :task))) acc) acc
+                                          true (append acc (list (field-get r :task)))))
+                        (list) rows)
+          sum-of (fn (task) (reduce (fn (a r) (cond (= (field-get r :task) task) (+ a (field-get r :mins)) true a)) 0 rows))
+          total (reduce (fn (a r) (+ a (field-get r :mins))) 0 rows))
+      (cond (empty? rows) "_no time clocked_"
+            true (str "| task | time |\n|---|---:|\n"
+                      (str-join "\n" (map (fn (task) (str "| " task " | " (pim-hm (sum-of task)) " |"))
+                                          (sort-by (fn (task) (- 0 (sum-of task))) tasks)))
+                      "\n| **total** | **" (pim-hm total) "** |"))))
+
+  ;; ── done log / archive (org C-c C-x C-a) ───────────────────────────────────
+  (defn pim-done-report (from to)
+    (let (rows (records (query done :where "day >= ? AND day <= ?" :params (list from to) :order "at")))
+      (cond (empty? rows) "_nothing finished_"
+            true (str-join "\n" (map (fn (r) (str "- " (field-get r :day) "  " (field-get r :task))) rows)))))
+  ;; Every "- [x]" line of the note moves under "## Archive" at its end.
+  (defn pim-archive (text)
+    (let (lines (str-split text "\n")
+          done? (fn (l) (= (nth (pim-parse l) 1) "done"))
+          moved (filter done? lines)
+          kept  (filter (fn (l) (not (done? l))) lines)
+          body  (str-join "\n" kept))
+      (cond (empty? moved) nil
+            (str-contains body "\n## Archive") (str body "\n" (str-join "\n" moved) "\n")
+            true (str (str-trim body) "\n\n## Archive\n\n" (str-join "\n" moved) "\n"))))
+
+  ;; ── life tracker ───────────────────────────────────────────────────────────
+  ;; You type the thing; its kind is looked up, so "coffee" is enough. Extend the dicts freely.
+  (def pim-kinds (dict :coffee "drink" :espresso "drink" :tea "drink" :water "drink" :beer "drink" :wine "drink"
+                       :cigar "smoke" :cigarette "smoke"
+                       :weed "weed" :joint "weed" :bong "weed"
+                       :run "exercise" :walk "exercise" :gym "exercise" :swim "exercise" :yoga "exercise"
+                       :bike "exercise" :stretch "exercise"
+                       :sleep "sleep" :weight "body" :mood "mood"))
+  (def pim-units (dict :drink "un" :smoke "un" :weed "un" :exercise "min" :food "kcal"
+                       :sleep "h" :body "kg" :mood "/10"))
+  ;; The kind of the first word the dict knows: "red wine" is a drink, "🍕 pizza" is food.
+  (defn pim-kind-of (thing)
+    (let (known (filter (fn (w) (dict-has pim-kinds w)) (pim-words thing)))
+      (cond (empty? known) "food" true (dict-get pim-kinds (first known)))))
+  (defn pim-unit-of (kind) (cond (dict-has pim-units kind) (dict-get pim-units kind) true "un"))
+
+  (defn track (thing qty unit note)
+    (let (k (pim-kind-of thing)
+          u (cond (= unit "") (pim-unit-of k) true unit))
+      (insert log (dict :at *now* :day *date* :kind k :item thing :qty qty :unit u :note note))
+      (str thing " " qty " " u (cond (= note "") "" true (str " | " note)))))
+
+  ;; "red wine 2 glass | with Ana" → ("red wine" 2 "glass" "with Ana"): the thing is every word
+  ;; before the first number. "walk 30" → ("walk" 30 "" ""), "joint" → ("joint" 1 "" "").
+  (defn pim-parse-log (s)
+    (let (note (let (n (pim-rest-after s " | ")) (cond (nil? n) "" true (str-trim n)))
+          w    (pim-words (pim-before s " | "))
+          ws   (loop (i 0) (cond (>= i (length w)) i (pim-number? (nth w i)) i true (recur (inc i)))))
+      (list (str-lower (str-join " " (take ws w)))
+            (cond (< ws (length w)) (->number (nth w ws)) true 1)
+            (cond (< (+ ws 1) (length w)) (nth w (+ ws 1)) true "")
+            note)))
+  (defn pim-track (s) (apply track (pim-parse-log s)))
+
+  (defn pim-track-line (line)
+    (let (p (pim-parse line) ind (nth p 0) body (nth p 2))
+      (cond (str-matches (str-trim line) "^- [0-9][0-9]:[0-9][0-9]  ") (ed-message "Already logged")
+            (or (= (str-trim body) "") (pim-number? (first (pim-words body)))) (ed-message "Nothing to log on this line")
+            true (pim-set-line (str ind "- " *time* "  " (pim-track body))))))
+
+  (defn pim-total (rows kind)
+    (reduce (fn (a r) (cond (= (field-get r :kind) kind) (+ a (field-get r :qty)) true a)) 0 rows))
+  (defn pim-track-report (from to)
+    (let (rows  (records (query log :where "day >= ? AND day <= ?" :params (list from to) :order "at"))
+          kinds (reduce (fn (acc r) (cond (some? (fn (k) (= k (field-get r :kind))) acc) acc
+                                          true (append acc (list (field-get r :kind)))))
+                        (list) rows))
+      (cond (empty? rows) "_nothing logged_"
+            true (str-join " · " (map (fn (k) (str k " " (pim-total rows k) " "
+                                                   (field-get (first (filter (fn (r) (= (field-get r :kind) k)) rows)) :unit)))
+                                      kinds)))))
+  (defn pim-day-log (day)
+    (let (rows (records (query log :where "day = ?" :params (list day) :order "at")))
+      (cond (empty? rows) "_nothing logged_"
+            true (str (str-join "\n" (map (fn (r) (str "- " (substr (field-get r :at) 11 16) "  " (field-get r :item)
+                                                      " " (field-get r :qty) " " (field-get r :unit)
+                                                      (cond (= (field-get r :note) "") "" true (str " | " (field-get r :note)))))
+                                          rows))
+                      "\n\n" (pim-track-report day day)))))
+  ;; Days in a row, ending today (or yesterday, if today has nothing yet), with this kind logged.
+  (defn pim-streak (kind)
+    (let (has? (fn (d) (> (count-records log :where "kind = ? AND day = ?" :params (list kind d)) 0))
+          from (cond (has? *date*) *date* true (date-add *date* -1 :days)))
+      (loop (d from n 0)
+        (cond (has? d) (recur (date-add d -1 :days) (inc n)) true n))))
+
+  ;; ── notes: daily and weekly (org-journal, the weekly review) ───────────────
+  (def pim-weekday (dict :Monday 0 :Tuesday 1 :Wednesday 2 :Thursday 3 :Friday 4 :Saturday 5 :Sunday 6))
+  (defn pim-monday (day) (date-add day (- 0 (dict-get pim-weekday (date-format day "EEEE"))) :days))
+  (defn pim-daily-template (day)
+    (str "# " day " · " (date-format day "EEEE") "\n\n"
+         "## Agenda\n\n" (pim-block "(pim-agenda 1)") "\n\n"
+         "## Log\n\n\n"
+         "## Notes\n\n"))
+  (defn pim-weekly-template (monday)
+    (let (sunday (date-add monday 6 :days)
+          q (fn (f) (str "(" f " \"" monday "\" \"" sunday "\")")))
+      (str "# Week of " monday "\n\n"
+           "## Done\n\n"          (pim-block (q "pim-done-report")) "\n\n"
+           "## Time\n\n"          (pim-block (q "pim-clock-report")) "\n\n"
+           "## Tracker\n\n"       (pim-block (q "pim-track-report")) "\n\n"
+           "## Coming up\n\n"     (pim-block "(pim-agenda 7)") "\n\n"
+           "## Inbox\n\n"         (pim-block "(pim-inbox)") "\n\n"
+           "## Undated\n\n"       (pim-block "(pim-someday)") "\n\n"
+           "## Reflection\n\n- What went well?\n- What didn't?\n- What matters next week?\n")))
+
+  ;; ── capture (org-capture) — used by pim/Capture.eeform ─────────────────────
+  (defn pim-capture (kind text)
+    (let (s (str-trim text))
+      (cond (= s "") "Nothing to capture"
+            (= kind "log") (str "Logged " (pim-track s))
+            true (pim-said (pim-add s (cond (= kind "inbox") (list "inbox") true (list)))))))
+
+  ;; …and what opens at launch: today's note
+  (ed-new (str *date* ".md") (pim-daily-template *date*)))
+
+;; ── keys ─────────────────────────────────────────────────────────────────────
+;; ⌃⌥ + a letter, so nothing of the app's or CodeMirror's is taken.
+
+;; ⌘D — today's note, created from the template the first time
+(bind "Mod-d" (ed-new (str *date* ".md") (pim-daily-template *date*)))
+
+;; ⌃⌥T — cycle the caret's line: text → - [ ] {#id} (an agenda item) → - [x] ✓ date (done there too) → -
+(bind "Ctrl-Alt-t" (pim-cycle *line-text*))
+;; ⌃⌥P — cycle its priority: !!! → !! → ! → none
+(bind "Ctrl-Alt-p" (pim-priority *line-text*))
+;; ⌃⌥A — link a hand-typed task to the agenda, or push an edited linked line to its item
+(bind "Ctrl-Alt-a" (pim-schedule *line-text*))
+;; ⌃⌥W — the next seven days, as a block ⌃⌥U keeps fresh
+(bind "Ctrl-Alt-w" (pim-insert-block "(pim-agenda 7)"))
+;; ⌃⌥U — recompute every <!-- eel: … --> block, and tick the lines finished in the agenda
+(bind "Ctrl-Alt-u" (ed-set-buffer (pim-sync (pim-update-blocks *buffer*))) (ed-goto *cursor*))
+;; ⌃⌥X — move the finished tasks to "## Archive" at the end of the note
+(bind "Ctrl-Alt-x"
+  (let (next (pim-archive *buffer*))
+    (cond (nil? next) (ed-message "No finished tasks here")
+          true (list (ed-set-buffer next) (ed-goto *cursor*)))))
+
+;; ⌃⌥I / ⌃⌥O / ⌃⌥K — clock in on the task or heading at the caret, clock out, what's running
+(bind "Ctrl-Alt-i" (pim-clock-in *line-text*))
+(bind "Ctrl-Alt-o" (pim-clock-out))
+(bind "Ctrl-Alt-k" (pim-clock-status))
+
+;; ⌃⌥L — log the caret's line to the tracker ("coffee 2", "walk 30", "rice 550 kcal | lunch")
+(bind "Ctrl-Alt-l" (pim-track-line *line-text*))
+;; ⌃⌥C — one keystroke for the thing you do twenty times a day
+(bind "Ctrl-Alt-c" (ed-message (str "Logged " (track "coffee" 1 "" ""))))
+;; ⌃⌥R — today's tracker log at the caret
+(bind "Ctrl-Alt-r" (pim-insert-block (str "(pim-day-log \"" *date* "\")")))
+
+;; ⌃⌥V — this week's review note, filled in
+(bind "Ctrl-Alt-v"
+  (ed-new (str "reviews/" (pim-monday *date*) " week.md") (pim-weekly-template (pim-monday *date*))))
+;; ⌃⌥N — capture from anywhere: a small window, type, Enter
+(bind "Ctrl-Alt-n" (ed-form "pim/Capture"))

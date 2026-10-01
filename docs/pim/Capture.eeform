@@ -1,0 +1,23 @@
+;; Capture.eeform — org-capture for EEditor. ⌃⌥N opens it over whatever you're doing: type,
+;; Enter, and it's gone. Needs the PIM library (docs/pim/pim.eelisp) loaded by (on-start …).
+;;
+;;   task   → an agenda item; "dentist tomorrow !! #health" is dated, prioritised, categorised
+;;   inbox  → the same, plus the category "inbox", for the things you'll sort out later
+;;   log    → the life tracker: "coffee 2", "walk 30", "rice 550 kcal | lunch"
+
+(form "Capture" :size (420 176) :on-load cap-load
+  (textbox txtWhat :placeholder "dentist tomorrow !! #health" :required true :at (16 16) :size (388 28))
+  (radio optKind :items ("task" "inbox" "log") :value "task" :at (16 56) :size (110 84))
+  (label lblStatus :at (136 60) :size (268 48))
+  (button btnSave :text "Capture" :submit true :default true :at (236 132) :size (80 30) :on-click cap-save)
+  (button btnClose :text "Close" :cancel true :at (324 132) :size (80 30) :on-click cap-close))
+
+(defn cap-load (f) (ui-focus "txtWhat"))
+
+;; The window stays open for the next one: the message goes in the status line, the box is cleared.
+(defn cap-save (f)
+  (ui-set "lblStatus" :text (pim-capture (ui-get f "optKind") (ui-get f "txtWhat")))
+  (ui-set "txtWhat" :value "")
+  (ui-focus "txtWhat"))
+
+(defn cap-close (f) (ui-close))
