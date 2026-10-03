@@ -23,7 +23,8 @@
     "engine:wasm": "scripts/build-wasm-engine.sh",
     "runtime:template": "node scripts/build-runtime-template.mjs",
     "export-app": "vite-node scripts/export-app.ts --",
-    "deploy:site": "scripts/deploy-site.sh"
+    "deploy:site": "scripts/deploy-site.sh",
+    "pim:sample": "vite-node scripts/pim-sample.ts --"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.0",
@@ -36,6 +37,7 @@
     "@lezer/highlight": "^1.2.4",
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-dialog": "^2.7.2",
+    "@tauri-apps/plugin-notification": "^2.5.1",
     "codemirror": "^6.0.1",
     "marked": "^14.0.0",
     "mermaid": "^11.17.2"

@@ -18,7 +18,7 @@ export interface FormHostOptions {
   /** Whether there is a form at `path` — how a name is found beside the form that asks for it. */
   exists(path: string): boolean;
   /** What a runner of the form at `path` needs besides the forms: images, sheets, messages, output. */
-  runnerOptions(path: string): Pick<FormRunnerOptions, "imageUrl" | "sheetView" | "onMessage" | "onError" | "note">;
+  runnerOptions(path: string): Pick<FormRunnerOptions, "imageUrl" | "sheetView" | "onMessage" | "onError" | "note" | "onEditor">;
   /** Tell the person why something didn't happen. */
   say(message: string): void;
   /** A form's file didn't load; the engine's message. (The app also notes it in the REPL.) */

@@ -1,11 +1,11 @@
 ;; ═══ EEditor PIM — org-mode habits in EELisp ════════════════════════════════════════════════
 ;;
 ;; Append this to .eeditor/keybindings.eelisp (⌘⇧K opens it). It replaces any (on-start …) you
-;; already have; keep your own (bind …) forms. Guide: docs/PIM.md.
+;; already have; keep your own (bind …) and (on-load …) forms. Guide: docs/PIM.md.
 ;;
-;; The (on-start …) body is the library: it runs once per launch. ⌘S reloads the (bind …) forms
-;; but NOT this one, so after editing it, select the whole (on-start …) form and press ⌘⇧Enter.
-;; That works because the first thing it does is make `on-start` an ordinary macro.
+;; The (on-load …) body is the library. It runs at launch and again every time the file is saved,
+;; so an edit to it takes effect on ⌘S. (on-start …) only picks what opens at launch; (on-tick …)
+;; runs once a minute — reminders, and ticking lines whose items you finished elsewhere.
 ;;
 ;; Tasks are the built-in agenda's items: what you tick in a note is ticked in the agenda panel,
 ;; the calendar shows it, your rules file it, recurrence rolls it forward. The notes are the view
@@ -14,8 +14,19 @@
 ;; Everything is stored in the workspace database (.eeditor/eeditor.db), the one the agenda panel,
 ;; the REPL and forms already use. Don't call open-agenda here: it swaps out that whole database.
 
-(on-start
-  (defmacro on-start (. body) (cons 'do body))
+(on-load
+  ;; ── settings ───────────────────────────────────────────────────────────────
+  ;; Where capture files each kind of line: a note ("today" is today's daily note) and a heading.
+  (def pim-capture-to (dict :task (list "today" "## Tasks")
+                            :inbox (list "inbox.md" "## Inbox")
+                            :log (list "today" "## Log")))
+  ;; Notes, or folders, whose hand-typed "- [ ]" lines ⌃⌥S makes agenda items — org's agenda files.
+  ;; (Lines with a {#id} are kept in step everywhere.) e.g. (list "projects" "inbox.md")
+  (def pim-agenda-files (list))
+  ;; Once a minute, tick the lines (in every note) whose items were finished in the agenda.
+  (def pim-sweep-every-minute true)
+  ;; How long after its time a reminder still fires — say EEditor was closed at 15:00.
+  (def pim-remind-grace 60)
 
   ;; ── tables ─────────────────────────────────────────────────────────────────
   ;; clock: time spent on a task (org's CLOCK lines). A running clock has stop = 0.
@@ -36,18 +47,13 @@
   ;; log: the life tracker. A thing, an amount, at a time.
   (deftable log   ((at :type string) (day :type string) (kind :type string) (item :type string)
                    (qty :type number) (unit :type string) (note :type string)))
+  ;; reminded: the reminders already shown, so each fires once.
+  (deftable reminded ((item :type number) (day :type string) (at :type string)))
 
   ;; ── text ───────────────────────────────────────────────────────────────────
-  ;; CodeMirror offsets count UTF-16 units; str-len counts characters. An emoji is one of the
-  ;; second and two of the first, so line ranges are measured with this.
-  (defn pim-u16 (s)
-    (reduce (fn (n c) (+ n (cond (= c "") 0
-                                 (str-matches c "[\\x{10000}-\\x{10FFFF}]") 2
-                                 true 1)))
-            0 (str-split s "")))
-  (defn pim-line-from () (- *cursor* (- *col* 1)))
-  (defn pim-set-line (text)
-    (ed-replace-range (pim-line-from) (+ (pim-line-from) (pim-u16 *line-text*)) text))
+  ;; The caret's line, rewritten. *line-from* / *line-to* are offsets as the editor counts them, so
+  ;; an emoji on the line is no trouble.
+  (defn pim-set-line (text) (ed-replace-range *line-from* *line-to* text))
 
   (defn pim-indent (s)
     (loop (i 0)
@@ -93,8 +99,8 @@
   ;; The words of a task, with every marker gone — what a clock or the done log records.
   (defn pim-title (body) (pim-unbang (pim-unlink (pim-unstamp body))))
 
-  (defn pim-log-done (task id)
-    (insert done (dict :at *now* :day *date* :task task :item (or id 0) :file *file*)))
+  (defn pim-log-done (task id file)
+    (insert done (dict :at *now* :day *date* :task task :item (or id 0) :file file)))
 
   ;; ── the agenda ─────────────────────────────────────────────────────────────
   (defn pim-live-ids () (map record-id (records (items))))
@@ -156,7 +162,7 @@
         (= state "todo")
           (let (id   (pim-item-id body)
                 next (cond (nil? id) false true (item-done id)))
-            (pim-log-done (pim-title body) id)
+            (pim-log-done (pim-title body) id *file*)
             (cond (= (type next) "item")
                     (let (d (item->dict next))
                       (list (pim-set-line (str ind "- [ ] " (str-replace body (str "{#" id "}")
@@ -231,16 +237,49 @@
     (pim-lines (filter (fn (r) (pim-in? c r)) (records (items))) (str "_nothing in " c "_")))
 
   ;; Lines whose item was finished elsewhere — the agenda panel's Done, the REPL — are ticked here.
-  (defn pim-sync (text)
+  (defn pim-sync-in (text file live)
+    (str-join "\n"
+      (map (fn (l)
+             (let (p (pim-parse l) id (pim-item-id (nth p 2)))
+               (cond (and (= (nth p 1) "todo") id (not (some? (fn (x) (= x id)) live)))
+                       (do (pim-log-done (pim-title (nth p 2)) id file)
+                           (str (nth p 0) "- [x] " (nth p 2) " ✓ " *date*))
+                     true l)))
+           (str-split text "\n"))))
+  (defn pim-sync (text) (pim-sync-in text *file* (pim-live-ids)))
+
+  ;; ── every note at once ─────────────────────────────────────────────────────
+  ;; (notes) lists the workspace's notes and (read-note p) reads one, as saved — and EEditor saves
+  ;; open tabs before a key or a tick runs. A note is rewritten with (ed-write p new old): if you
+  ;; typed into it in the meantime it's left alone, and the next sweep gets it.
+  (defn pim-agenda-file? (path)
+    (some? (fn (f) (or (= path f) (str-starts-with path (str f "/")))) pim-agenda-files))
+  ;; Unlinked "- [ ] …" lines become agenda items.
+  (defn pim-link-new (text)
+    (str-join "\n"
+      (map (fn (l)
+             (let (p (pim-parse l) body (nth p 2))
+               (cond (and (= (nth p 1) "todo") (nil? (pim-item-id body)) (!= (pim-title body) ""))
+                       (str (nth p 0) "- [ ] " body " {#" (dict-get (pim-add (pim-unstamp body) (list)) :id) "}")
+                     true l)))
+           (str-split text "\n"))))
+  ;; One note: ticked where its items are done, and (link? and an agenda file) its new tasks linked.
+  ;; An editor command, or nil when the note doesn't change.
+  (defn pim-sweep-note (path live link?)
+    (let (old (or (read-note path) ""))
+      (cond (not (str-contains old "- [ ] ")) nil   ;; most notes: nothing to look at
+            true (let (linked (cond (and link? (pim-agenda-file? path)) (pim-link-new old) true old)
+                       new (pim-sync-in linked path live))
+                   (cond (= new old) nil true (ed-write path new old))))))
+  (defn pim-sweep (link?)
     (let (live (pim-live-ids))
-      (str-join "\n"
-        (map (fn (l)
-               (let (p (pim-parse l) id (pim-item-id (nth p 2)))
-                 (cond (and (= (nth p 1) "todo") id (not (some? (fn (x) (= x id)) live)))
-                         (do (pim-log-done (pim-title (nth p 2)) id)
-                             (str (nth p 0) "- [x] " (nth p 2) " ✓ " *date*))
-                       true l)))
-             (str-split text "\n")))))
+      (filter (fn (c) (not (nil? c))) (map (fn (p) (pim-sweep-note p live link?)) (notes)))))
+  (defn pim-sweep-now ()
+    (let (changed (pim-sweep true))
+      (cons (ed-message (cond (empty? changed) "Every note is in step with the agenda"
+                              true (str "Brought " (length changed) " note" (cond (= (length changed) 1) "" true "s")
+                                        " in step with the agenda")))
+            changed)))
 
   ;; ── dynamic blocks (org #+BEGIN: … #+END) ──────────────────────────────────
   ;;   <!-- eel: (pim-agenda 7) -->
@@ -254,8 +293,7 @@
   ;; line has already typed "- [ ] "), otherwise it goes on the line below.
   (defn pim-insert-block (expr)
     (cond (= (pim-title (nth (pim-parse *line-text*) 2)) "") (pim-set-line (pim-block expr))
-          true (ed-replace-range (+ (pim-line-from) (pim-u16 *line-text*)) (+ (pim-line-from) (pim-u16 *line-text*))
-                                 (str "\n" (pim-block expr)))))
+          true (ed-replace-range *line-to* *line-to* (str "\n" (pim-block expr)))))
   (defn pim-update-blocks (text)
     (let (parts (str-split text pim-open))
       (str (first parts)
@@ -421,14 +459,103 @@
            "## Reflection\n\n- What went well?\n- What didn't?\n- What matters next week?\n")))
 
   ;; ── capture (org-capture) — used by pim/Capture.eeform ─────────────────────
-  (defn pim-capture (kind text)
+  ;; A line filed under a heading of a note (pim-capture-to says which): "today" is the daily note,
+  ;; made from its template first if it isn't there yet.
+  (defn pim-note-path (where) (cond (= where "today") (str *date* ".md") true where))
+  (defn pim-file-line (kind line)
+    (let (to (dict-get pim-capture-to kind)
+          path (pim-note-path (first to))
+          make (cond (and (= (first to) "today") (nil? (read-note path))) (list (ed-write path (pim-daily-template *date*)))
+                     true (list)))
+      (cond (nil? to) (list) true (append make (list (ed-append path line (second to)))))))
+  ;; (message commands): what to say, and the editor commands that file the line.
+  (defn pim-capture* (kind text)
     (let (s (str-trim text))
-      (cond (= s "") "Nothing to capture"
-            (= kind "log") (str "Logged " (pim-track s))
-            true (pim-said (pim-add s (cond (= kind "inbox") (list "inbox") true (list)))))))
+      (cond (= s "") (list "Nothing to capture" (list))
+            (= kind "log") (let (logged (pim-track s))
+                             (list (str "Logged " logged) (pim-file-line kind (str "- " *time* "  " logged))))
+            true (let (d (pim-add s (cond (= kind "inbox") (list "inbox") true (list))))
+                   (list (pim-said d) (pim-file-line kind (str "- [ ] " s " {#" (dict-get d :id) "}")))))))
+  (defn pim-capture (kind text) (first (pim-capture* kind text)))
 
-  ;; …and what opens at launch: today's note
-  (ed-new (str *date* ".md") (pim-daily-template *date*)))
+  ;; ── refile (org C-c C-w) ───────────────────────────────────────────────────
+  ;; Every heading in every note, as "path › ## Heading" — and each note on its own, for its end.
+  (defn pim-headings (path)
+    (map (fn (l) (str path " › " (str-trim l)))
+         (filter (fn (l) (str-matches l "^#{1,6} ")) (str-split (or (read-note path) "") "\n"))))
+  (defn pim-refile-targets ()
+    (reduce (fn (acc p) (append acc (cons p (pim-headings p)))) (list) (notes)))
+  ;; The caret's line moves to the target; the agenda item, if it has one, goes with it.
+  (defn pim-refile (target)
+    (let (path (str-trim (pim-before target " › "))
+          heading (pim-rest-after target " › "))
+      (cond (= (str-trim *line-text*) "") (ed-message "Nothing to refile on this line")
+            (not (str-contains path ".")) (ed-message (str "Refile to a note, like inbox.md — not " path))
+            true (list (ed-replace-range *line-from* (+ *line-to* 1) "")
+                       (ed-append path (str-trim *line-text*) (or heading ""))
+                       (ed-message (str "Refiled to " target))))))
+
+  ;; ── asked for (the prompt) ─────────────────────────────────────────────────
+  ;; ⌃⌥D: a date for the caret's task, in the words the agenda reads; "none" takes it away.
+  (defn pim-set-when (answer)
+    (let (id (pim-item-id (nth (pim-parse *line-text*) 2))
+          a (str-trim answer))
+      (cond (nil? id) (ed-message "Not an agenda task — ⌃⌥T makes it one")
+            (not (pim-live? id)) (ed-message (str "#" id " isn't in the agenda any more"))
+            (some? (fn (x) (= x (str-lower a))) (list "none" "-" "no date"))
+              (do (item-set id :when "") (ed-message (str "#" id " has no date now")))
+            true (let (w (dict-get (smart-parse (str "x " a)) :when))
+                   (cond (nil? w) (ed-message (str "\"" a "\" isn't a date I know"))
+                         true (do (item-set id :when w) (ed-message (pim-said (item->dict (item-get id))))))))))
+  ;; ⌃⌥G: a category for it, picked from the agenda's (or a new one).
+  (defn pim-category-names () (filter (fn (c) (!= c "")) (map str-trim (str-split (categories) "\n"))))
+  (defn pim-set-category (answer)
+    (let (id (pim-item-id (nth (pim-parse *line-text*) 2))
+          c (str-trim answer))
+      (cond (nil? id) (ed-message "Not an agenda task — ⌃⌥T makes it one")
+            (not (pim-live? id)) (ed-message (str "#" id " isn't in the agenda any more"))
+            (not (str-matches c "^[A-Za-z_][A-Za-z0-9_/-]*$")) (ed-message (str "\"" c "\" can't be a category name"))
+            true (do (pim-file-under id (list c))
+                     (ed-message (str "#" id " filed under " c))))))
+
+  ;; ── reminders ──────────────────────────────────────────────────────────────
+  ;; An item for today with a time — "call Ana at 15:00", or (item-set 12 :remind "14:45") —
+  ;; notifies you then (EEditor has to be running). Each one once.
+  (defn pim-mins-of (hm)   ;; "15:05" → 905
+    (let (p (str-split hm ":")) (+ (* 60 (->number (first p))) (->number (second p)))))
+  (defn pim-time-in (text)
+    (let (t (filter (fn (w) (str-matches w "^([01]?[0-9]|2[0-3]):[0-5][0-9]$"))
+                    (map (fn (w) (str-trim (str-replace (str-replace w "," "") "." ""))) (pim-words text))))
+      (cond (empty? t) nil true (first t))))
+  (defn pim-remind-at (r)
+    (let (d (item->dict (item-get (record-id r))) explicit (dict-get d :remind))
+      (cond (and explicit (!= explicit "")) explicit true (pim-time-in (field-get r :text)))))
+  (defn pim-due-reminders ()
+    (let (now (pim-mins-of *time*))
+      (filter (fn (r)
+                (let (at (pim-remind-at r))
+                  (and at
+                       (<= (pim-mins-of at) now)
+                       (< (- now (pim-mins-of at)) pim-remind-grace)
+                       (= 0 (count-records reminded :where "item = ? AND day = ?" :params (list (record-id r) *date*))))))
+              (records (items-on *date*)))))
+  (defn pim-reminders ()
+    (map (fn (r)
+           (insert reminded (dict :item (record-id r) :day *date* :at *now*))
+           (ed-notify (str "⏰ " (pim-remind-at r)) (field-get r :text)))
+         (pim-due-reminders)))
+
+  ;; What (on-tick …) runs, once a minute.
+  (defn pim-tick ()
+    (append (pim-reminders) (cond pim-sweep-every-minute (pim-sweep false) true (list))))
+
+)
+
+;; What opens at launch: today's note, made from the template the first time.
+(on-start (ed-new (str *date* ".md") (pim-daily-template *date*)))
+
+;; Once a minute: reminders that are due, and lines ticked where their item was finished.
+(on-tick (pim-tick))
 
 ;; ── keys ─────────────────────────────────────────────────────────────────────
 ;; ⌃⌥ + a letter, so nothing of the app's or CodeMirror's is taken.
@@ -469,3 +596,13 @@
   (ed-new (str "reviews/" (pim-monday *date*) " week.md") (pim-weekly-template (pim-monday *date*))))
 ;; ⌃⌥N — capture from anywhere: a small window, type, Enter
 (bind "Ctrl-Alt-n" (ed-form "pim/Capture"))
+
+;; ⌃⌥S — every note in step with the agenda: lines whose items were finished are ticked, and in
+;; pim-agenda-files the hand-typed "- [ ]" lines become items
+(bind "Ctrl-Alt-s" (pim-sweep-now))
+;; ⌃⌥F — refile the caret's line under a heading of any note (type to narrow the list)
+(bind "Ctrl-Alt-f" (ed-prompt "Refile to" pim-refile "" (pim-refile-targets)))
+;; ⌃⌥D — a date for the caret's task: "tomorrow", "in 3 days", "2026-10-12", "none"
+(bind "Ctrl-Alt-d" (ed-prompt "When?" pim-set-when))
+;; ⌃⌥G — file the caret's task under a category
+(bind "Ctrl-Alt-g" (ed-prompt "Category" pim-set-category "" (pim-category-names)))

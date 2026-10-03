@@ -79,6 +79,8 @@ export interface FormRunnerOptions {
   onOpen: (path: string, how?: { into?: string; copy?: boolean }) => void;
   /** A handler wrote the public variable `name` — for the host to tell the other forms. */
   onPublic?: (name: string) => void;
+  /** `(ui-editor …)`: editor commands for the app to carry out. Left out where there's no editor. */
+  onEditor?: (commands: JsonValue) => void;
   /** The runner was destroyed: the form is gone. */
   onDestroy?: () => void;
   onError: (message: string) => void;
@@ -539,6 +541,8 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
         return opts.onPublic?.(ch.name);
       case "pick":
         return void pickFile().then((file) => file && fire(ch.handler, undefined, file));
+      case "editor":
+        return opts.onEditor?.(ch.commands);
     }
   }
 

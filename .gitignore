@@ -27,3 +27,6 @@ dist-runtime/
 
 # graphify knowledge-graph output (generated locally)
 graphify-out/
+
+# the PIM sample workspace (npm run pim:sample)
+pim-sample/

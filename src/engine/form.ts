@@ -4,6 +4,7 @@
 import type { EngineClient } from "./client";
 import { isDict, isKeyword, isRecord, isResultSet, type JsonValue } from "./types";
 import { formState, type StateValue } from "../core/form";
+import { clockDefs } from "../core/keybindings";
 import PRELUDE from "../forms/prelude.eelisp?raw";
 import SPECTRUM from "../spectrum/zx.eelisp?raw";
 
@@ -19,7 +20,9 @@ export type UiChange =
   /** A public variable was written: the host tells the other forms of the same main. */
   | { kind: "public"; name: string }
   /** `(ui-pick handler)`: let the user pick a file, then run the handler with its bytes. */
-  | { kind: "pick"; handler: string };
+  | { kind: "pick"; handler: string }
+  /** `(ui-editor (ed-append …) …)`: editor commands, carried out by the app as a keybinding's are. */
+  | { kind: "editor"; commands: JsonValue };
 
 /**
  * Which open form a handler runs for — handed to it in `f` as `$form`, `$main`, `$key` and `$app`,
@@ -93,6 +96,8 @@ export function parseChange(v: JsonValue): UiChange | undefined {
     }
     case "public":
       return { kind: "public", name: text(v[1]) };
+    case "editor":
+      return { kind: "editor", commands: v[1] ?? [] };
     case "pick": {
       // (ui-pick my-handler) passes the function — {"$fn": name} — or 'my-handler, or its name
       const h = v[1];
@@ -169,7 +174,8 @@ export function createFormClient(engine: EngineClient): FormClient {
     },
     async call(handler, state) {
       await ensurePrelude();
-      const { result, output } = await ev(`(ui-run ${handler} ${formState(state)})`);
+      // *date*, *time*, *now* as a keybinding sees them — fresh, so a handler never files under yesterday
+      const { result, output } = await ev(`${clockDefs()}\n(ui-run ${handler} ${formState(state)})`);
       const changes = Array.isArray(result) ? result.map(parseChange).filter((c): c is UiChange => c !== undefined) : [];
       return { changes, output };
     },
