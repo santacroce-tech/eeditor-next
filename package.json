@@ -23,7 +23,8 @@
     "engine:wasm": "scripts/build-wasm-engine.sh",
     "runtime:template": "node scripts/build-runtime-template.mjs",
     "export-app": "vite-node scripts/export-app.ts --",
-    "deploy:site": "scripts/deploy-site.sh"
+    "deploy:site": "scripts/deploy-site.sh",
+    "pim:sample": "vite-node scripts/pim-sample.ts --"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.0",

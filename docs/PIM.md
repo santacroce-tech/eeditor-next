@@ -56,6 +56,16 @@ refresh. The one exception: it doesn't redraw while you're typing in it.
 
 ---
 
+## Try it first
+
+`npm run pim:sample` (or `npm run pim:sample -- ~/pim-demo`) builds a workspace with something in
+every part: an agenda with overdue, today, upcoming, repeating, undated and inbox items, a reminder
+three minutes away, notes whose tasks are linked to those items, a tracker and a clock with a few
+days of history, a dashboard of blocks, and `TRY ME.md` — a checklist of every key and what it
+should do. Open the folder as the workspace. Dates are relative to the day it's made, so make it
+again on the day you try it (it starts from scratch each time). It needs the engine binary, like
+`dev/pim-check.ts`.
+
 ## Install
 
 1. ⌘⇧K opens `.eeditor/keybindings.eelisp`. **Append** the whole of `docs/pim/pim.eelisp` to it
