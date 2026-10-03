@@ -1,11 +1,13 @@
 # EEditor as a PIM — org-mode habits, in EELisp
 
 *A guide and a working config for running tasks, agenda, time, habits and a life log out of
-EEditor. Verified against the engine and the app on 2026-09-30.*
+EEditor. Verified against the engine and the app on 2026-10-03.*
 
 The config is [`docs/pim/pim.eelisp`](pim/pim.eelisp) (keybindings + a library) plus
 [`docs/pim/Capture.eeform`](pim/Capture.eeform) (a capture window). Every behaviour described here
-is checked by `npx vite-node dev/pim-check.ts` (84 checks, real engine, real keybinding parser).
+is checked by `npx vite-node dev/pim-check.ts` (117 checks, real engine, real keybinding parser);
+the app's side of it — writing to open notes, the prompt, the minute tick — by
+`npx playwright test dev/ui/keyhooks.pw.mjs`.
 
 ---
 
@@ -43,9 +45,10 @@ and your rules (the ⚙ panel) run over it. So the item appears in the agenda pa
 | ⌃⌥T on a `- [ ] … {#12}` (tick it) | `item-done 12`; a repeating item rolls forward and the line follows it |
 | ⌃⌥P (priority) on a linked line | `item-set 12 :priority …` |
 | Edit the line, ⌃⌥A | `item-set 12` with the re-parsed text, date, priority, notes, tags |
-| Done / reschedule in the agenda panel or the calendar | ⌃⌥U ticks the note's line (and logs it) |
+| Done / reschedule in the agenda panel or the calendar | within a minute the line is ticked, in whichever note it is (and logged); ⌃⌥S or ⌃⌥U does it now |
 | Clock a linked task (⌃⌥I / ⌃⌥O) | `item-set 12 :clocked "1:35"` |
-| Capture (⌃⌥N) | `add`, with the category `inbox` if you picked *inbox* |
+| Capture (⌃⌥N) | `add`, with the category `inbox` if you picked *inbox* — and the linked line filed in a note |
+| ⌃⌥D / ⌃⌥G on a linked line | `item-set 12 :when …` / `assign 12 …`, asked for in a prompt |
 
 The agenda panel re-reads the items after every keybinding, form event and REPL eval (a small
 app change in `src/main.ts`, beside the sheet refresh that was already there). You never press
@@ -57,13 +60,18 @@ refresh. The one exception: it doesn't redraw while you're typing in it.
 
 1. ⌘⇧K opens `.eeditor/keybindings.eelisp`. **Append** the whole of `docs/pim/pim.eelisp` to it
    (keep your own `bind`s; later bindings win, so the PIM's ⌘D replaces the plain daily note).
-   If your file already has an `(on-start …)`, delete it — the PIM's is the library.
+   If your file already has an `(on-start …)`, delete it — the PIM's opens today's note.
 2. Copy `docs/pim/Capture.eeform` into the workspace as `pim/Capture.eeform`.
-3. Quit and relaunch. `(on-start …)` only runs at launch; ⌘S reloads the `bind`s but not it.
+3. ⌘S. That's all: the library is an `(on-load …)`, which runs when the file is saved as well as at
+   launch.
 
-**Editing the library later:** select the whole `(on-start …)` form and press ⌘⇧Enter. The first
-line of the library turns `on-start` into an ordinary macro, so after the first launch the form runs
-like any other code — no restart.
+**Editing the library later:** edit it and ⌘S. `(on-load …)` runs again on every save; the tables,
+the agenda and everything in them stay, and the settings (`pim-kinds`, `pim-capture-to`, …) go back
+to what the file says.
+
+> **If you installed the earlier version** (the library inside `(on-start …)`, starting with
+> `(defmacro on-start …)`): replace the whole block with the new file. Your data is in the
+> database, not in the config, so nothing is lost.
 
 > **If you used the earlier tracker snippet:** remove its `(open-agenda ".../life.db")`. The database
 > persists on its own now, and `open-agenda` doesn't "open a file for tables" — it swaps the *entire*
@@ -79,18 +87,21 @@ like any other code — no restart.
 | Outline, headings, folding | Markdown `#` headings; the gutter folds them | — |
 | `TODO` → `DONE` (`C-c C-t`) + `CLOSED:` stamp | `text` → `- [ ] … {#12}` (an agenda item) → `- [x] … ✓ 2026-09-30` (`item-done`) → `-`, logged to the `done` table | ⌃⌥T |
 | `[#A]` priorities | `!!!` / `!!` / `!` at the start of the task (what the agenda's parser reads), synced to the item | ⌃⌥P |
-| `SCHEDULED` / `DEADLINE` | Words on the line: `dentist tomorrow !! #health` → dated, priority 2, category *health*. Edit the line, ⌃⌥A updates the item; a hand-typed `- [ ]`, ⌃⌥A links it | ⌃⌥T / ⌃⌥A |
+| `SCHEDULED` / `DEADLINE` | Words on the line: `dentist tomorrow !! #health` → dated, priority 2, category *health*. Edit the line, ⌃⌥A updates the item; a hand-typed `- [ ]`, ⌃⌥A links it. Or ⌃⌥D and say when — `in 3 days`, `2026-10-12`, `none` | ⌃⌥T / ⌃⌥A / ⌃⌥D |
 | Repeaters `+1w` | `(item-set 12 :recurrence (every 1 :weeks))` — ⌃⌥T on the line then rolls it forward and keeps it open | REPL |
 | `org-agenda` (week view) | `(pim-agenda 7)`: the `pim-overdue` view, then `items-between` day by day, by priority; plus the agenda panel and the calendar, live | ⌃⌥W |
 | Agenda filters | Saved views `pim-overdue`, `pim-inbox` (`defview`); `(pim-category "work")` takes in `work/…` | REPL / blocks |
 | Dynamic blocks `#+BEGIN: … #+END` | `<!-- eel: (any expression) -->` … `<!-- /eel -->`; the markers are invisible in preview/PDF | ⌃⌥U refreshes all |
-| `org-capture` | A floating window: task / inbox / log, Enter, next | ⌃⌥N |
+| `org-capture` | A floating window: task / inbox / log, Enter, next. Each lands in the agenda (or the tracker) *and* as a line under a heading — `## Tasks` / `## Log` in today's note, `## Inbox` in `inbox.md` (`pim-capture-to`) | ⌃⌥N |
+| Refile (`C-c C-w`) | The caret's line moves under any heading of any note, picked from a list you narrow by typing | ⌃⌥F |
+| `org-agenda-files` | `pim-agenda-files`: notes or folders whose hand-typed `- [ ]` lines ⌃⌥S makes agenda items | ⌃⌥S |
+| Appointment reminders (`org-notify`, `appt`) | An item for today with a time — `call Ana at 15:00`, or `(item-set 12 :remind "14:45")` — notifies you then | — |
 | Clocking (`C-c C-x C-i/o`) + clock report | Clock in on the task or heading at the caret (stops the previous one), out, status; `(pim-clock-report from to)` | ⌃⌥I ⌃⌥O ⌃⌥K |
 | Archive (`C-c C-x C-a`) | Every `- [x]` line moves under `## Archive` at the end of the note | ⌃⌥X |
 | Habits / `org-habit` | The life tracker + `(pim-streak "exercise")` | ⌃⌥L ⌃⌥C ⌃⌥R |
 | `org-journal` / datetree | Daily note from a template (agenda block, Log, Notes) | ⌘D |
 | Weekly review | `reviews/<monday> week.md`: done, time, tracker, next 7 days, undated, prompts | ⌃⌥V |
-| Tags `:work:` | `#work` in text (tags panel); in ⌃⌥A each `#tag` also becomes an agenda category | — |
+| Tags `:work:` | `#work` in text (tags panel); in ⌃⌥A each `#tag` also becomes an agenda category; ⌃⌥G picks one from a list | ⌃⌥G |
 | Links `[[…]]`, backlinks | Same syntax, ⌘-click, backlinks bar | — |
 | `org-babel` | ```` ```eelisp ```` blocks, ⌘⇧Enter runs the one at the caret | ⌘⇧Enter |
 | Tables + formulas | Sheets (`.eesheet`) with EELisp formulas; `browse` for a table widget | — |
@@ -124,15 +135,20 @@ like any other code — no restart.
 **Planning.** Type tasks as plain lines anywhere and press ⌃⌥T. `call @Ana about the flat in 3 days !!`
 becomes an agenda item for Saturday, priority 2, with Ana as a person. It's in the agenda panel at
 once, and the line becomes `- [ ] call @Ana about the flat in 3 days !! {#14}`. Changed your mind?
-Edit the line to `in 5 days` and press ⌃⌥A. The panel is just as good a place to plan: an item
-you reschedule or finish there is reflected in the note at the next ⌃⌥U.
+Edit the line to `in 5 days` and press ⌃⌥A — or ⌃⌥D and type `in 5 days`. The panel is just as good
+a place to plan: an item you finish there is ticked in its note within a minute, whichever note it
+is. `call the dentist at 15:00` taps you on the shoulder at three.
 
 **Working.** Caret on `## Write the report`, ⌃⌥I: the clock runs. Caret on another task, ⌃⌥I: the
 first clock stops, the new one starts. ⌃⌥K tells you what's running, ⌃⌥O stops it.
 
 **Living.** In the Log section, `coffee 2` ⌃⌥L → `- 09:12  coffee 2 un`. `red wine 2 glass | with Ana`
 → drink, 2 glass, with a note. `🍕 pizza 800 kcal` → food. `walk 30` → exercise, 30 min. Or ⌃⌥C for
-the coffee you have twenty times a day, or ⌃⌥N and pick *log* from wherever you are.
+the coffee you have twenty times a day, or ⌃⌥N and pick *log* from wherever you are — the line goes
+under today's `## Log` whichever note is in front.
+
+**Sorting.** `inbox.md` fills up from capture. Go through it with ⌃⌥F: each line moves under the
+heading you pick, in whatever note.
 
 **Done.** ⌃⌥T on a task: `- [x] … ✓ 2026-09-30`, done in the agenda (it leaves the panel) and a
 row in the `done` table. A repeating one stays `- [ ]` and its `{#id}` moves to the next occurrence.
@@ -177,7 +193,11 @@ The library's building blocks, all callable in blocks, the REPL and your own bin
 | `(pim-day-log day)` | the day's tracker entries and totals |
 | `(pim-streak kind)` | consecutive days with that kind logged |
 | `(track thing qty unit note)` | log one entry directly |
-| `(pim-capture kind text)` | what the capture window calls: `"task"`, `"inbox"`, `"log"` |
+| `(pim-capture kind text)` | captures, and says what it did: `"task"`, `"inbox"`, `"log"` |
+| `(pim-capture* kind text)` | the same, as `(message commands)` — the commands file the line in its note (the capture window hands them to `ui-editor`) |
+| `(pim-sweep link?)` | editor commands that bring every note in step with the agenda (what the tick and ⌃⌥S run) |
+| `(pim-refile-targets)` | every note, and every heading in each, as `"path › ## Heading"` |
+| `(pim-reminders)` | `ed-notify` commands for the reminders due now (each fires once) |
 
 ---
 
@@ -207,8 +227,9 @@ The library's building blocks, all callable in blocks, the REPL and your own bin
 ## Things that bit while building this
 
 - **Offsets are UTF-16, `str-len` counts characters.** One emoji on a line used to make a line
-  rewrite one unit short and eat the next line's first character. `pim-u16` measures lines the way
-  CodeMirror does. Use `pim-set-line` in your own bindings rather than doing the arithmetic.
+  rewrite one unit short and eat the next line's first character. Don't measure lines with
+  `str-len`: `*line-from*` / `*line-to*` are the caret line's ends as the editor counts them, and
+  `pim-set-line` uses them.
 - **`<` compares numbers only.** `(< "2026-09-20" "2026-09-30")` is a type error; use
   `(date-diff a b)` (days, `a − b`).
 - **An agenda row's id is `(record-id r)`, not `(field-get r :id)`** — the latter is nil, so a
@@ -230,27 +251,42 @@ The library's building blocks, all callable in blocks, the REPL and your own bin
   bullet-only line over rather than nesting the block inside a list item.
 - **`(str "a" nil)` is `"anil"`** — guard values that may be nil before concatenating.
 - **Only `nil` and `false` are falsy.** `""`, `0` and `()` are true.
+- **`(on-load …)` runs again on every save** — so a `(def …)` in it resets what you changed at the
+  REPL (`(set! pim-kinds …)`). Make the change in the file. `deftable`, `defview` and
+  `defcategory` are safe to repeat: they keep what's there.
+- **Unsaved tabs are saved before any lisp runs** — a key, a tick, a prompt's answer. That's what
+  makes `(read-note …)` agree with the screen, and what `ed-write`'s "only if it still says this"
+  relies on.
+- **A form handler used to see the clock of the last key pressed** — `*date*` could be yesterday's.
+  Handlers get `*date*`, `*time*` and `*now*` fresh now, like keys.
 
 ---
 
-## Where org is still ahead — and what would close the gap
+## What closed the gap with org — and what's still missing
 
-In order of value for this use:
+The list that used to be here, in order of value, and what each became:
 
-1. **Sync is by keystroke, not live.** A task finished in the panel is ticked in its note at the
-   next ⌃⌥U *in that note*, and a `- [ ]` typed by hand is only linked when you ⌃⌥T/⌃⌥A it, because
-   EELisp can't read workspace files. A read-only `(read-note path)` / `(notes)` pair in the editor
-   host would let one command sweep every note.
-2. **Capture into a note.** `ed-open` is asynchronous, so a binding can't open `inbox.md` and then
-   append to it. An `(ed-append path text)` command would give org-capture's "file under heading"
-   and refile, and a daily-note log line from the capture window.
-3. **`*line-from*` / `*line-to*` in the binding context.** They are one line each in
-   `ui/keybindings.ts` and would make `pim-u16` unnecessary.
-4. **Reloading `on-start` on ⌘S.** Today it's the ⌘⇧Enter trick; a separate `(on-load …)` hook that
-   re-runs on reload (with `on-start` kept for "what to open") would make the library feel native.
-5. **A prompt.** A `(ed-prompt "Effort?" callback)` minibuffer would allow org's interactive bits
-   (set a date, pick a category) without a form.
-6. **Reminders.** Nothing notifies you at 15:00. The form `timer` control could, while a form is open;
-   a real one needs a host notification command.
+| Was | Now |
+|---|---|
+| **Sync by keystroke, not live.** A task finished in the panel was ticked at the next ⌃⌥U *in that note*; EELisp couldn't read other files. | The engine has `(notes)` and `(read-note path)` (read-only, inside the workspace). Once a minute `(on-tick (pim-tick))` sweeps every note and ticks the lines whose items are done; ⌃⌥S does it now, and also links hand-typed `- [ ]` lines in `pim-agenda-files`. |
+| **No capture into a note.** `ed-open` is asynchronous, so a binding couldn't open a note and append to it. | `(ed-append path text "## Heading")` files a line under a heading of any note, open or not, created if missing — so capture files into notes, and ⌃⌥F refiles. `(ed-write path text old)` rewrites a note, but only if it still says `old`: one you're typing into is left for the next sweep. Forms reach these through `(ui-editor …)`. |
+| **No `*line-from*` / `*line-to*`.** | In the context of every key, tick and prompt. `pim-u16` is gone. |
+| **`on-start` didn't reload on ⌘S** (the ⌘⇧Enter trick). | `(on-load …)` runs at launch and on every save; the library lives there. `(on-start …)` is back to "what opens". |
+| **No prompt.** | `(ed-prompt "When?" callback default choices)` asks, then runs `(callback answer)` like a key. ⌃⌥D (a date), ⌃⌥G (a category) and ⌃⌥F (refile, with every heading as a choice) use it. |
+| **No reminders.** | `(on-tick …)` once a minute plus `(ed-notify title body)` — a toast, and a system notification when EEditor isn't in front. Items for today with a time (`at 15:00`, or `:remind`) fire once each. |
 
-None of these is needed for the config above to work; each makes it a bit more like org.
+Still missing, in order of value:
+
+1. **Reminders only while EEditor runs.** Nothing is scheduled with the OS, so a closed app is a
+   silent one; a reminder up to `pim-remind-grace` minutes late still fires when it opens.
+2. **"Live" is a minute.** The sweep runs on the tick, not when the agenda changes. The agenda panel
+   could raise an event the config listens to — an `(on-agenda …)` hook — to make it immediate.
+3. **Refile moves a line, not a subtree.** Org carries a heading's children along; a heading's
+   section (to the next heading of its level) would be the natural unit.
+4. **A date set with ⌃⌥D lives in the item, not the line.** ⌃⌥A re-reads the line's words, so a
+   line that still says `tomorrow` puts that date back. The line could carry an ISO date the
+   parser reads (`2026-10-12`), rewritten by ⌃⌥D.
+5. **The agenda's parser knows `tomorrow`, `in 3 days`, ISO dates — not weekdays** (`friday`) nor
+   times (`at 3pm` stays in the text; the reminder reads `15:00` from it).
+
+None of these is needed for the config above to work.

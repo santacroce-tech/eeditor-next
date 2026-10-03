@@ -18,4 +18,12 @@
 (defn ed-form (path) (list "form" path))                    ;; open a .eeform and run it
 (defn ed-export (. path) (cons "export" path))              ;; a form (the one in front, with no name) as one HTML file
 (defn ed-message (text) (list "message" text))              ;; toast
+(defn ed-notify (title . body) (cons "notify" (cons title body)))  ;; toast, + a system notification when EEditor isn't in front
+;; Other notes. They're read with (notes) and (read-note path); these change them, open or not.
+(defn ed-write (path text . expected) (cons "write" (cons path (cons text expected))))  ;; replace a note's text (only if it still says `expected`)
+(defn ed-append (path text . heading) (cons "append" (cons path (cons text heading)))) ;; add to its end, or under a heading: "## Inbox"
+;; Ask, then run (callback answer) like a key — with the caret where it is then. Escape: nothing runs.
+;;   (ed-prompt "When?" pim-set-when)   (ed-prompt "When?" pim-set-when "tomorrow")
+;;   (ed-prompt "Category?" pim-set-category "" (categories-list))   ;; choices offered as you type
+(defn ed-prompt (label callback . more) (cons "prompt" (cons label (cons callback more))))
 (defn ed-nothing () (list))                                 ;; do nothing (useful in a cond)

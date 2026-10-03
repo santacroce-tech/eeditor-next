@@ -944,6 +944,7 @@ pub fn run() {
     });
     let app = builder
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_ios_files::init())
         .manage(ExternalFiles::default())
         .manage(PendingOpens::default())
