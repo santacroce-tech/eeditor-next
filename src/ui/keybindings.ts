@@ -6,12 +6,12 @@
 // Dispatch runs on the document in the *capture* phase, so a bound key wins over CodeMirror's own
 // bindings — and unbinding a key in the config hands it straight back to CodeMirror.
 
-import { parseKeybindings, eventKeyId, lispString, EMPTY_BODY, type Binding, type StartHook } from "../core/keybindings";
+import { parseKeybindings, eventKeyId, lispString, clockDefs, EMPTY_BODY, type Binding, type StartHook } from "../core/keybindings";
 import type { EngineClient } from "../engine/client";
 import type { WorkspaceClient } from "../engine/workspace";
 import type { JsonValue } from "../engine/types";
 import type { Editor } from "./editor";
-import { toast } from "./dialogs";
+import { promptModal, toast } from "./dialogs";
 import PRELUDE from "../keybindings/prelude.eelisp?raw";
 import DEFAULT_CONFIG from "../keybindings/default.eelisp?raw";
 
@@ -36,6 +36,8 @@ export interface Keybindings {
   loadPrelude(): Promise<void>;
   /** Carry out a value that is an editor command (or a list of them). True when it was one. */
   applyResult(v: JsonValue): boolean;
+  /** Run the config's `(on-tick …)` forms now — what the minute timer does. For tests and the REPL. */
+  tick(): Promise<void>;
 }
 
 export interface KeybindingsOptions {
@@ -56,9 +58,21 @@ export interface KeybindingsOptions {
   note: (text: string) => void;
   /** Put focus back on the document after a binding ran — the grid, when a sheet is showing. */
   focus?: () => void;
+  /**
+   * Write unsaved tabs to disk. Called before any lisp runs, so what `(read-note …)` reads is what
+   * is on screen — and a note rewritten with `ed-write` isn't built from a stale copy.
+   */
+  flush?: () => Promise<void>;
+  /**
+   * `(ed-write path text [expected])`: make a note say `text` — the open tab if there is one, else the
+   * file. With `expected`, only if the note still says that; false when it didn't (it had changed).
+   */
+  writeFile?: (path: string, text: string, expected?: string) => Promise<boolean>;
+  /** `(ed-append path text [heading])`: add `text` at the end of a note, or of one of its sections. */
+  appendFile?: (path: string, text: string, heading?: string) => Promise<void>;
+  /** `(ed-notify title [body])`: tell the person, even when EEditor isn't in front. */
+  notify?: (title: string, body: string) => void;
 }
-
-const pad2 = (n: number): string => String(n).padStart(2, "0");
 
 /** Editor commands the engine may hand back (the `ed-*` constructors in prelude.eelisp). */
 const COMMANDS = new Set([
@@ -76,12 +90,31 @@ const COMMANDS = new Set([
   "form",
   "export",
   "message",
+  "write",
+  "append",
+  "prompt",
+  "notify",
 ]);
+
+/** What a prompt may call back: a function's name, nothing that could be more than a name. */
+const FN_NAME = /^[^\s()[\]{}"';`,]+$/;
+
+/** `(ed-prompt "…" my-fn)` hands over the function as {"$fn": name}, a quoted name as {"$sym": …}. */
+function callbackName(v: JsonValue): string | null {
+  const name =
+    v && typeof v === "object" && !Array.isArray(v)
+      ? ((v as { $fn?: string; $sym?: string }).$fn ?? (v as { $sym?: string }).$sym)
+      : typeof v === "string"
+        ? v
+        : undefined;
+  return name && name !== "anonymous" && FN_NAME.test(name) ? name : null;
+}
 
 export function createKeybindings(opts: KeybindingsOptions): Keybindings {
   const { ws, engine, editor, commands } = opts;
   let map = new Map<string, Binding>();
   let start: StartHook | undefined;
+  let ticks: StartHook[] = [];
   let preludeLoaded = false;
 
   // ── config ──
@@ -102,8 +135,22 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
     const { bindings, errors } = parsed;
     map = new Map(bindings.map((b) => [b.id, b]));
     start = parsed.start;
+    ticks = parsed.tick;
     for (const e of errors) opts.note(`; keybindings: ${e}`);
     if (errors.length > 0) toast(`keybindings: ${errors.length} problem(s) — see the REPL`);
+    // (on-load …) is a library: what it defines is what the bindings call, so it runs before any
+    // of them can fire — at launch, and again on every save. What it returns isn't a command.
+    for (const hook of parsed.load) {
+      if (!(await ensurePrelude())) break;
+      const env = await engine.evalSrc(`${context({ source: hook.source })}\n${hook.source}`);
+      if (env.output) opts.note(env.output.replace(/\n$/, ""));
+      if (!env.ok) {
+        opts.note(`; on-load (line ${hook.line}): ${env.error}`);
+        toast(`on-load (line ${hook.line}): ${env.error}`);
+      }
+    }
+    lastTickError = "";
+    schedule();
   }
 
   async function openConfig(): Promise<void> {
@@ -132,25 +179,23 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
   type Runnable = { spec: string; source: string; command?: string };
 
   /** `(def *x* …)` bindings the lisp body can read. Kept in sync with default.eelisp's header. */
-  function context(binding: Runnable): string {
+  function context(binding: { source: string }): string {
     const state = editor.view.state;
     const sel = state.selection.main;
     const line = state.doc.lineAt(sel.head);
-    const d = new Date();
-    const date = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-    const time = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
     const defs = [
       `(def *file* ${lispString(opts.file())})`,
       `(def *cursor* ${sel.head})`,
       `(def *line* ${line.number})`,
       `(def *col* ${sel.head - line.from + 1})`,
       `(def *line-text* ${lispString(line.text)})`,
+      // where the caret's line starts and ends, as offsets the ed-* commands take (UTF-16 units)
+      `(def *line-from* ${line.from})`,
+      `(def *line-to* ${line.to})`,
       `(def *lines* ${state.doc.lines})`,
       `(def *sel-from* ${sel.from})`,
       `(def *sel-to* ${sel.to})`,
-      `(def *date* ${lispString(date)})`,
-      `(def *time* ${lispString(time)})`,
-      `(def *now* ${lispString(`${date} ${time}:${pad2(d.getSeconds())}`)})`,
+      clockDefs(),
     ];
     // the document can be large — only ship it when the binding actually asks for it
     if (binding.source.includes("*selection*")) {
@@ -177,6 +222,15 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
     return Number.isFinite(n) ? n : null;
   };
   const text = (v: JsonValue): string => (typeof v === "string" ? v : String(v ?? ""));
+
+  /**
+   * The commands that wait on something — a file, an answer — run one after another, in the order
+   * they were given: `(ed-write p new) (ed-append p line)` appends to the new text, not the old.
+   */
+  let queue: Promise<unknown> = Promise.resolve();
+  function inOrder(job: () => Promise<unknown>): void {
+    queue = queue.then(job).catch((e) => opts.note(`; ${String(e)}`));
+  }
 
   /** Apply one editor command. Returns true if it touched the document/selection. */
   function exec(name: string, args: JsonValue[]): boolean {
@@ -246,6 +300,23 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
       case "set-buffer":
         editor.setDoc(text(args[0]));
         return true;
+      case "write": {
+        const write = opts.writeFile;
+        if (write) inOrder(() => write(text(args[0]), text(args[1]), args.length > 2 && args[2] != null ? text(args[2]) : undefined));
+        return false;
+      }
+      case "append": {
+        const append = opts.appendFile;
+        if (append) inOrder(() => append(text(args[0]), text(args[1]), args[2] != null && args[2] !== "" ? text(args[2]) : undefined));
+        return false;
+      }
+      case "notify":
+        if (opts.notify) opts.notify(text(args[0]), text(args[1] ?? ""));
+        else toast(args[1] ? `${text(args[0])} — ${text(args[1])}` : text(args[0]));
+        return false;
+      case "prompt":
+        inOrder(() => ask(args));
+        return false;
       default:
         return false;
     }
@@ -271,12 +342,30 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
     return touched;
   }
 
+  /**
+   * `(ed-prompt label callback [default] [choices])`: ask, then run `(callback answer)` as if it
+   * were a key — with the context as it is then. Cancelled, nothing runs.
+   */
+  async function ask(args: JsonValue[]): Promise<void> {
+    const label = text(args[0]);
+    const fn = callbackName(args[1] ?? null);
+    if (!fn) {
+      opts.note(`; ed-prompt "${label}": the second argument must be a function, like (ed-prompt "When?" my-fn)`);
+      return;
+    }
+    const choices = Array.isArray(args[3]) ? args[3].map(text) : [];
+    const answer = await promptModal(label, args[2] == null ? "" : text(args[2]), "OK", choices);
+    if (answer === null) return;
+    await run({ spec: fn, source: `(list (${fn} ${lispString(answer)}))` });
+  }
+
   async function run(binding: Runnable): Promise<void> {
     if (binding.command) {
       runCommand(binding.command); // no engine round-trip for a plain (ed-cmd "…")
       return;
     }
     if (!(await ensurePrelude())) return;
+    await opts.flush?.();
     const env = await engine.evalSrc(`${context(binding)}\n${binding.source}`);
     if (!env.ok) {
       opts.note(`; ${binding.spec}: ${env.error}`);
@@ -305,6 +394,43 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
     true,
   );
 
+  // ── (on-tick …): once a minute, on the minute ──
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let ticking = false;
+  /** The last error a tick reported — the same one isn't repeated every minute. */
+  let lastTickError = "";
+
+  function schedule(): void {
+    if (timer) clearTimeout(timer);
+    timer = undefined;
+    if (ticks.length === 0) return;
+    const now = new Date();
+    timer = setTimeout(() => void tick().finally(schedule), 60_000 - (now.getSeconds() * 1000 + now.getMilliseconds()) + 50);
+  }
+
+  async function tick(): Promise<void> {
+    if (ticking || ticks.length === 0) return; // a slow tick is never stacked on another
+    ticking = true;
+    try {
+      if (!(await ensurePrelude())) return;
+      await opts.flush?.();
+      for (const hook of ticks) {
+        const env = await engine.evalSrc(`${context(hook)}\n${hook.source}`);
+        if (!env.ok) {
+          const msg = `; on-tick (line ${hook.line}): ${env.error}`;
+          if (msg !== lastTickError) opts.note(msg);
+          lastTickError = msg;
+          continue;
+        }
+        if (env.output) opts.note(env.output.replace(/\n$/, ""));
+        apply(env.result); // focus stays where it is: nobody pressed anything
+      }
+    } finally {
+      ticking = false;
+    }
+  }
+
   /** `(on-start …)`. An empty `(on-start)` still counts: it means "launch with nothing open". */
   async function runStart(): Promise<boolean> {
     if (!start) return false;
@@ -324,5 +450,6 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
       if (apply(v)) (opts.focus ?? (() => editor.view.focus()))();
       return true;
     },
+    tick,
   };
 }

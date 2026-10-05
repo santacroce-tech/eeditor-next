@@ -28,6 +28,9 @@
 ;; Let the user pick a file; then `handler` runs with its bytes as base64 in (ui-get f "$file") and
 ;; its name in (ui-get f "$filename") — (base64->bytes …) makes a buffer of it.
 (defn ui-pick (handler) (ui-queue (list "pick" handler)))
+;; Editor commands from a form — (ui-editor (ed-append "inbox.md" "- [ ] x" "## Inbox")) — carried
+;; out by EEditor the way a keybinding's are. Where there is no editor (an exported page), ignored.
+(defn ui-editor (. commands) (ui-queue (list "editor" commands)))
 
 ;; ── Variables: local to one open form, public to a main form and the forms it opens ──
 ;;

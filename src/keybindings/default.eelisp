@@ -23,6 +23,17 @@
 ;;   (ed-new path text)              …with text as its starting content
 ;;   (ed-form "Contacts")            open a .eeform and run it, in a window beside your notes
 ;;   (ed-message text)               toast
+;;   (ed-notify title body)          toast, and a system notification when EEditor isn't in front
+;;   (ed-prompt "When?" my-fn)       ask; then (my-fn answer) runs like a key. Optional default and
+;;                                   choices: (ed-prompt "Tag?" my-fn "" (list "work" "home"))
+;;   (ed-append "inbox.md" text)     add to the end of a note, open or not — created if missing
+;;   (ed-append path text "## Log")  …at the end of that section (added if it isn't there)
+;;   (ed-write path text)            replace a note's text; (ed-write path text old) only if it
+;;                                   still says old — so a note being typed into is left alone
+;;
+;; Reading other notes: (notes) lists every .md in the workspace, (notes "reviews") those in a
+;; folder; (read-note "inbox.md") is one's text as saved (nil if there's none). Unsaved tabs are
+;; saved before any binding runs, so what you read is what's on screen.
 ;;
 ;; A binding may list several commands; they run in order against the live document.
 ;; Anything the standard bundle (the REPL's "snippets" button) defines is callable here too.
@@ -31,10 +42,20 @@
 ;; it decides which note you land on. Without it, EEditor opens welcome.md while that's still
 ;; around, and today's note after that. See the bottom of this file.
 ;;
+;; (on-load body…) is for definitions — your own functions, tables, a library like the PIM's. It
+;; runs at launch before on-start, and again every time this file is saved, so an edit to a
+;; helper takes effect on ⌘S. Its value is ignored: it's not for commands.
+;;
+;; (on-tick body…) runs once a minute, on the minute, with the same context as a key, and its
+;; commands are carried out — (ed-notify …) for a reminder, say. Keep it quick.
+;;
+;; There may be several on-load and on-tick forms; each runs, in order.
+;;
 ;; Context, defined fresh before every run:
 ;;   *file*        path of the current note        *cursor*   caret offset
 ;;   *line*        caret line (1-based)            *col*      caret column (1-based)
 ;;   *line-text*   text of the caret's line        *lines*    line count
+;;   *line-from*  *line-to*   where the caret's line starts and ends — offsets for ed-replace-range
 ;;   *sel-from*  *sel-to*                          *selection*  the selected text
 ;;   *buffer*      the whole document
 ;;   *date* "YYYY-MM-DD"   *time* "HH:MM"   *now* "YYYY-MM-DD HH:MM:SS"   (local time)

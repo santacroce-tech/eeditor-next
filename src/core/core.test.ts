@@ -231,6 +231,20 @@ describe("keybindings config", () => {
     expect(parseKeybindings(`(bind "Mod-i")`, true).errors[0]).toContain("no body");
   });
 
+  it("collects every (on-load …) and (on-tick …), in order", () => {
+    const c = parseKeybindings(
+      `(on-load (defn a () 1))\n(bind "Mod-s" (ed-cmd "save"))\n(on-tick (a))\n(on-load (defn b () 2))\n(on-start (ed-open "x.md"))`,
+      true,
+    );
+    expect(c.errors).toEqual([]);
+    expect(c.load.map((h) => h.source)).toEqual(["(list (defn a () 1))", "(list (defn b () 2))"]);
+    expect(c.load.map((h) => h.line)).toEqual([1, 4]);
+    expect(c.tick.map((h) => h.source)).toEqual(["(list (a))"]);
+    expect(c.bindings).toHaveLength(1);
+    expect(c.start?.source).toContain("x.md");
+    expect(parseKeybindings(`(bind "Mod-s" (ed-cmd "save"))`, true)).toMatchObject({ load: [], tick: [] });
+  });
+
   it("picks up (on-start …), including the empty one", () => {
     const one = parseKeybindings(`(bind "Mod-s" (ed-cmd "save"))\n(on-start (ed-open "todo.md"))`, true);
     expect(one.errors).toEqual([]);

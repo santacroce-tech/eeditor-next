@@ -1,8 +1,11 @@
 // Small self-contained UI dialogs: a text prompt, a confirm, and a right-click context menu.
 // Native window.prompt/confirm don't work in a Tauri webview, so these are custom overlays.
 
-/** Prompt for a single line of text. Resolves to the trimmed value, or null if cancelled. */
-export function promptModal(title: string, value = "", okLabel = "OK"): Promise<string | null> {
+/**
+ * Prompt for a single line of text. Resolves to the trimmed value, or null if cancelled. `choices`
+ * are offered as you type (a free answer is still allowed).
+ */
+export function promptModal(title: string, value = "", okLabel = "OK", choices: string[] = []): Promise<string | null> {
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
     overlay.className = "qo-overlay";
@@ -25,6 +28,13 @@ export function promptModal(title: string, value = "", okLabel = "OK"): Promise<
     ok.textContent = okLabel;
     actions.append(cancel, ok);
     panel.append(heading, input, actions);
+    if (choices.length > 0) {
+      const list = document.createElement("datalist");
+      list.id = `dlg-choices-${Date.now().toString(36)}`;
+      for (const c of choices) list.appendChild(Object.assign(document.createElement("option"), { value: c }));
+      input.setAttribute("list", list.id);
+      panel.appendChild(list);
+    }
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
 

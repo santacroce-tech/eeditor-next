@@ -2,17 +2,20 @@
 // Run: npx vite-node dev/pim-check.ts
 //
 // It does what the app does: parses the config with core/keybindings.ts, loads the ed-* prelude,
-// runs (on-start …), then for each "key press" defines the same *context* ui/keybindings.ts does
-// and applies the editor commands that come back to a document held here — offsets in UTF-16,
-// like CodeMirror's. Only the DOM is missing.
+// runs (on-load …) and (on-start …), then for each "key press" saves the document (as the app
+// flushes its tabs), defines the same *context* ui/keybindings.ts does and applies the editor
+// commands that come back to a document held here — offsets in UTF-16, like CodeMirror's. Other
+// notes are files in a scratch workspace, written the way main.ts's writeNote/appendNote write
+// them (core/append.ts). Only the DOM is missing: a prompt is answered with answer().
 
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
-import { parseKeybindings, lispString, type Binding } from "../src/core/keybindings";
+import { parseKeybindings, lispString, clockDefs, type Binding } from "../src/core/keybindings";
+import { appendUnder } from "../src/core/append";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const BIN = process.env.EELISP_BIN ?? path.join(root, "../eelisp-rs/target/release/eelisp");
@@ -46,27 +49,27 @@ const d = new Date();
 const TODAY = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 
 // ── a document, edited the way ui/keybindings.ts edits CodeMirror's ──
-const doc = { file: "", text: "", cursor: 0, messages: [] as string[], opened: [] as unknown[][], forms: [] as string[] };
+const doc = {
+  file: "", text: "", cursor: 0, messages: [] as string[], opened: [] as unknown[][], forms: [] as string[],
+  prompts: [] as unknown[][], notified: [] as string[],
+};
 
 function context(b: { source: string }): string {
   const lineFrom = doc.text.lastIndexOf("\n", doc.cursor - 1) + 1;
   const lineEnd = doc.text.indexOf("\n", doc.cursor);
   const lineText = doc.text.slice(lineFrom, lineEnd === -1 ? undefined : lineEnd);
-  const now = new Date();
-  const date = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
-  const time = `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
   const defs = [
     `(def *file* ${lispString(doc.file)})`,
     `(def *cursor* ${doc.cursor})`,
     `(def *line* ${doc.text.slice(0, doc.cursor).split("\n").length})`,
     `(def *col* ${doc.cursor - lineFrom + 1})`,
     `(def *line-text* ${lispString(lineText)})`,
+    `(def *line-from* ${lineFrom})`,
+    `(def *line-to* ${lineFrom + lineText.length})`,
     `(def *lines* ${doc.text.split("\n").length})`,
     `(def *sel-from* ${doc.cursor})`,
     `(def *sel-to* ${doc.cursor})`,
-    `(def *date* ${lispString(date)})`,
-    `(def *time* ${lispString(time)})`,
-    `(def *now* ${lispString(`${date} ${time}:${pad2(now.getSeconds())}`)})`,
+    clockDefs(),
   ];
   if (b.source.includes("*selection*")) defs.push(`(def *selection* "")`);
   if (b.source.includes("*buffer*")) defs.push(`(def *buffer* ${lispString(doc.text)})`);
@@ -74,9 +77,27 @@ function context(b: { source: string }): string {
 }
 
 const COMMANDS = new Set(["command", "insert", "insert-at", "goto", "goto-line", "select", "replace",
-  "replace-range", "set-buffer", "open", "new", "form", "export", "message"]);
+  "replace-range", "set-buffer", "open", "new", "form", "export", "message", "write", "append", "prompt", "notify"]);
 
-function exec(name: string, a: unknown[]): void {
+// ── other notes: files in the scratch workspace (the current one is `doc`) ──
+const fileOf = (p: string) => path.join(dir, p);
+async function noteText(p: string): Promise<string | null> {
+  if (p === doc.file) return doc.text;
+  return readFile(fileOf(p), "utf8").catch(() => null);
+}
+async function writeNote(p: string, text: string, expected?: string): Promise<boolean> {
+  const current = await noteText(p);
+  if (expected !== undefined && (current ?? "") !== expected) return false;
+  if (p === doc.file) doc.text = text;
+  else {
+    await mkdir(path.dirname(fileOf(p)), { recursive: true });
+    await writeFile(fileOf(p), text);
+  }
+  return true;
+}
+const note = (p: string) => noteText(p).then((t) => t ?? "");
+
+async function exec(name: string, a: unknown[]): Promise<void> {
   const pos = (v: unknown) => Math.max(0, Math.min(Number(v) || 0, doc.text.length));
   const s = (v: unknown) => (typeof v === "string" ? v : String(v ?? ""));
   switch (name) {
@@ -109,12 +130,26 @@ function exec(name: string, a: unknown[]): void {
     case "form":
       doc.forms.push(s(a[0]));
       break;
+    case "write":
+      await writeNote(s(a[0]), s(a[1]), a.length > 2 && a[2] != null ? s(a[2]) : undefined);
+      break;
+    case "append": {
+      const current = (await noteText(s(a[0]))) ?? "";
+      await writeNote(s(a[0]), appendUnder(current, s(a[1]), a[2] == null ? undefined : s(a[2])), current);
+      break;
+    }
+    case "prompt":
+      doc.prompts.push(a);
+      break;
+    case "notify":
+      doc.notified.push(`${s(a[0])} — ${s(a[1])}`);
+      break;
   }
 }
-function apply(v: unknown): void {
+async function apply(v: unknown): Promise<void> {
   if (!Array.isArray(v) || v.length === 0) return;
   if (typeof v[0] === "string" && COMMANDS.has(v[0])) return exec(v[0], v.slice(1));
-  for (const x of v) apply(x);
+  for (const x of v) await apply(x);
 }
 
 // ── setup ──
@@ -131,11 +166,21 @@ check("prelude loads", prelude.ok, prelude.error);
 
 async function run(b: { source: string }, label: string): Promise<Env> {
   doc.messages = [];
+  // the app saves its tabs before any lisp runs, so (read-note …) reads what's on screen
+  if (doc.file) await writeFile(fileOf(doc.file), doc.text);
   const env = await engine.ev(`${context(b)}\n${b.source}`);
   if (!env.ok) console.error(`       ${label}: ${env.error}`);
-  else apply(env.result);
+  else await apply(env.result);
   return env;
 }
+/** Answer the last prompt: run (callback answer) as ui/keybindings.ts's ask() does. */
+async function answer(text: string): Promise<Env> {
+  const p = doc.prompts.pop();
+  const fn = (p?.[1] as { $fn?: string } | undefined)?.$fn;
+  if (!fn) throw new Error(`no prompt to answer: ${JSON.stringify(p)}`);
+  return run({ source: `(list (${fn} ${lispString(text)}))` }, `answer ${fn}`);
+}
+const tick = async () => { for (const h of parsed.tick) await run(h, "on-tick"); };
 async function press(spec: string): Promise<Env> {
   const b = keys.get(spec);
   if (!b) throw new Error(`no binding ${spec}`);
@@ -150,7 +195,9 @@ function setDoc(text: string, n: number): void {
 const lineAt = (n: number) => doc.text.split("\n")[n - 1];
 const ev = async (src: string) => { const e = await engine.ev(src); if (!e.ok) console.error("       eval:", src.slice(0, 60), "→", e.error); return e.result; };
 
-// ── on-start ──
+// ── on-load, on-start ──
+check("config has one (on-load …) and one (on-tick …)", parsed.load.length === 1 && parsed.tick.length === 1);
+for (const h of parsed.load) check("on-load runs", (await run(h, "on-load")).ok);
 const start = await run(parsed.start!, "on-start");
 check("on-start runs", start.ok, start.error);
 check("on-start opens today's note from the template",
@@ -372,19 +419,137 @@ check("⌃⌥N opens the capture form", doc.forms[0] === "pim/Capture", doc.form
 check("capture a task", String(await ev(`(pim-capture "task" "call Ana in 3 days #family")`)).startsWith("Agenda #"));
 check("capture to the inbox", String(await ev(`(pim-capture "inbox" "look into solar panels")`)).startsWith("Agenda #") &&
   String(await ev("(pim-inbox)")).includes("look into solar panels"), await ev("(pim-inbox)"));
-check("capture a log line", String(await ev(`(pim-capture "log" "water 3 glass | hot day")`)) === "Logged water 3 glass | hot day");
+// capture files a line under a heading of a note, as well
+const daily = `${TODAY}.md`;
+await rm(fileOf(daily), { force: true });
+const capLog = (await ev(`(pim-capture* "log" "water 3 glass | hot day")`)) as unknown[];
+check("capture a log line", capLog[0] === "Logged water 3 glass | hot day", capLog);
+await apply(capLog[1]);
+const dailyText = await note(daily);
+check("…filed under ## Log in today's note, made from the template", dailyText.startsWith(`# ${TODAY} ·`) &&
+  /## Log\n\n- \d\d:\d\d {2}water 3 glass \| hot day\n/.test(dailyText) && dailyText.includes("## Notes"), dailyText);
+const capInbox = (await ev(`(pim-capture* "inbox" "renew the car insurance")`)) as unknown[];
+await apply(capInbox[1]);
+const inboxId = /#(\d+)/.exec(String(capInbox[0]))?.[1];
+check("capture to the inbox files a linked line in inbox.md", (await note("inbox.md")) === `## Inbox\n\n- [ ] renew the car insurance {#${inboxId}}\n`,
+  await note("inbox.md"));
+const capTask = (await ev(`(pim-capture* "task" "book the flights")`)) as unknown[];
+await apply(capTask[1]);
+check("…a task goes under ## Tasks in today's note, which keeps its log", (await note(daily)).includes("\n## Tasks\n\n- [ ] book the flights {#") &&
+  (await note(daily)).includes("water 3 glass"), await note(daily));
 check("capture nothing", (await ev(`(pim-capture "task" "  ")`)) === "Nothing to capture");
 
 const formPrelude = await engine.ev(await readFile(path.join(root, "src/forms/prelude.eelisp"), "utf8"));
 const form = await engine.ev(await readFile(path.join(root, "docs/pim/Capture.eeform"), "utf8"));
 check("Capture.eeform loads", formPrelude.ok && form.ok, form.error ?? formPrelude.error);
-const saved = await engine.ev(`(ui-run cap-save {"txtWhat" "stretch 10" "optKind" "log"})`);
+const saved = await engine.ev(`${clockDefs()}\n(ui-run cap-save {"txtWhat" "stretch 10" "optKind" "log"})`);
 check("its Save handler captures and clears the box", saved.ok && JSON.stringify(saved.result).includes("Logged stretch 10 min") &&
   JSON.stringify(saved.result).includes('"txtWhat",{"$kw":"value"},""'), saved);
+const editorChange = (saved.result as unknown[][]).find((c) => c[0] === "editor");
+await apply(editorChange?.[1]);
+check("…and hands EEditor the line to file (ui-editor)", /- \d\d:\d\d {2}stretch 10 min\n/.test(await note(daily)), await note(daily));
 
-// ── reloading the library ──
-const again = await engine.ev(parsed.start ? `(on-start (def pim-reloaded 1))` : "");
-check("(on-start …) re-runs as a plain form after launch", again.ok && (await ev("pim-reloaded")) === 1, again.error);
+// ── every note at once ──
+doc.file = "today.md";
+setDoc("# Today\n- [ ] nothing linked here", 1);
+const ship = Number(await ev(`(dict-get (item->dict (add "ship it")) :id)`));
+await writeNote("projects/site.md", `# Site\n- [ ] write the spec\n- [ ] ship it {#${ship}}\n`);
+await writeNote("someday.md", "- [ ] learn to juggle\n");
+const sw1 = (await ev(`(item->dict (add "pay the gas bill"))`)) as { $dict: [string, unknown][] };
+const gas = Number(sw1.$dict.find(([k]) => k === "id")?.[1]);
+await writeNote("bills/october.md", `# October\n\n- [ ] pay the gas bill {#${gas}}\n- [ ] keep me\n`);
+await ev(`(item-done ${gas})`);
+await press("Ctrl-Alt-s");
+check("⌃⌥S ticks a line in another note whose item was finished", (await note("bills/october.md")) ===
+  `# October\n\n- [x] pay the gas bill {#${gas}} ✓ ${TODAY}\n- [ ] keep me\n`, await note("bills/october.md"));
+check("…and logs it, under that note", (await ev(`(count-records done :where "item = ? AND file = ?" :params (list ${gas} "bills/october.md"))`)) === 1);
+check("…hand-typed lines elsewhere are left alone", (await note("someday.md")) === "- [ ] learn to juggle\n" &&
+  (await note("projects/site.md")).includes("- [ ] write the spec\n"));
+check("…and it says how many notes changed", doc.messages[0] === "Brought 1 note in step with the agenda", doc.messages);
+await ev(`(set! pim-agenda-files (list "projects"))`);
+await press("Ctrl-Alt-s");
+const site = await note("projects/site.md");
+const spec = Number(/write the spec \{#(\d+)\}/.exec(site)?.[1]);
+check("in pim-agenda-files, a hand-typed - [ ] becomes an agenda item", (await ids()).includes(spec), site);
+check("…but a line with a live link is left as it is", site.includes(`- [ ] ship it {#${ship}}`), site);
+await press("Ctrl-Alt-s");
+check("sweeping again changes nothing", doc.messages[0] === "Every note is in step with the agenda" && (await note("projects/site.md")) === site, doc.messages);
+await ev(`(item-done ${spec})`);
+await tick();
+check("the minute tick ticks it too", (await note("projects/site.md")).includes(`- [x] write the spec {#${spec}} ✓ ${TODAY}`), await note("projects/site.md"));
+const typed = await ev(`(ed-write "someday.md" "new text" "what it said an hour ago")`);
+await apply(typed);
+check("ed-write leaves a note that changed since it was read", (await note("someday.md")) === "- [ ] learn to juggle\n");
+check("(notes) lists every note, hidden folders left out", JSON.stringify(await ev("(notes)")).includes("projects/site.md") &&
+  !JSON.stringify(await ev("(notes)")).includes(".eeditor"), await ev("(notes)"));
+
+// ── refile ──
+setDoc("# Today\n- [ ] call the bank\n- keep", 2);
+await press("Ctrl-Alt-f");
+const choices = (doc.prompts[doc.prompts.length - 1]?.[3] ?? []) as string[];
+check("⌃⌥F asks where, offering every note and heading", doc.prompts.at(-1)?.[0] === "Refile to" &&
+  choices.includes("inbox.md › ## Inbox") && choices.includes("projects/site.md") && choices.includes("bills/october.md › # October"), choices);
+await answer("inbox.md › ## Inbox");
+check("…the line leaves this note", doc.text === "# Today\n- keep", doc.text);
+check("…and lands under the heading", (await note("inbox.md")).endsWith("{#" + inboxId + "}\n- [ ] call the bank\n"), await note("inbox.md"));
+setDoc("- [ ] water the garden\n", 1);
+await press("Ctrl-Alt-f");
+await answer("someday.md");
+check("refiled to a note's end", (await note("someday.md")) === "- [ ] learn to juggle\n- [ ] water the garden\n" && doc.text === "", await note("someday.md"));
+
+// ── asked: a date, a category ──
+setDoc("fix the bike", 1);
+await press("Ctrl-Alt-t");
+const bike = Number(/\{#(\d+)\}$/.exec(lineAt(1))?.[1]);
+await press("Ctrl-Alt-d");
+check("⌃⌥D asks when", doc.prompts.at(-1)?.[0] === "When?", doc.prompts);
+await answer("in 3 days");
+const in3 = await ev(`(date-add "${TODAY}" 3 :days)`);
+check("…and dates the item", JSON.stringify(await ev(`(item->dict (item-get ${bike}))`)).includes(`["when","${in3}"]`) &&
+  doc.messages[0] === `Agenda #${bike} on ${in3}`, doc.messages);
+await press("Ctrl-Alt-d");
+await answer("none");
+check("…\"none\" takes the date away", JSON.stringify(await ev(`(item->dict (item-get ${bike}))`)).includes(`["when",""]`));
+await press("Ctrl-Alt-d");
+await answer("whenever");
+check("…words it can't read are refused", doc.messages[0] === `"whenever" isn't a date I know`, doc.messages);
+await press("Ctrl-Alt-g");
+check("⌃⌥G offers the agenda's categories", ((doc.prompts.at(-1)?.[3] ?? []) as string[]).includes("work/admin"), doc.prompts.at(-1));
+await answer("errands");
+check("…and files the task", JSON.stringify(await ev(`(item->dict (item-get ${bike}))`)).includes("errands") &&
+  String(await ev("(categories)")).includes("errands"), await ev(`(item->dict (item-get ${bike}))`));
+setDoc("plain words", 1);
+await press("Ctrl-Alt-g");
+await answer("errands");
+check("…on a line that isn't a task, says so", doc.messages[0] === "Not an agenda task — ⌃⌥T makes it one", doc.messages);
+
+// ── reminders ──
+const hm = (d: Date) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+const nowD = new Date();
+if (nowD.getHours() === 23 && nowD.getMinutes() >= 58) console.log("  (skipping reminders: too close to midnight)");
+else {
+  const later = new Date(nowD.getTime() + 2 * 3600_000);
+  await ev(`(add-item "call Ana at ${hm(nowD)}" :when "${TODAY}")`);
+  await ev(`(add-item "dinner at ${later.getDate() === nowD.getDate() ? hm(later) : "23:59"}" :when "${TODAY}")`);
+  const vet = await ev(`(dict-get (item->dict (add-item "the vet" :when "${TODAY}")) :id)`);
+  await ev(`(item-set ${vet} :remind "${hm(nowD)}")`);
+  doc.notified = [];
+  await tick();
+  check("a reminder fires at the time in its text", doc.notified.includes(`⏰ ${hm(nowD)} — call Ana at ${hm(nowD)}`), doc.notified);
+  check("…or at its :remind", doc.notified.includes(`⏰ ${hm(nowD)} — the vet`), doc.notified);
+  check("…not before", !doc.notified.some((n) => n.includes("dinner")), doc.notified);
+  doc.notified = [];
+  await tick();
+  check("…and only once", doc.notified.length === 0, doc.notified);
+}
+
+// ── reloading the library (⌘S) ──
+const beforeReload = JSON.stringify([await ev("(count-records done)"), await ev("(count-records log)"), await ev("(count-records clock)"), await ev("(item-count)")]);
+for (const h of parsed.load) await run(h, "on-load");
+const afterReload = JSON.stringify([await ev("(count-records done)"), await ev("(count-records log)"), await ev("(count-records clock)"), await ev("(item-count)")]);
+check("on-load runs again and the tables and agenda keep everything", beforeReload === afterReload && (await ids()).includes(bike), [beforeReload, afterReload]);
+check("…while settings go back to what the file says", (await ev(`(pim-kind-of "kombucha")`)) === "food");
+check("…and the saved views aren't doubled", JSON.stringify(await ev("(views)")).split("pim-overdue").length === 2, await ev("(views)"));
 
 // ── persistence ──
 await engine.close();

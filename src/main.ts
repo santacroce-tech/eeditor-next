@@ -5,7 +5,7 @@
 // lives in the editor keymap because it acts on the selection.
 
 import { createEngineClient, observeEvals } from "./engine/client";
-import { dictGet } from "./engine/types";
+import { dictGet, type JsonValue } from "./engine/types";
 import { createSheetClient } from "./engine/sheet";
 import { fromCSV, importedValue, isSheetPath, SHEET_EXT, toCSV, toTableHtml, toTSV, valueRows } from "./core/sheet";
 import { createSheetView, type SheetView } from "./ui/sheet";
@@ -40,6 +40,7 @@ import { resolveWikiLink } from "./core/fuzzy";
 import { backlinksTo } from "./core/backlinks";
 import { linkifyWikiLinks } from "./ui/wikilinks";
 import { uniqueName } from "./core/uniquename";
+import { appendUnder } from "./core/append";
 import "./styles.css";
 import { openScreenWindow } from "./ui/screenwindow";
 
@@ -699,6 +700,8 @@ function main(): void {
       toast(m);
     },
     note: (text: string) => repl.note(text),
+    // (ui-editor …) — Capture filing a line into a note, say. `keys` exists by the time a form runs.
+    onEditor: (v: JsonValue) => void keys.applyResult(v),
   });
   const formHost = createFormHost({
     forms,
@@ -1486,6 +1489,92 @@ function main(): void {
     focusDocument();
   }
 
+  /**
+   * What a note says now: its open tab's text (the editor's, when it's the one in front), else the
+   * file's — or null when there is no such file.
+   */
+  async function noteText(path: string): Promise<string | null> {
+    const tab = tabs.find((t) => t.path === path && !t.external);
+    if (tab) return tabs[activeIdx] === tab ? editor.getDoc() : tab.content;
+    return ws.read(path).catch(() => null);
+  }
+
+  /**
+   * `(ed-write path text [expected])` — and what `ed-append` ends in. An open tab takes the text as an
+   * edit (so ⌘Z undoes it, and the caret stays put), then is saved; any other note is written, and
+   * created if it's new. With `expected`, a note that no longer says that is left alone: something
+   * — you, typing — changed it since the engine read it. False when nothing was written.
+   */
+  async function writeNote(path: string, content: string, expected?: string): Promise<boolean> {
+    if (isSheetPath(path)) {
+      toast(`${basename(path)} is a sheet — it can't be written as text`);
+      return false;
+    }
+    const current = await noteText(path);
+    if (expected !== undefined && (current ?? "") !== expected) return false;
+    if (current === content) return true;
+    const tab = tabs.find((t) => t.path === path && !t.external && !t.sheet);
+    if (tab) {
+      if (tabs[activeIdx] === tab) {
+        // Only the part that changed, so the caret and the scroll position survive the rewrite.
+        const doc = editor.view.state.doc.toString();
+        let from = 0;
+        while (from < doc.length && from < content.length && doc[from] === content[from]) from++;
+        let end = 0;
+        while (end < doc.length - from && end < content.length - from && doc[doc.length - 1 - end] === content[content.length - 1 - end]) end++;
+        editor.view.dispatch({ changes: { from, to: doc.length - end, insert: content.slice(from, content.length - end) } });
+      } else {
+        tab.content = content;
+        tab.dirty = true;
+      }
+      return saveTab(tab);
+    }
+    try {
+      await ws.write(path, content);
+    } catch (e) {
+      toast(`Could not write ${path}: ${String(e)}`);
+      return false;
+    }
+    contentCache.set(path, content);
+    if (current === null) {
+      await sidebar.refresh();
+      await tags.refresh();
+    }
+    return true;
+  }
+
+  /** `(ed-append path text [heading])`: org-capture's "file under heading" (core/append.ts). */
+  async function appendNote(path: string, text: string, heading?: string): Promise<void> {
+    const current = (await noteText(path)) ?? "";
+    // Typed into in the meantime: read it again and go once more, rather than lose either.
+    if (!(await writeNote(path, appendUnder(current, text, heading), current))) {
+      const again = (await noteText(path)) ?? "";
+      await writeNote(path, appendUnder(again, text, heading), again);
+    }
+  }
+
+  /**
+   * `(ed-notify title body)`: a toast — and, when EEditor isn't the window in front, a notification
+   * from the system, so a reminder reaches you in another app.
+   */
+  async function notifyUser(title: string, body: string): Promise<void> {
+    toast(body ? `${title} — ${body}` : title);
+    if (document.hasFocus()) return;
+    try {
+      if (inTauri()) {
+        const n = await import("@tauri-apps/plugin-notification");
+        let ok = await n.isPermissionGranted();
+        if (!ok) ok = (await n.requestPermission()) === "granted";
+        if (ok) n.sendNotification({ title, body });
+      } else if ("Notification" in window) {
+        if (Notification.permission === "default") await Notification.requestPermission();
+        if (Notification.permission === "granted") new Notification(title, { body });
+      }
+    } catch (e) {
+      repl.note(`; ed-notify: ${String(e)}`);
+    }
+  }
+
   // Today's note (YYYY-MM-DD.md at the workspace root), with a date heading when it's new.
   async function openDailyNote(): Promise<void> {
     const date = todayISO();
@@ -1670,6 +1759,10 @@ function main(): void {
     exportForm: (p) => exportFromCommand(p),
     note: (t) => repl.note(t),
     focus: focusDocument,
+    flush: () => saveAllDirty(),
+    writeFile: writeNote,
+    appendFile: appendNote,
+    notify: (title, body) => void notifyUser(title, body),
   });
   keysBtn.addEventListener("click", () => void keys.openConfig());
 

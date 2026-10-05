@@ -5,6 +5,8 @@
 //
 //   (bind "Mod-i" (ed-goto-line 2) (ed-insert (str "## " *date* "\n\n")))
 //   (on-start (ed-open "todo.md"))
+//   (on-load (defn my-helper (x) …))       ; at launch and on every reload — a library
+//   (on-tick (my-reminders))               ; once a minute
 //
 // We only parse far enough to pull out the key and the *source text* of the body — the body itself
 // is EELisp and is evaluated by the engine when the key fires. Wrapping it in `(list …)` means a
@@ -36,8 +38,18 @@ export interface ParsedConfig {
   bindings: Binding[];
   /** The `(on-start …)` form. Absent → EEditor picks the note to open itself. */
   start?: StartHook;
+  /**
+   * Every `(on-load …)`, in order: run when the config is loaded — at launch, before `on-start`, and
+   * again each time it's saved. Several are fine (your helpers and a library's); all of them run.
+   */
+  load: StartHook[];
+  /** Every `(on-tick …)`, in order: run once a minute, on the minute, for as long as the app is open. */
+  tick: StartHook[];
   errors: string[];
 }
+
+/** Hooks that collect rather than replace: each of their forms runs. */
+type Hook = "on-load" | "on-tick";
 
 /** Source for a body that does nothing — `(on-start)`, i.e. "start with no file open". */
 export const EMPTY_BODY = "(list)";
@@ -195,15 +207,19 @@ function compileBody(text: string): Body {
   return { source: text === "" ? EMPTY_BODY : `(list ${text})`, command: cmd ? cmd[1] : undefined };
 }
 
-function parseForm(form: Form, mac: boolean): { binding: Binding } | { start: StartHook } | { error: string } {
+function parseForm(
+  form: Form,
+  mac: boolean,
+): { binding: Binding } | { start: StartHook } | { hook: Hook; body: StartHook } | { error: string } {
   const inner = form.text.slice(1, -1);
-  const head = /^\s*(bind|on-start)(?=[\s)]|$)/.exec(inner);
+  const head = /^\s*(bind|on-start|on-load|on-tick)(?=[\s)]|$)/.exec(inner);
   if (!head) {
     const what = form.text.slice(0, 40).replace(/\s+/g, " ");
-    return { error: `line ${form.line}: expected (bind "Key" …) or (on-start …), got ${what}…` };
+    return { error: `line ${form.line}: expected (bind "Key" …), (on-start …), (on-load …) or (on-tick …), got ${what}…` };
   }
-  if (head[1] === "on-start") {
-    return { start: { ...compileBody(inner.slice(head[0].length).trim()), line: form.line } };
+  if (head[1] !== "bind") {
+    const body = { ...compileBody(inner.slice(head[0].length).trim()), line: form.line };
+    return head[1] === "on-start" ? { start: body } : { hook: head[1] as Hook, body };
   }
 
   let i = head[0].length;
@@ -221,21 +237,43 @@ function parseForm(form: Form, mac: boolean): { binding: Binding } | { start: St
   return { binding: { ...compileBody(body), id: key.id, spec: str.value, line: form.line } };
 }
 
-/** Parse a keybindings config. Later forms win over earlier ones (per key, and for `on-start`). */
+/**
+ * Parse a keybindings config. Later forms win over earlier ones (per key, and for `on-start`);
+ * `on-load` and `on-tick` forms add up instead.
+ */
 export function parseKeybindings(src: string, mac: boolean = isMacPlatform()): ParsedConfig {
   const { forms, errors } = topLevelForms(src);
   const byId = new Map<string, Binding>();
   let start: StartHook | undefined;
+  const load: StartHook[] = [];
+  const tick: StartHook[] = [];
   for (const form of forms) {
     const r = parseForm(form, mac);
     if ("error" in r) errors.push(r.error);
     else if ("start" in r) start = r.start;
+    else if ("hook" in r) (r.hook === "on-load" ? load : tick).push(r.body);
     else byId.set(r.binding.id, r.binding);
   }
-  return { bindings: [...byId.values()], start, errors };
+  return { bindings: [...byId.values()], start, load, tick, errors };
 }
 
 // ── emitting lisp ──────────────────────────────────────────────────────────
+
+const pad2 = (n: number): string => String(n).padStart(2, "0");
+
+/**
+ * `*date*` "YYYY-MM-DD", `*time*` "HH:MM" and `*now*` "YYYY-MM-DD HH:MM:SS", local time, as `def`s.
+ * Every run defines them fresh — a key, a tick, a form's handler — so none sees a stale clock.
+ */
+export function clockDefs(d: Date = new Date()): string {
+  const date = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  const time = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  return [
+    `(def *date* ${lispString(date)})`,
+    `(def *time* ${lispString(time)})`,
+    `(def *now* ${lispString(`${date} ${time}:${pad2(d.getSeconds())}`)})`,
+  ].join("\n");
+}
 
 /** Quote a JS string as an EELisp string literal (used to inject *file*, *selection*, …). */
 export function lispString(s: string): string {
