@@ -23,14 +23,14 @@ serde = { version = "1.0", features = ["derive"] }
 # Decodes the percent-encoded headers `fs_save_asset` takes (an image's folder and name).
 percent-encoding = "2"
 log = "0.4"
-tauri = { version = "2.11.3", features = [] }
+tauri = { version = "2.12", features = [] }
 tauri-plugin-log = "2"
 tauri-plugin-dialog = "2"
 # Local plugin: native iOS folder picker (external folder as workspace) with security-scoped bookmarks.
 tauri-plugin-ios-files = { path = "plugins" }
 # The Rust EELisp engine — the reusable core. EngineHandle is Send+Sync for Tauri state.
 eelisp = { path = "../../eelisp-rs" }
-tauri-plugin-notification = "2"
+tauri-plugin-notification = "2.5"
 
 # The engine is an interpreter: unoptimised, a program runs ~15× slower (a ZX Spectrum frame
 # written in EELisp takes 330 ms instead of 21). Optimise it even in `tauri dev`; the app's own
