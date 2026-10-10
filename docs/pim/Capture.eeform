@@ -1,4 +1,4 @@
-;; Capture.eeform — org-capture for EEditor. ⌃⌥N opens it over whatever you're doing: type,
+;; Capture.eeform — org-capture for EEditor. ⌘⌥N opens it over whatever you're doing: type,
 ;; Enter, and it's gone. Needs the PIM library (docs/pim/pim.eelisp) loaded by (on-start …).
 ;;
 ;;   task   → an agenda item; "dentist tomorrow !! #health" is dated, prioritised, categorised —
