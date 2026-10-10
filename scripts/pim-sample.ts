@@ -104,7 +104,7 @@ await write("projects/site.md",
 await write("projects/home.md", `# Home\n\n## Errands\n\n- [ ] dentist tomorrow !! #health | bring the X-rays {#${dentist}}\n\n## Someday\n\n- [ ] learn the cello {#${cello}}\n`);
 await write("dashboard.md", `# Dashboard
 
-⌃⌥U refreshes every block below.
+⌘⌥U refreshes every block below.
 
 ## Next 7 days
 
@@ -131,7 +131,7 @@ ${await str(`(pim-block "(pim-track-report \\"${await day(-6)}\\" \\"${TODAY}\\"
 ${await str(`(pim-block "(str \\"Exercise: \\" (pim-streak \\"exercise\\") \\" days in a row\\")")`)}
 `);
 
-// "pay the gas bill" in a note, finished in the agenda already: the first tick (or ⌃⌥S) ticks it here
+// "pay the gas bill" in a note, finished in the agenda already: the first tick (or ⌘⌥S) ticks it here
 const gas = await id(`(item->dict (add "pay the gas bill"))`);
 await write("bills.md", `# Bills\n\n- [ ] pay the gas bill {#${gas}}\n- [ ] send the invoice in 3 days #work/admin | ask for the PDF {#${invoice}}\n`);
 await ev(`(item-done ${gas})`);
@@ -139,23 +139,23 @@ await ev(`(item-done ${gas})`);
 await write("TRY ME.md", `# Trying the PIM
 
 Made ${TODAY} at ${hm(now)} by \`npm run pim:sample\`. Every step says what to press and what should
-happen. ⌃⌥ is Control+Option. The REPL is ⌘J. Guide: docs/PIM.md in the repo.
+happen. ⌘⌥ is Command+Option (Ctrl+Alt on Windows and Linux). The REPL is ⌘J. Guide: docs/PIM.md in the repo.
 
 ## Live sync and every note at once
 
 - [ ] Wait for the next minute: **bills.md** gets \`pay the gas bill\` ticked (it was finished in the agenda already). Open it to see — the tick runs once a minute.
 - [ ] In the agenda panel, mark *design the landing page* done. Within a minute it's ticked in **projects/site.md**.
-- [ ] ⌃⌥S anywhere: *write the spec* and *pick the fonts* in **projects/site.md** become agenda items (\`projects\` is in \`pim-agenda-files\`, set at the bottom of the config). A toast says how many notes changed.
-- [ ] Type \`- [ ] something\` in **inbox.md**, ⌃⌥S: it stays unlinked (inbox.md isn't an agenda file).
+- [ ] ⌘⌥S anywhere: *write the spec* and *pick the fonts* in **projects/site.md** become agenda items (\`projects\` is in \`pim-agenda-files\`, set at the bottom of the config). A toast says how many notes changed.
+- [ ] Type \`- [ ] something\` in **inbox.md**, ⌘⌥S: it stays unlinked (inbox.md isn't an agenda file).
 
 ## Tasks in a note (today's note, ⌘D)
 
-- [ ] On \`- [ ] fix the bike\`, ⌃⌥T twice: ticked, then plain. ⌃⌥T again: it's an agenda item with a \`{#id}\`.
-- [ ] On it, ⌃⌥D, type \`in 3 days\`, Enter: the toast gives the date; the agenda panel agrees. ⌃⌥D \`none\` takes it away; \`whenever\` is refused.
-- [ ] On it, ⌃⌥G: the categories are offered as you type; pick \`home\` or type a new one.
-- [ ] ⌃⌥P cycles \`!!!\` → \`!!\` → \`!\` → none, and the item's priority follows.
-- [ ] On *water the plants* (repeats weekly), ⌃⌥T: it stays open and its \`{#id}\` moves to next week's.
-- [ ] Edit *pay the rent today* to *pay the rent tomorrow*, ⌃⌥A: the item moves to tomorrow.
+- [ ] On \`- [ ] fix the bike\`, ⌘⌥T twice: ticked, then plain. ⌘⌥T again: it's an agenda item with a \`{#id}\`.
+- [ ] On it, ⌘⌥E, type \`in 3 days\`, Enter: the toast gives the date; the agenda panel agrees. ⌘⌥E \`none\` takes it away; \`whenever\` is refused.
+- [ ] On it, ⌘⌥G: the categories are offered as you type; pick \`home\` or type a new one.
+- [ ] ⌘⌥P cycles \`!!!\` → \`!!\` → \`!\` → none, and the item's priority follows.
+- [ ] On *water the plants* (repeats weekly), ⌘⌥T: it stays open and its \`{#id}\` moves to next week's.
+- [ ] Edit *pay the rent today* to *pay the rent tomorrow*, ⌘⌥A: the item moves to tomorrow.
 
 ## Reminders
 
@@ -164,18 +164,18 @@ happen. ⌃⌥ is Control+Option. The REPL is ⌘J. Guide: docs/PIM.md in the re
 
 ## Capture, refile
 
-- [ ] ⌃⌥N, *inbox*, \`ask about the boiler\`, Enter: a line appears under \`## Inbox\` in **inbox.md**, linked.
-- [ ] ⌃⌥N, *log*, \`water 2 glass\`: under \`## Log\` in today's note. *task*: under \`## Tasks\`.
-- [ ] In **inbox.md**, on *look into solar panels*, ⌃⌥F, type \`home\`, pick \`projects/home.md › ## Someday\`: the line moves there.
+- [ ] ⌘⌥N, *inbox*, \`ask about the boiler\`, Enter: a line appears under \`## Inbox\` in **inbox.md**, linked.
+- [ ] ⌘⌥N, *log*, \`water 2 glass\`: under \`## Log\` in today's note. *task*: under \`## Tasks\`.
+- [ ] In **inbox.md**, on *look into solar panels*, ⌘⌥F, type \`home\`, pick \`projects/home.md › ## Someday\`: the line moves there.
 
 ## Blocks, clock, tracker, notes
 
-- [ ] Open **dashboard.md**, ⌃⌥U: every block is recomputed.
-- [ ] ⌃⌥W in any note: the next 7 days as a block.
-- [ ] On a task or a heading, ⌃⌥I clocks in; ⌃⌥K says what's running; ⌃⌥O stops it.
-- [ ] In today's Log, on \`coffee 1\`, ⌃⌥L: it's logged with the time. ⌃⌥C logs a coffee; ⌃⌥R puts today's log at the caret.
-- [ ] ⌃⌥X moves the \`- [x]\` lines to \`## Archive\` at the end of the note.
-- [ ] ⌃⌥V opens this week's review, filled in.
+- [ ] Open **dashboard.md**, ⌘⌥U: every block is recomputed.
+- [ ] ⌘⌥W in any note: the next 7 days as a block.
+- [ ] On a task or a heading, ⌘⌥I clocks in; ⌘⌥K says what's running; ⌘⌥O stops it.
+- [ ] In today's Log, on \`coffee 1\`, ⌘⌥L: it's logged with the time. ⌘⌥C logs a coffee; ⌘⌥R puts today's log at the caret.
+- [ ] ⌘⌥X moves the \`- [x]\` lines to \`## Archive\` at the end of the note.
+- [ ] ⌘⌥V opens this week's review, filled in.
 
 ## The config itself
 
