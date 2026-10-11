@@ -68,8 +68,8 @@ export function promptModal(title: string, value = "", okLabel = "OK", choices: 
   });
 }
 
-/** Ask a yes/no question. Resolves true if confirmed. */
-export function confirmModal(message: string, okLabel = "Delete"): Promise<boolean> {
+/** Ask a yes/no question. Resolves true if confirmed. The OK button is red unless `danger` is false. */
+export function confirmModal(message: string, okLabel = "Delete", danger = true): Promise<boolean> {
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
     overlay.className = "qo-overlay";
@@ -84,7 +84,7 @@ export function confirmModal(message: string, okLabel = "Delete"): Promise<boole
     cancel.className = "dlg-btn";
     cancel.textContent = "Cancel";
     const ok = document.createElement("button");
-    ok.className = "dlg-btn dlg-danger";
+    ok.className = danger ? "dlg-btn dlg-danger" : "dlg-btn dlg-primary";
     ok.textContent = okLabel;
     actions.append(cancel, ok);
     panel.append(heading, actions);

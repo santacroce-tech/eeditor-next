@@ -839,7 +839,7 @@ fn save_workspace(app: &tauri::AppHandle, path: &Path) {
 /// Resolve the workspace on startup.
 /// Mobile: the app's **Documents** dir — exposed to the Files app via UIFileSharingEnabled /
 /// LSSupportsOpeningDocumentsInPlace (Info.ios.plist), so the user can add/edit .md files there.
-/// Desktop: last-used → $EEDITOR_WORKSPACE → ./workspace (dev) → ~/Documents/EEditor (seeded).
+/// Desktop: last-used → $EEDITOR_WORKSPACE → ./workspace (dev) → ~/Documents/EEditor (created empty).
 fn initial_workspace(app: &tauri::AppHandle) -> PathBuf {
     #[cfg(mobile)]
     {
@@ -883,7 +883,8 @@ fn initial_workspace(app: &tauri::AppHandle) -> PathBuf {
     app.path().home_dir().unwrap_or(cwd)
 }
 
-/// Create the default notes folder and put a welcome note in it, once per launch.
+/// Create the default notes folder, once per launch. It starts empty: the frontend offers the
+/// sample notes (src/samples) to any empty folder, this one included.
 ///
 /// Deliberately *not* done in `setup()`: creating a folder inside ~/Documents is precisely the
 /// write macOS stops to ask about, `setup` runs on the main thread, and the app would hang on its
@@ -893,15 +894,10 @@ fn initial_workspace(app: &tauri::AppHandle) -> PathBuf {
 fn seed_workspace(ws: &Path) {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
-        // Only ever *creates*. A folder that is already there — saved from last time, or picked by
-        // the user — is left exactly as it is, welcome note or not.
-        if ws.exists() || fs::create_dir_all(ws).is_err() {
-            return;
+        // Only ever *creates*. A folder that is already there is left exactly as it is.
+        if !ws.exists() {
+            let _ = fs::create_dir_all(ws);
         }
-        let _ = fs::write(
-            ws.join("welcome.md"),
-                "# EEditor\n\nA Markdown editor with the EELisp engine.\n\nYour notes live in this folder (**Documents → EEditor**). Use the **folder…** button in the Files\nheader to point EEditor at any other folder.\n\nShortcuts: ⌘S save · ⌘P quick-open · ⌘⇧F search · ⌘D today's note · ⌘I timestamp heading ·\n⌘⇧↩ run the ```eelisp block at the cursor.\n\n```eelisp\n(+ 1 2 3)\n(map (fn (x) (* x x)) (range 1 6))\n```\n",
-        );
     });
 }
 

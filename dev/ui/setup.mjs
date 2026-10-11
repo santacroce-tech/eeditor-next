@@ -7,7 +7,7 @@
 
 import { copyFile, cp, mkdir, rm, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { UI_WORKSPACE } from "../../playwright.config.mjs";
+import { UI_EMPTY, UI_WORKSPACE } from "../../playwright.config.mjs";
 
 export default async function setup() {
   await rm(UI_WORKSPACE, { recursive: true, force: true });
@@ -20,4 +20,12 @@ export default async function setup() {
   await cp("workspace/examples", `${UI_WORKSPACE}/examples`, { recursive: true });
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) await setup();
+/** The folder dev/ui/samples.pw.mjs opens: nothing in it at all, not even a database. */
+export async function setupEmpty() {
+  await rm(UI_EMPTY, { recursive: true, force: true });
+  await mkdir(UI_EMPTY, { recursive: true });
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  await (process.argv[2] === "empty" ? setupEmpty() : setup());
+}

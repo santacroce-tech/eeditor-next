@@ -7,6 +7,9 @@ import { defineConfig } from "@playwright/test";
 
 /** A workspace of its own, wiped before each run (dev/ui/setup.mjs, run ahead of the bridge). */
 export const UI_WORKSPACE = ".ui-workspace";
+/** A folder that starts empty, for what a new folder gets (dev/ui/samples.pw.mjs), on its own bridge. */
+export const UI_EMPTY = ".ui-empty";
+export const EMPTY_URL = "http://localhost:5174";
 
 export default defineConfig({
   testDir: "dev/ui",
@@ -25,5 +28,18 @@ export default defineConfig({
       reuseExistingServer: false,
     },
     { command: "npx vite --port 5173 --strictPort", port: 5173, reuseExistingServer: false },
+    {
+      command: "node dev/ui/setup.mjs empty && node dev/bridge.mjs",
+      port: 8788,
+      env: { WORKSPACE_ROOT: UI_EMPTY, BRIDGE_PORT: "8788" },
+      stdout: "pipe",
+      reuseExistingServer: false,
+    },
+    {
+      command: "npx vite --port 5174 --strictPort",
+      port: 5174,
+      env: { VITE_BRIDGE_URL: "http://localhost:8788" },
+      reuseExistingServer: false,
+    },
   ],
 });

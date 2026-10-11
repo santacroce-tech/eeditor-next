@@ -124,4 +124,5 @@
 ;; mindmap-map · mindmap-text          the active mind map tab: the map, or its markdown outline
 ;; open-file           pick a file from anywhere; asks whether to copy it in or edit it in place
 ;; copy-into-workspace turn the current ↗ (outside) note into a copy in the workspace
+;; add-samples         add the sample notes and the PIM tour to this folder (keeps what is there)
 ;; insert-image        pick images; each is copied into assets/ beside the note and linked at the caret

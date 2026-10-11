@@ -43,6 +43,7 @@ import { backlinksTo } from "./core/backlinks";
 import { linkifyWikiLinks } from "./ui/wikilinks";
 import { uniqueName } from "./core/uniquename";
 import { appendUnder } from "./core/append";
+import { addSamples } from "./samples/workspace";
 import "./styles.css";
 import { openScreenWindow } from "./ui/screenwindow";
 
@@ -1326,6 +1327,7 @@ function main(): void {
       // the root row is the workspace itself — worth locating, even though it can't be renamed
       ...locationItems(node.path),
     ];
+    if (node.path === "") items.push({ label: "Add sample notes…", action: () => void offerSampleNotes() });
     if (isSheetPath(node.path)) {
       items.push({ label: "Export as CSV", action: () => void exportSheetCsv(node.path) });
     }
@@ -1393,16 +1395,88 @@ function main(): void {
     if (typeof error === "string") await infoModal("The agenda isn't being saved — it lasts until you quit", error);
   }
 
+  const agendaCount = async (): Promise<number> => {
+    const env = await engine.evalSrc("(item-count)");
+    return env.ok && typeof env.result === "number" ? env.result : 0;
+  };
+
+  /**
+   * A workspace has just arrived — at launch, or picked with folder…. The engine is already on its
+   * database. Its keybindings are its own, so they're read again; and a folder with nothing in it
+   * (no notes, an empty agenda) is offered the sample notes before anything opens.
+   */
+  async function enterWorkspace(): Promise<void> {
+    void agenda.refresh();
+    void checkDatabase();
+    await sidebar.refresh().catch(() => {}); // an unreadable tree must not cost us the shortcuts
+    await keys.reload();
+    void keys.loadPrelude(); // so (ed-…) works at the REPL before any key has fired
+    if (sidebar.files().length === 0 && (await agendaCount()) === 0) {
+      const yes = await confirmModal(
+        "This folder is empty. Add the sample notes? A welcome note, example forms, a mind map, " +
+          "and a hands-on tour of the PIM with a small agenda to try it on.",
+        "Add samples",
+        false,
+      );
+      if (yes) await addSampleNotes();
+    }
+    // the config's (on-start …), if it has one, decides what to open instead of openFirstFile
+    if (!(await keys.runStart().catch(() => false))) await openFirstFile();
+    void tags.refresh();
+  }
+
+  /**
+   * Put the sample notes (src/samples) in the workspace. Only adds: what's already there is kept,
+   * and the PIM tour is left out when the folder has an agenda or a config of its own.
+   */
+  async function addSampleNotes(): Promise<void> {
+    await saveAllDirty();
+    await sidebar.refresh().catch(() => {});
+    // The tree knows what's there. It hides dotted paths only, and asking the disk about a missing
+    // file is an error logged for each one.
+    const have = new Set(sidebar.files().map((f) => f.path));
+    try {
+      const res = await addSamples(
+        {
+          async eval(src) {
+            const env = await engine.evalSrc(src);
+            if (!env.ok) throw new Error(env.error);
+            return env.result;
+          },
+          write: (p, text) => ws.write(p, text),
+          exists: async (p) => have.has(p) || (p.startsWith(".") && (await ws.read(p).then(() => true, () => false))),
+        },
+        await agendaCount(),
+      );
+      await sidebar.refresh().catch(() => {});
+      await keys.reload(); // the PIM tour brings its shortcut table
+      void agenda.refresh();
+      void tags.refresh();
+      const added = res.written.length
+        ? `Added ${res.written.length} sample files${res.kept.length ? ` (${res.kept.length} were here already)` : ""}`
+        : "The sample notes are all here already";
+      toast(res.pimSkipped ? `${added}. No PIM tour: ${res.pimSkipped}` : added);
+    } catch (e) {
+      toast(`Could not add the sample notes: ${String(e)}`);
+    }
+  }
+
+  /** The workspace menu's way in, for a folder that isn't empty. */
+  async function offerSampleNotes(): Promise<void> {
+    const yes = await confirmModal(
+      "Add the sample notes to this folder? Files that are already here are kept as they are.",
+      "Add samples",
+      false,
+    );
+    if (!yes) return;
+    await addSampleNotes();
+    await openFile("welcome.md").catch(() => {});
+  }
+
   openBtn.addEventListener("click", () => {
     void ws.pickWorkspace().then((picked) => {
-      if (!picked) return;
       // the backend has already moved the engine to the new workspace's database
-      void agenda.refresh();
-      void checkDatabase();
-      void sidebar.refresh().then(() => {
-        void tags.refresh();
-        void openFirstFile();
-      });
+      if (picked) void enterWorkspace();
     });
   });
 
@@ -1753,6 +1827,7 @@ function main(): void {
     },
     "open-keys": () => void keys.openConfig(),
     "reload-keys": () => void keys.reload(),
+    "add-samples": () => void offerSampleNotes(),
     "toggle-repl": toggleRepl,
     "focus-repl": () => {
       showRepl();
@@ -1952,24 +2027,13 @@ function main(): void {
 
   setHead();
   // Restore a previously-picked external folder (iOS) first, then load the tree once. The
-  // keybindings live in the workspace, so they're read after it settles — and the config's
-  // `(on-start …)`, if it has one, decides what to open instead of openFirstFile.
+  // keybindings live in the workspace, so they're read after it settles.
   void ws
     .restoreWorkspace()
     .catch(() => null)
     .finally(() => {
-      void sidebar
-        .refresh()
-        .catch(() => {}) // an unreadable tree must not cost us the shortcuts
-        .then(async () => {
-          await keys.reload();
-          void keys.loadPrelude(); // so (ed-…) works at the REPL before any key has fired
-          if (!(await keys.runStart().catch(() => false))) await openFirstFile();
-          void tags.refresh();
-        });
       // A restored folder (iOS) brings its own database, so the agenda is read once it's in place.
-      void agenda.refresh();
-      void checkDatabase();
+      void enterWorkspace();
     });
 }
 
