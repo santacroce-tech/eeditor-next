@@ -13,6 +13,8 @@ import { createFormClient, type FormIdentity } from "./engine/form";
 import { createFormHost } from "./forms/host";
 import { FORM_EXT, defnRange, handlerStub, isFormPath, layoutRange, newFormSource, printFormSpec, readFormSpec } from "./core/form";
 import { createFormDesigner } from "./ui/formdesigner";
+import { isMindmapPath, MINDMAP_EXT, newMindmapSource, replaceMap } from "./core/mindmap";
+import { createMindmapView, svgToPng } from "./ui/mindmap";
 import { createFormRunner, type FormRunner } from "./ui/formrun";
 import { createFormWindow, type FormWindow } from "./ui/formwindow";
 import { isolateHistory, redo, undo } from "@codemirror/commands";
@@ -220,7 +222,25 @@ function main(): void {
     if (t) void exportFormAsHtml(t.path, true);
   });
   formModes.append(exportBtn);
-  headRight.append(copyInBtn, themeBtn, imageBtn, formModes, previewBtn, pdfBtn, keysBtn, replBtn);
+  // A mind map tab: the map, or the same file as its markdown outline. Shown for .mindmap.md only.
+  type MapMode = "map" | "text";
+  const mapModes = document.createElement("span");
+  mapModes.className = "head-group form-modes";
+  mapModes.style.display = "none";
+  const mapModeButtons = new Map<MapMode, HTMLButtonElement>();
+  for (const [mode, label, title] of [
+    ["map", "map", "Edit the outline as a mind map"],
+    ["text", "text", "The map as its markdown outline"],
+  ] as const) {
+    const b = document.createElement("button");
+    b.className = "head-btn";
+    b.textContent = label;
+    b.title = title;
+    b.addEventListener("click", () => setMapMode(mode));
+    mapModeButtons.set(mode, b);
+    mapModes.append(b);
+  }
+  headRight.append(copyInBtn, themeBtn, imageBtn, formModes, mapModes, previewBtn, pdfBtn, keysBtn, replBtn);
   editorPane.head.append(nameEl, headRight);
 
   const tabBar = document.createElement("div");
@@ -245,7 +265,11 @@ function main(): void {
   const runHost = document.createElement("div");
   runHost.className = "formrun-host";
   runHost.style.display = "none";
-  editorPane.body.append(tabBar, editorHost, previewHost, sheetHost, designHost, runHost, backlinksBar);
+  // A mind map tab shows its map here, drawn from (and written into) the text buffer.
+  const mapHost = document.createElement("div");
+  mapHost.className = "mindmap-host";
+  mapHost.style.display = "none";
+  editorPane.body.append(tabBar, editorHost, previewHost, sheetHost, designHost, runHost, mapHost, backlinksBar);
 
   // ── repl pane ──
   const replPane = pane(shell, "repl-pane");
@@ -307,6 +331,9 @@ function main(): void {
     /** A .eeform: an ordinary text tab whose text is shown by the designer, the editor, or the running form. */
     form?: boolean;
     mode?: FormMode;
+    /** A .mindmap.md: a markdown note whose outline is shown — and edited — as a map. */
+    mindmap?: boolean;
+    mapMode?: MapMode;
   }
   let tabs: Tab[] = [];
   let activeIdx = -1;
@@ -318,8 +345,10 @@ function main(): void {
   /** Forms running in floating windows, by path — tools that stay open beside the notes. */
   const windows = new Map<string, { runner: FormRunner; win: FormWindow }>();
   const activeForm = (): Tab | undefined => (tabs[activeIdx]?.form ? tabs[activeIdx] : undefined);
+  const activeMap = (): Tab | undefined => (tabs[activeIdx]?.mindmap ? tabs[activeIdx] : undefined);
   let suppressChange = false; // guards programmatic setDoc from marking the doc dirty
   let designerWriting = false; // the designer is splicing its layout into the buffer — don't reload it from that
+  let mapWriting = false; // the same, for the mind map
   let currentPath = "";
   let dirty = false;
   let previewing = false;
@@ -417,15 +446,21 @@ function main(): void {
     const sheet = t?.sheet ? sheetViews.get(t.path) : undefined;
     const mode: FormMode | undefined = t?.form ? (t.mode ?? "design") : undefined;
     const runner = mode === "run" && t ? runners.get(t.path) : undefined;
+    const mapMode: MapMode | undefined = t?.mindmap ? (t.mapMode ?? "map") : undefined;
+    const map = mapMode === "map";
     sheetHost.style.display = sheet ? "" : "none";
     designHost.style.display = mode === "design" ? "" : "none";
     runHost.style.display = mode === "run" ? "" : "none";
-    editorHost.style.display = sheet || (mode && mode !== "code") || (!mode && previewing) ? "none" : "";
-    previewHost.style.display = !sheet && !mode && previewing ? "" : "none";
-    previewBtn.style.display = sheet || mode ? "none" : "";
+    mapHost.style.display = map ? "" : "none";
+    editorHost.style.display = sheet || map || (mode && mode !== "code") || (!mode && previewing) ? "none" : "";
+    previewHost.style.display = !sheet && !map && !mode && previewing ? "" : "none";
+    previewBtn.style.display = sheet || map || mode ? "none" : "";
     pdfBtn.style.display = mode ? "none" : "";
     formModes.style.display = mode ? "" : "none";
     for (const [m, b] of modeButtons) b.classList.toggle("active", m === mode);
+    mapModes.style.display = mapMode ? "" : "none";
+    for (const [m, b] of mapModeButtons) b.classList.toggle("active", m === mapMode);
+    if (map && t) mindmap.load(editor.getDoc(), t.path);
     if (sheet) {
       sheetHost.replaceChildren(sheet.el);
       void sheet.refreshIfChanged();
@@ -458,6 +493,61 @@ function main(): void {
     imageUrl: (src) => formImageUrl(activeForm()?.path ?? "", src),
   });
   designHost.append(designer.el);
+
+  // ── mind maps: the map writes the buffer, the buffer feeds the map — as with the designer ──
+  const mindmap = createMindmapView({
+    onChange: (root) => {
+      const doc = editor.getDoc();
+      const next = replaceMap(doc, root);
+      // only the changed middle goes in, so the rest of the note — and the caret in text mode — stays put
+      let a = 0;
+      while (a < doc.length && a < next.length && doc[a] === next[a]) a++;
+      let b = 0;
+      while (b < doc.length - a && b < next.length - a && doc[doc.length - 1 - b] === next[next.length - 1 - b]) b++;
+      mapWriting = true;
+      try {
+        editor.view.dispatch({
+          changes: { from: a, to: doc.length - b, insert: next.slice(a, next.length - b) },
+          annotations: isolateHistory.of("full"),
+        });
+      } finally {
+        mapWriting = false;
+      }
+    },
+    onUndo: () => void undo(editor.view),
+    onRedo: () => void redo(editor.view),
+    onOpenLink: (name) => openWikiLink(name),
+    onExport: (kind) => void exportMapPicture(kind),
+  });
+  mapHost.append(mindmap.el);
+
+  /**
+   * The map on screen as a picture beside it — `Trip.png` / `Trip.svg`, never over an existing file
+   * (`saveAsset` picks a free name) — so a note can show it with `![](Trip.png)`.
+   */
+  async function exportMapPicture(kind: "png" | "svg"): Promise<void> {
+    const t = activeMap();
+    if (!t) return;
+    const stem = basename(t.path).replace(/\.mindmap\.md$/i, "");
+    try {
+      const svg = mindmap.svg();
+      const bytes = kind === "svg" ? new TextEncoder().encode(svg) : await svgToPng(svg, 2);
+      const where = t.external ? "" : parentDir(t.path);
+      const saved = await ws.saveAsset(where, `${stem}.${kind}`, bytes as Uint8Array<ArrayBuffer>);
+      toast(`Saved ${saved} — show it in a note with ![${stem}](${basename(saved)})`);
+    } catch (e) {
+      toast(`Could not save the picture: ${String(e instanceof Error ? e.message : e)}`);
+    }
+  }
+
+  function setMapMode(mode: MapMode): void {
+    const t = activeMap();
+    if (!t) return;
+    t.mapMode = mode;
+    showSurface(t);
+    if (mode === "text") editor.view.focus();
+    else mindmap.focus();
+  }
 
   /**
    * An image control's `:src` resolves beside the form, the way a note's `![](assets/x.png)` does,
@@ -636,6 +726,7 @@ function main(): void {
     tabs.splice(at, 1);
     if (tab.sheet) await dropSheet(tab.path);
     if (tab.form) stopRunner(tab.path);
+    if (tab.mindmap) mindmap.forget(tab.path);
     if (tabs.length === 0) {
       activeIdx = -1;
       currentPath = "";
@@ -733,6 +824,7 @@ function main(): void {
       // The designer follows the buffer — an undo, a keybinding's edit — except for its own writes.
       const t = tabs[activeIdx];
       if (t?.form && (t.mode ?? "design") === "design" && !designerWriting) designer.load(editor.getDoc());
+      if (t?.mindmap && (t.mapMode ?? "map") === "map" && !mapWriting) mindmap.load(editor.getDoc(), t.path);
     },
     onRunBlock: (code) => {
       showRepl();
@@ -783,7 +875,13 @@ function main(): void {
     if (isSheetPath(path)) return openSheet(path);
     const content = await ws.read(path);
     contentCache.set(path, content);
-    tabs.push(isFormPath(path) ? { path, content, dirty: false, form: true, mode: "design" } : { path, content, dirty: false });
+    tabs.push(
+      isFormPath(path)
+        ? { path, content, dirty: false, form: true, mode: "design" }
+        : isMindmapPath(path)
+          ? { path, content, dirty: false, mindmap: true, mapMode: "map" }
+          : { path, content, dirty: false },
+    );
     switchTab(tabs.length - 1);
   };
 
@@ -849,6 +947,7 @@ function main(): void {
     if (!name) return;
     if (isSheetPath(name)) return createSheet(joinPath(dir, name));
     if (isFormPath(name)) return createForm(joinPath(dir, name));
+    if (isMindmapPath(name)) return createMindmap(joinPath(dir, name));
     const path = joinPath(dir, name);
     try {
       await ws.create(path, false);
@@ -892,6 +991,25 @@ function main(): void {
     await sidebar.refresh();
     await openFile(path);
   }
+  async function newMindmap(dir: string): Promise<void> {
+    const name = await promptModal("New mind map", "Untitled", "Create");
+    if (!name) return;
+    await createMindmap(joinPath(dir, isMindmapPath(name) ? name : name.replace(/\.md$/i, "") + MINDMAP_EXT));
+  }
+  /** A new map starts with its name as the central topic and one idea to type over. */
+  async function createMindmap(path: string): Promise<void> {
+    try {
+      await ws.create(path, false);
+      await ws.write(path, newMindmapSource(basename(path).replace(/\.mindmap\.md$/i, "")));
+    } catch (e) {
+      toast(`Could not create ${path}: ${String(e instanceof Error ? e.message : e)}`);
+      return;
+    }
+    await sidebar.refresh();
+    await tags.refresh();
+    await openFile(path);
+    focusDocument();
+  }
   async function newFolder(dir: string): Promise<void> {
     const name = await promptModal("New folder", "", "Create");
     if (!name) return;
@@ -919,7 +1037,18 @@ function main(): void {
     const renamePath = (p: string): string =>
       p === node.path ? to : p.startsWith(node.path + "/") ? to + p.slice(node.path.length) : p;
     tabs.forEach((t) => {
+      const was = t.path;
       t.path = renamePath(t.path);
+      if (t.path === was || t.sheet || t.form) return;
+      // a name decides what a text tab is: renamed to (or from) .mindmap.md, it becomes (or stops being) a map
+      const isMap = isMindmapPath(t.path);
+      if (isMap && t.mindmap) mindmap.rename(was, t.path);
+      else if (isMap) Object.assign(t, { mindmap: true, mapMode: "map" });
+      else if (t.mindmap) {
+        mindmap.forget(was);
+        t.mindmap = undefined;
+        t.mapMode = undefined;
+      }
     });
     for (const [p, view] of [...sheetViews]) {
       sheetViews.delete(p);
@@ -940,6 +1069,7 @@ function main(): void {
     await tags.refresh();
     setHead();
     renderTabs();
+    showSurface(tabs[activeIdx]); // a rename may have made the active tab a map, or stopped it being one
     sidebar.setActive(currentPath);
   }
   async function deleteNode(node: FileNode): Promise<void> {
@@ -1191,6 +1321,7 @@ function main(): void {
       { label: "New file…", action: () => void newFile(dir) },
       { label: "New sheet…", action: () => void newSheet(dir) },
       { label: "New form…", action: () => void newForm(dir) },
+      { label: "New mind map…", action: () => void newMindmap(dir) },
       { label: "New folder…", action: () => void newFolder(dir) },
       // the root row is the workspace itself — worth locating, even though it can't be renamed
       ...locationItems(node.path),
@@ -1414,6 +1545,12 @@ function main(): void {
       void exportSheetPdf(sheet.path);
       return;
     }
+    // a mind map on screen prints as the map; in text mode it prints as the note it also is
+    const map = activeMap();
+    if (map && (map.mapMode ?? "map") === "map") {
+      exportPdf(basename(map.path).replace(/\.mindmap\.md$/i, ""), `<div class="mindmap-print">${mindmap.svg()}</div>`, (m) => toast(m));
+      return;
+    }
     const body = document.createElement("div");
     body.append(parseMarkdown(editor.getDoc()));
     try {
@@ -1585,7 +1722,9 @@ function main(): void {
   function focusDocument(): void {
     const sheet = activeSheet();
     const form = activeForm();
+    const map = activeMap();
     if (sheet) sheet.focus();
+    else if (map && (map.mapMode ?? "map") === "map") mindmap.focus();
     else if (form && form.mode === "run") runners.get(form.path)?.focus();
     else if (form && form.mode !== "code") designer.focus();
     else editor.view.focus();
@@ -1604,6 +1743,9 @@ function main(): void {
     "form-design": () => void setFormMode("design"),
     "form-code": () => void setFormMode("code"),
     "form-run": () => void setFormMode("run"),
+    "new-mindmap": () => void newMindmap(""),
+    "mindmap-map": () => setMapMode("map"),
+    "mindmap-text": () => setMapMode("text"),
     "export-html": () => {
       const t = activeForm();
       if (t) void exportFormAsHtml(t.path, true);
@@ -1654,7 +1796,11 @@ function main(): void {
       void openSheet(f.path, true).catch((e) => toast(`Could not open ${f.name}: ${String(e)}`));
       return;
     }
-    const form = isFormPath(f.path) ? { form: true, mode: "design" as const } : {};
+    const form = isFormPath(f.path)
+      ? { form: true, mode: "design" as const }
+      : isMindmapPath(f.path)
+        ? { mindmap: true, mapMode: "map" as const }
+        : {};
     tabs.push({ path: f.path, content: f.content, dirty: false, external: true, ...form });
     switchTab(tabs.length - 1);
     focusDocument();

@@ -1,0 +1,263 @@
+# EEditor
+
+- Shortcuts
+  - Everywhere
+    - ⌘S save · ⌘P quick open
+    - ⌘⇧F search every note
+    - ⌘D today's note · ⌘⇧N new file
+    - ⌘J show/hide the REPL
+    - ⌘E markdown preview
+    - ⌘⇧K edit the shortcuts themselves
+    - ⌘I new note stamped with date and time
+    - ⌘⇧I "## HH:MM" heading at the caret
+    - All of these live in keybindings.eelisp
+  - App menu
+    - ⌘Q quit — unsaved work is saved first
+    - ⌘W close window · ⌘M minimize
+    - ⌘H hide · ⌥⌘H hide others
+    - ⌃⌘F full screen
+  - Editor
+    - EEditor's own
+      - ⌘⇧⏎ run the selection or the eelisp block
+      - ⇥ indent · ⇧⇥ outdent
+      - ⌥⇥ move focus out of the editor
+      - ⌘-click follow a [[wiki-link]]
+      - [[ suggests note names
+      - ⌘V an image: stored in assets/ and linked
+    - Text
+      - ⌘Z undo · ⌘⇧Z redo
+      - ⌘F find and replace · ⌘G next match
+      - ⌘⇧L select every match
+      - ⌘L select the line
+      - ⌥↑ ⌥↓ move the line
+      - ⇧⌥↑ ⇧⌥↓ copy the line
+      - ⌘] ⌘[ indent / outdent
+      - ⌘/ toggle comment
+      - ⌘⌥[ ⌘⌥] fold / unfold
+      - ⌃Space completions
+      - ⌘⌥G go to line
+  - REPL
+    - ⌘⏎ evaluate
+    - ↑ ↓ walk the history
+  - Quick open and search
+    - ↑ ↓ choose · ⏎ open · ⎋ close
+  - Sheets
+    - Moving
+      - Arrows move · ⇧ + arrow selects
+      - ⇥ ⇧⇥ next / previous cell
+      - PgUp PgDn by a page · Home column A
+      - ⌘A select all
+    - Editing
+      - Type to replace a cell
+      - ⏎ or F2 edit the cell
+      - ⌫ clear · ⌘C ⌘X ⌘V copy, cut, paste
+      - ⌘Z ⌘⇧Z undo / redo
+      - ⇧F10 the cell menu: fill, insert…
+    - In a cell
+      - ⏎ ⇧⏎ commit, down / up
+      - ⇥ ⇧⇥ commit, right / left
+      - ⎋ cancel
+  - Form designer
+    - ⌘A select all · ⇧-click add to selection
+    - Arrows nudge 8px · ⇧ + arrow 1px
+    - ⌘C ⌘X ⌘V ⌘D copy, cut, paste, duplicate
+    - ⌫ delete · ⌘Z ⌘⇧Z undo / redo
+    - Double-click a control: its handler
+    - ⎋ back to the select tool
+  - Running forms
+    - ⏎ presses the :default button
+    - ⎋ presses the :cancel button
+    - ⌃⇥ ⌃⇧⇥ next / previous form in a frame
+  - Mind maps
+    - Building
+      - ⇥ add a child
+      - ⏎ add a sibling · ⇧⏎ one before
+      - Type to rename · F2 or Space to edit
+      - Editing: ⇥ child next, ⇧⇥ sibling next
+      - ⌫ delete the branch
+      - ⌥↑ ⌥↓ reorder
+      - Drag a node onto another to move it
+    - Looking
+      - Arrows walk the map as drawn
+      - Home the central topic
+      - ⌘/ fold · ⌘⇧/ unfold everything
+      - ⌘0 fit · ⌘= ⌘- zoom · pinch or ⌘-scroll
+      - Drag the background to pan
+      - ⌘⏎ or ⌘-click open a node's [[link]]
+  - Spectrum screen
+    - Keys go to the Spectrum
+    - ⇧ CAPS SHIFT · ⌃ or ⌥ SYMBOL SHIFT
+    - ⌘V types the clipboard in
+    - ⎋ leaves full screen
+- EELisp
+  - Syntax
+    - Atoms
+      - `42` `-3.5` `1e3` `0xff` one number type
+      - `"a\tb\n"` strings with escapes
+      - `true` `false` `nil`
+      - `str-len` `even?` `->string` symbols
+      - `:name` a keyword is itself
+    - Collections
+      - `(f a b)` a list — a call
+      - `[1 2 3]` is `(list 1 2 3)`
+      - `{:name "Ada" :born 1815}` a dict
+    - Quoting
+      - `'(1 2 3)` quoted, not run
+      - `` `(1 ,x ,@xs) `` quasiquote
+      - `,x` unquote · `,@xs` splice
+    - Truth
+      - Only `false` and `nil` are false
+      - `0` `""` `()` are true — use `empty?`
+    - Comments
+      - `;` to the end of the line
+      - A `;;` block above a defn documents it
+    - `(type 42)` → "number"
+  - Special forms
+    - Defining
+      - `(def pi 3.14159)`
+      - `(defn sq (x) (* x x))`
+      - `(def (sq x) …)` and `defun` too
+      - `(set! n (+ n 1))` reassign
+    - Functions
+      - `(fn (x) (* x x))` or `lambda`
+      - `(fn (a . rest) …)` rest arguments
+      - A missing argument is `nil`
+    - `(let (a 2 b (* a 3)) (+ a b))`
+    - Control
+      - `(if (> x 10) "big" "small")`
+      - `(cond (< n 0) "neg" true "pos")` flat pairs
+      - `(and a b)` `(or a b)` `(not x)`
+      - `(do e1 e2)` returns the last
+      - `(when test …)` `(unless test …)`
+    - Loops
+      - `(loop (i 5 acc 1) … (recur …))`
+      - `(for-each x lst (println x))`
+      - Tail calls run in constant space
+    - Macros
+      - `(defmacro unless2 (c b) …)`
+      - Not hygienic: pick unusual names
+    - Code is data
+      - `(eval (parse "(+ 1 2)"))` → 3
+      - `(apply + (list 1 2 3))` → 6
+  - Numbers
+    - `(+ 1 2 3)` `(/ 7 2)` → 3.5
+    - `mod` `abs` `pow` `floor` `ceil` `round`
+    - `(< 1 2 3)` compares a chain
+    - `(sum 1 (list 2 nil "x"))` → 3
+    - `avg` `min` `max` look inside lists
+    - `band` `bor` `bxor` `shl` `shr`
+  - Strings
+    - `(str "x=" 42)` anything to text
+    - `(str-join "-" (list "a" "b"))` → "a-b"
+    - `(str-split "a,b" ",")`
+    - `(substr "hello" 1 3)` → "el"
+    - `str-len` `str-upper` `str-lower` `str-trim`
+    - `str-contains` `str-starts-with` `str-ends-with`
+    - `(str-replace "14:30" ":" "")` → "1430"
+    - `(str-matches s "^[a-z][0-9]$")` regex
+  - Lists
+    - Building
+      - `(list 1 2)` `(cons 0 l)` `(append a b)`
+      - `(range 1 5)` → (1 2 3 4)
+      - `reverse` `zip`
+    - Reading
+      - `(nth l 1)` 0-based, `nil` past the end
+      - `first` `second` `last` `head` `tail`
+      - `(take 2 l)` `(drop 2 l)`
+      - `length` `empty?`
+    - Higher-order
+      - `(map (fn (x) (* 2 x)) l)`
+      - `(filter even? (range 10))`
+      - `(reduce + 0 l)`
+      - `(sort-by (fn (p) (nth p 1)) ps)`
+      - `some?` `every?`
+      - `((compose inc inc) 5)` → 7
+  - Dicts
+    - `(dict-get d :name)` `nil` if missing
+    - `(dict-set d :born 1816)` a new dict
+    - `dict-has` `dict-keys` `dict-values`
+    - `(dict-merge a b)` later keys win
+  - Types
+    - `number?` `string?` `list?` `nil?` `fn?`
+    - `(->number "42")` `(->string 42)`
+  - Dates
+    - `(today)` `(now)`
+    - `(date-format (today) "d MMMM yyyy")`
+    - `(date-add "2026-09-25" 2 :weeks)`
+    - `(date-diff "2026-10-01" "2026-09-25")` → 6
+  - Input and output
+    - `(println "total:" 42)` · `print`
+    - `json-parse` `json-stringify`
+    - `(http-get url)` `(http-post url body)`
+  - Database
+    - Tables
+      - `(deftable books (title:string year:number))`
+      - string number bool date memo choice
+      - `(tables)` `(describe books)`
+    - Rows
+      - `(insert books {:title "SICP" :year 1985})`
+      - `(update books 1 {:year 1986})`
+      - `(delete books 1)` · `(pack books)`
+    - Queries
+      - `(query books :where "year > ?" :params '(1980))`
+      - `:order "year" :desc true :limit 10`
+      - `(records rs)` · `(field-get r :title)`
+    - On screen
+      - `(browse books)` a grid
+      - `(edit books 1)` a form
+  - Agenda
+    - Items
+      - `(add "lunch with Ana tomorrow !")`
+      - `(add-item "call Bob" :when "2026-09-26")`
+      - `(item-done 1)` `(item-set 1 :priority 2)`
+      - `(items :category "work" :search "budget")`
+      - `(items-on "2026-09-26")`
+    - `:recur (every 1 :months)` repeats
+    - Categories
+      - `(defcategory work/calls)`
+      - `(assign 3 "work/calls")`
+    - Rules
+      - `(defrule calls :when (str-matches text "call") :assign "work/calls")`
+      - `(apply-rules)` `(auto-categorize true)`
+    - Views
+      - `(defview late :filter (overdue?))`
+      - `(show late)`
+  - Sheets
+    - `(sheet-new "Budget")` a .eesheet
+    - `(sheet-set "Budget" "B2" "500")`
+    - `(sheet-get "Budget" "B3")`
+    - `=(sum B1:B9)` a range is a list
+    - `$B$1` pinned · `Rates!A1` another sheet
+    - `(sheet-recalc "Budget")`
+  - The editor
+    - Hooks
+      - `(bind "Mod-s" (ed-cmd "save"))`
+      - `(on-start (ed-open "todo.md"))`
+      - `(on-tick …)` once a minute
+    - Commands, as data
+      - `(ed-insert "text")` `(ed-replace t)`
+      - `(ed-open path)` `(ed-new path)`
+      - `(ed-goto-line 2)` `(ed-select a b)`
+      - `(ed-append path text "## Inbox")`
+      - `(ed-message "hi")` `(ed-notify title body)`
+    - Reading it
+      - `(buffer-text)` `(selection)` `(cursor-pos)`
+      - `(current-file)` `(current-dir)`
+      - `(notes)` `(read-note path)`
+  - Forms
+    - `(form "Contacts" :size (480 380) …)`
+    - `(textbox txtName :at (96 16))`
+    - label button checkbox dropdown grid…
+    - `:on-click` `:on-change` `:on-load`
+    - `(ui-get f "txtName")` `(ui-set …)`
+    - `(ui-message "Saved")` `(ui-open "Orders")`
+    - `(local pos 0)` `(public cart '())`
+  - Ask the language
+    - `(functions)` everything in scope
+    - `(functions "str")` by name
+    - `(source when)` the definition, as written
+
+Everything EEditor answers to on one page — the keys, and the Lisp inside. It opens folded to its
+sections: arrows or a click on a badge open one, ⌘⇧/ opens them all.
+
+This is an ordinary note: the **text** button in the header shows the outline the map is drawn from. Shortcuts are the defaults in `.eeditor/keybindings.eelisp` — ⌘⇧K to change them.
