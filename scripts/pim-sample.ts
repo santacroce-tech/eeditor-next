@@ -2,7 +2,9 @@
 // an agenda with overdue, today, upcoming, repeating, undated and inbox items, a reminder a few
 // minutes away, notes whose tasks are linked to those items, a tracker and a clock with history,
 // a dashboard of blocks, and "TRY ME.md" — a tutorial: a setup check, every key, a lesson per
-// feature with what you should see, and what to do when something doesn't work.
+// feature with what you should see, and what to do when something doesn't work. The repo's own
+// workspace/ comes along too — welcome, notes, the example forms and the mind map — so one folder
+// shows everything.
 //
 //   npm run pim:sample                 → ./pim-sample
 //   npm run pim:sample -- ~/pim-demo   → there
@@ -11,7 +13,7 @@
 // made, so make it again on the day you try it: it starts from scratch each time.
 
 import { spawn } from "node:child_process";
-import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
@@ -24,6 +26,11 @@ const out = path.resolve(process.argv[2] ?? "pim-sample");
 type Env = { ok: boolean; result: unknown; error?: string };
 
 await rm(out, { recursive: true, force: true });
+// The rest of the app's examples first; its .eeditor (database, keybindings) is the sample's own.
+await cp(path.join(root, "workspace"), out, {
+  recursive: true,
+  filter: (src) => !/[\\/](\.eeditor|\.DS_Store)$/.test(src),
+});
 await mkdir(path.join(out, ".eeditor"), { recursive: true });
 
 const child = spawn(BIN, ["--serve", "--db", path.join(out, ".eeditor/eeditor.db"), "--workspace", out], {
@@ -147,6 +154,8 @@ await write("TRY ME.md", `# PIM tutorial
 A hands-on tour of the PIM in this workspace: every key, what it should do, and what to check when it
 doesn't. Made ${TODAY} at ${hm(now)} by \`npm run pim:sample\`; the dates in the notes are relative to
 that day, so make the workspace again on the day you try it. The full guide is docs/PIM.md in the repo.
+The rest of the app is here too: **examples/** has the example forms and **EEditor.mindmap.md** — every
+shortcut and the EELisp dialect, drawn as a mind map.
 
 **How to read this.** ⌘⌥T means hold **Command** and **Option** together, then press **T** (Ctrl+Alt on Windows and Linux). The *caret*
 is the text cursor: most keys act on the line it's on. A *toast* is the short message that appears at
