@@ -142,3 +142,53 @@ test("a new mind map is made from the tree with its name as the central topic", 
   await expect(page.locator(".mm-node")).toHaveCount(2);
   await expect.poll(() => readFile(`${UI_WORKSPACE}/Plans.mindmap.md`, "utf8")).toBe("# Plans\n\n- Idea\n");
 });
+
+test("the big sample opens folded to its sections, and ⌘⇧/ opens them all", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => localStorage.clear());
+  await page.locator(".tree-file", { hasText: "EEditor.mindmap.md" }).click();
+  await expect(page.locator(".mm-d0")).toHaveText("EEditor");
+  await expect(page.locator(".mm-d1")).toHaveText(["Shortcuts", "EELisp"]);
+  const folded = await page.locator(".mm-badge").count();
+  expect(folded).toBeGreaterThan(10);
+  const shown = await page.locator(".mm-node").count();
+  expect(shown).toBeLessThanOrEqual(60);
+  // inline code is drawn without its backticks
+  await page.locator(".mm-badge").last().click();
+  await expect(page.locator(".mm-text").filter({ hasText: "(functions)" }).first()).not.toContainText("`");
+  // folds are remembered across a reload
+  const after = await page.locator(".mm-badge").count();
+  await page.reload();
+  await page.locator(".tree-file", { hasText: "EEditor.mindmap.md" }).click();
+  await expect(page.locator(".mm-badge")).toHaveCount(after);
+  await page.locator(".mm-stage").focus();
+  await page.keyboard.press(`${MOD}+Shift+/`);
+  await expect(page.locator(".mm-badge")).toHaveCount(0);
+  expect(await page.locator(".mm-node").count()).toBeGreaterThan(250);
+});
+
+test("PNG saves a picture of the map beside it, never over one", async ({ page }) => {
+  await openMap(page);
+  await page.locator(".mm-btn", { hasText: "PNG" }).click();
+  await expect(page.locator(".toast").last()).toContainText("Trip.png");
+  await page.locator(".mm-btn", { hasText: "PNG" }).click();
+  await expect(page.locator(".toast").last()).toContainText("Trip");
+  const png = await readFile(`${UI_WORKSPACE}/Trip.png`);
+  expect(png.subarray(1, 4).toString()).toBe("PNG");
+  await page.locator(".mm-btn", { hasText: "SVG" }).click();
+  await expect.poll(() => readFile(`${UI_WORKSPACE}/Trip.svg`, "utf8").catch(() => "")).toContain("<svg");
+});
+
+test("renamed away from .mindmap.md it is a plain note again", async ({ page }) => {
+  await page.goto("/");
+  await page.locator(".tree-file", { hasText: "Plans.mindmap.md" }).click();
+  await expect(page.locator(".mm-d0")).toHaveText("Plans");
+  await page.locator(".tree-file", { hasText: "Plans.mindmap.md" }).click({ button: "right" });
+  await page.locator(".ctx-item", { hasText: "Rename…" }).click();
+  await page.keyboard.press(`${MOD}+a`);
+  await page.keyboard.type("Plans.md");
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".editor-host")).toBeVisible();
+  await expect(page.locator(".mindmap-host")).toBeHidden();
+  await expect(page.locator(".editor-host .cm-content")).toContainText("# Plans");
+});

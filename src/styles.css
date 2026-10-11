@@ -1164,6 +1164,7 @@ body.screen-window .zx-host { width: 100%; height: 100%; }
 .mm-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 5px 8px;
   border-bottom: 1px solid var(--border); background: var(--bg-2); }
 .mm-bar-gap { flex: 1; }
+.mm-bar-sep { width: 1px; align-self: stretch; margin: 2px 4px; background: var(--border); }
 .mm-btn:disabled { opacity: .4; cursor: default; }
 .mm-stage { flex: 1; min-height: 0; position: relative; overflow: hidden; outline: none; cursor: default;
   touch-action: none; user-select: none; -webkit-user-select: none;
@@ -1187,7 +1188,7 @@ body.screen-window .zx-host { width: 100%; height: 100%; }
 .mm-d0.mm-sel .mm-box { stroke: var(--fg); }
 .mm-linked .mm-text { text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--fg) 40%, transparent); }
 .mm-node.mm-editing .mm-text { visibility: hidden; }
-.mm-node.mm-dragging { opacity: .55; pointer-events: none; }
+.mm-node.mm-dragging, .mm-edge.mm-dragging { opacity: .5; pointer-events: none; }
 .mm-node.mm-drop .mm-box { stroke: var(--accent); stroke-width: 3; stroke-dasharray: 5 3; }
 .mm-badge circle { fill: var(--bg); stroke: var(--c, var(--accent)); stroke-width: 1.5; }
 .mm-badge text { fill: var(--fg); font: 600 10px system-ui, sans-serif; }

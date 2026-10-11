@@ -14,7 +14,7 @@ import { createFormHost } from "./forms/host";
 import { FORM_EXT, defnRange, handlerStub, isFormPath, layoutRange, newFormSource, printFormSpec, readFormSpec } from "./core/form";
 import { createFormDesigner } from "./ui/formdesigner";
 import { isMindmapPath, MINDMAP_EXT, newMindmapSource, replaceMap } from "./core/mindmap";
-import { createMindmapView } from "./ui/mindmap";
+import { createMindmapView, svgToPng } from "./ui/mindmap";
 import { createFormRunner, type FormRunner } from "./ui/formrun";
 import { createFormWindow, type FormWindow } from "./ui/formwindow";
 import { isolateHistory, redo, undo } from "@codemirror/commands";
@@ -517,8 +517,28 @@ function main(): void {
     onUndo: () => void undo(editor.view),
     onRedo: () => void redo(editor.view),
     onOpenLink: (name) => openWikiLink(name),
+    onExport: (kind) => void exportMapPicture(kind),
   });
   mapHost.append(mindmap.el);
+
+  /**
+   * The map on screen as a picture beside it — `Trip.png` / `Trip.svg`, never over an existing file
+   * (`saveAsset` picks a free name) — so a note can show it with `![](Trip.png)`.
+   */
+  async function exportMapPicture(kind: "png" | "svg"): Promise<void> {
+    const t = activeMap();
+    if (!t) return;
+    const stem = basename(t.path).replace(/\.mindmap\.md$/i, "");
+    try {
+      const svg = mindmap.svg();
+      const bytes = kind === "svg" ? new TextEncoder().encode(svg) : await svgToPng(svg, 2);
+      const where = t.external ? "" : parentDir(t.path);
+      const saved = await ws.saveAsset(where, `${stem}.${kind}`, bytes as Uint8Array<ArrayBuffer>);
+      toast(`Saved ${saved} — show it in a note with ![${stem}](${basename(saved)})`);
+    } catch (e) {
+      toast(`Could not save the picture: ${String(e instanceof Error ? e.message : e)}`);
+    }
+  }
 
   function setMapMode(mode: MapMode): void {
     const t = activeMap();
@@ -1017,7 +1037,18 @@ function main(): void {
     const renamePath = (p: string): string =>
       p === node.path ? to : p.startsWith(node.path + "/") ? to + p.slice(node.path.length) : p;
     tabs.forEach((t) => {
+      const was = t.path;
       t.path = renamePath(t.path);
+      if (t.path === was || t.sheet || t.form) return;
+      // a name decides what a text tab is: renamed to (or from) .mindmap.md, it becomes (or stops being) a map
+      const isMap = isMindmapPath(t.path);
+      if (isMap && t.mindmap) mindmap.rename(was, t.path);
+      else if (isMap) Object.assign(t, { mindmap: true, mapMode: "map" });
+      else if (t.mindmap) {
+        mindmap.forget(was);
+        t.mindmap = undefined;
+        t.mapMode = undefined;
+      }
     });
     for (const [p, view] of [...sheetViews]) {
       sheetViews.delete(p);
@@ -1038,6 +1069,7 @@ function main(): void {
     await tags.refresh();
     setHead();
     renderTabs();
+    showSurface(tabs[activeIdx]); // a rename may have made the active tab a map, or stopped it being one
     sidebar.setActive(currentPath);
   }
   async function deleteNode(node: FileNode): Promise<void> {
@@ -1511,6 +1543,12 @@ function main(): void {
     const sheet = tabs[activeIdx]?.sheet ? tabs[activeIdx] : undefined;
     if (sheet) {
       void exportSheetPdf(sheet.path);
+      return;
+    }
+    // a mind map on screen prints as the map; in text mode it prints as the note it also is
+    const map = activeMap();
+    if (map && (map.mapMode ?? "map") === "map") {
+      exportPdf(basename(map.path).replace(/\.mindmap\.md$/i, ""), `<div class="mindmap-print">${mindmap.svg()}</div>`, (m) => toast(m));
       return;
     }
     const body = document.createElement("div");

@@ -290,7 +290,10 @@ export interface Box {
   depth: number;
   /** -1 left of the root, 1 right of it, 0 the root itself. */
   side: -1 | 0 | 1;
-  /** Which top-level branch it belongs to — its colour. -1 for the root. */
+  /**
+   * Its colour: which top-level branch it belongs to — or, on a map with fewer than three of those,
+   * which second-level one, so two big halves aren't one colour each. -1 for the root.
+   */
   branch: number;
   x: number;
   y: number;
@@ -362,7 +365,7 @@ export function layoutMindmap(root: MapNode, o: LayoutOptions): MapLayout {
   const size = (node: MapNode, path: NodePath, key: string): Sized => {
     const depth = path.length;
     const m = (s: string) => o.measure(s, depth);
-    const lines = wrap(node.text, o.maxWidth, m);
+    const lines = wrap(displayText(node.text), o.maxWidth, m);
     const w = Math.max(depth === 0 ? 80 : 36, ...lines.map(m)) + 2 * o.padX;
     const h = lines.length * o.lineHeight(depth) + 2 * o.padY;
     const isFolded = folded.has(key) && node.children.length > 0;
@@ -387,6 +390,12 @@ export function layoutMindmap(root: MapNode, o: LayoutOptions): MapLayout {
   }
   if (top.kids.length === 1) split = 1;
 
+  // Few main branches: colour by the level below, numbered on from them, so every section has its own.
+  const byTopic = top.kids.length < 3;
+  const firstTopic: number[] = [];
+  top.node.children.reduce((n, c, i) => ((firstTopic[i] = n), n + c.children.length), top.kids.length);
+  const colourOf = (path: NodePath): number => (byTopic && path.length >= 2 ? firstTopic[path[0]] + path[1] : path[0]);
+
   const boxes: Box[] = [];
   const edges: Edge[] = [];
   const rootBox: Box = {
@@ -395,7 +404,8 @@ export function layoutMindmap(root: MapNode, o: LayoutOptions): MapLayout {
   };
   boxes.push(rootBox);
 
-  const place = (s: Sized, side: -1 | 1, branch: number, anchorX: number, cy: number, parent: Box): void => {
+  const place = (s: Sized, side: -1 | 1, anchorX: number, cy: number, parent: Box): void => {
+    const branch = colourOf(s.path);
     const x = side === 1 ? anchorX : anchorX - s.w;
     const box: Box = {
       path: s.path, key: s.key, text: s.node.text, lines: s.lines, depth: s.path.length, side, branch,
@@ -407,18 +417,18 @@ export function layoutMindmap(root: MapNode, o: LayoutOptions): MapLayout {
       x1: side === 1 ? parent.x + parent.w : parent.x, y1: parent.y + parent.h / 2,
       x2: side === 1 ? x : x + s.w, y2: cy,
     });
-    stack(s.kids, side, branch, side === 1 ? x + s.w + o.gapX : x - o.gapX, cy, box);
+    stack(s.kids, side, side === 1 ? x + s.w + o.gapX : x - o.gapX, cy, box);
   };
-  const stack = (kids: Sized[], side: -1 | 1, branch: number | null, anchorX: number, cy: number, parent: Box): void => {
+  const stack = (kids: Sized[], side: -1 | 1, anchorX: number, cy: number, parent: Box): void => {
     const span = kids.reduce((t, k) => t + k.span, 0) + Math.max(0, kids.length - 1) * o.gapY;
     let y = cy - span / 2;
     for (const k of kids) {
-      place(k, side, branch ?? k.path[0], anchorX, y + k.span / 2, parent);
+      place(k, side, anchorX, y + k.span / 2, parent);
       y += k.span + o.gapY;
     }
   };
-  stack(top.kids.slice(0, split), 1, null, rootBox.x + rootBox.w + o.gapX * 1.5, 0, rootBox);
-  stack(top.kids.slice(split), -1, null, rootBox.x - o.gapX * 1.5, 0, rootBox);
+  stack(top.kids.slice(0, split), 1, rootBox.x + rootBox.w + o.gapX * 1.5, 0, rootBox);
+  stack(top.kids.slice(split), -1, rootBox.x - o.gapX * 1.5, 0, rootBox);
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const b of boxes) {
@@ -430,8 +440,142 @@ export function layoutMindmap(root: MapNode, o: LayoutOptions): MapLayout {
   return { boxes, edges, minX, minY, maxX, maxY };
 }
 
+/**
+ * A node's text as the map draws it: markdown's inline marks taken off — `code`, **bold**, *italic*,
+ * [[link|label]] — the file keeps them. A quasiquote inside double backticks survives: `` `(a ,b) ``.
+ */
+export function displayText(text: string): string {
+  return text
+    .replace(/``\s?(.+?)\s?``/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/(^|\s)\*(\S(?:.*?\S)?)\*(?=\s|$)/g, "$1$2")
+    .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, "$2")
+    .replace(/\[\[([^\]]+)\]\]/g, "$1");
+}
+
 /** The first `[[wiki-link]]` in a node's text — what ⌘-click on it opens. */
 export function nodeLink(text: string): string | null {
   const m = /\[\[([^\]|#]+)(?:[#|][^\]]*)?\]\]/.exec(text);
   return m ? m[1].trim() : null;
+}
+
+// ── big maps open folded ──
+
+/**
+ * The folds a map opens with when nothing is remembered for it: none for a small map; for a big one,
+ * the deepest level at which no more than `most` nodes show is the last one open, and every node on
+ * it that has children is folded. A cheat sheet of 200 entries opens as its sections.
+ */
+export function autoFold(root: MapNode, most = 60): Set<string> {
+  const perDepth: number[] = [];
+  const walk = (n: MapNode, d: number): void => {
+    perDepth[d] = (perDepth[d] ?? 0) + 1;
+    for (const c of n.children) walk(c, d + 1);
+  };
+  walk(root, 0);
+  const total = perDepth.reduce((a, b) => a + b, 0);
+  const folded = new Set<string>();
+  if (total <= most) return folded;
+  let shown = 0;
+  let open = 1;
+  for (let d = 0; d < perDepth.length; d++) {
+    shown += perDepth[d];
+    if (shown > most) break;
+    open = Math.max(1, d);
+  }
+  const fold = (n: MapNode, path: NodePath, key: string): void => {
+    if (path.length === open) {
+      if (n.children.length) folded.add(key);
+      return;
+    }
+    n.children.forEach((c, i) => fold(c, [...path, i], key ? key + "\u0000" + c.text : c.text));
+  };
+  fold(root, [], "");
+  return folded;
+}
+
+// ── the map as a picture ──
+
+/** Fonts and line heights by depth — shared by the view and the exported picture so they match. */
+export const MAP_FONT_FAMILY = "system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif";
+export const mapFont = (depth: number): string =>
+  depth === 0 ? `600 17px ${MAP_FONT_FAMILY}` : depth === 1 ? `600 14px ${MAP_FONT_FAMILY}` : `13px ${MAP_FONT_FAMILY}`;
+export const mapLine = (depth: number): number => (depth === 0 ? 22 : depth === 1 ? 19 : 17);
+
+export interface SvgColours {
+  background: string;
+  text: string;
+  /** The root's fill, and the text on it. */
+  accent: string;
+  onAccent: string;
+  branches: string[];
+}
+
+/** Light colours for a picture or a printed page, whatever the app's theme. */
+export const PRINT_COLOURS: SvgColours = {
+  background: "#ffffff",
+  text: "#1f2328",
+  accent: "#268bd2",
+  onAccent: "#ffffff",
+  branches: ["#268bd2", "#5c8a00", "#cb4b16", "#6c71c4", "#b58900", "#2aa198"],
+};
+
+const esc = (s: string): string => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+/** Mix `hex` with white: `t` = 0 is the colour, 1 is white. For the branch boxes' tint. */
+function tint(hex: string, t: number): string {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  const ch = (s: number) => Math.round(((n >> s) & 255) * (1 - t) + 255 * t);
+  return `rgb(${ch(16)}, ${ch(8)}, ${ch(0)})`;
+}
+
+/**
+ * A laid-out map as a standalone SVG document — the same drawing as on screen, with its colours
+ * written in, so it opens anywhere: a browser, a note's `![](…)`, a printed page.
+ */
+export function mapSvg(L: MapLayout, c: SvgColours = PRINT_COLOURS, pad = 24): string {
+  const x0 = L.minX - pad - 14;
+  const y0 = L.minY - pad;
+  const w = Math.ceil(L.maxX - L.minX + 2 * pad + 28);
+  const h = Math.ceil(L.maxY - L.minY + 2 * pad);
+  const colour = (branch: number): string => c.branches[branch % c.branches.length] ?? c.accent;
+  const out: string[] = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="${x0} ${y0} ${w} ${h}">`,
+    `<rect x="${x0}" y="${y0}" width="${w}" height="${h}" fill="${c.background}"/>`,
+  ];
+  for (const e of L.edges) {
+    const mx = (e.x1 + e.x2) / 2;
+    out.push(
+      `<path d="M ${e.x1} ${e.y1} C ${mx} ${e.y1}, ${mx} ${e.y2}, ${e.x2} ${e.y2}" fill="none" stroke="${colour(e.branch)}" ` +
+        `stroke-width="${e.to.length > 1 ? 1.5 : 2.5}" stroke-linecap="round" opacity="0.85"/>`,
+    );
+  }
+  for (const b of L.boxes) {
+    const col = b.depth === 0 ? c.accent : colour(b.branch);
+    if (b.depth === 0) out.push(`<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="12" fill="${c.accent}"/>`);
+    else if (b.depth === 1)
+      out.push(`<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="7" fill="${tint(col, 0.85)}" stroke="${col}" stroke-width="2"/>`);
+    const tx = b.depth === 0 ? b.x + b.w / 2 : b.x + 12;
+    const anchor = b.depth === 0 ? "middle" : "start";
+    const spans = b.lines
+      .map((line, i) => `<tspan x="${tx}" dy="${i === 0 ? mapLine(b.depth) * 0.78 : mapLine(b.depth)}">${esc(line)}</tspan>`)
+      .join("");
+    out.push(
+      `<text x="${tx}" y="${b.y + 6}" text-anchor="${anchor}" fill="${b.depth === 0 ? c.onAccent : c.text}" ` +
+        `style="font: ${esc(mapFont(b.depth))}">${spans}</text>`,
+    );
+    if (b.hidden) {
+      const cx = b.side === -1 ? b.x - 11 : b.x + b.w + 11;
+      const cy = b.y + b.h / 2;
+      out.push(
+        `<circle cx="${cx}" cy="${cy}" r="9" fill="${c.background}" stroke="${col}" stroke-width="1.5"/>` +
+          `<text x="${cx}" y="${cy + 4}" text-anchor="middle" fill="${c.text}" style="font: 600 10px ${esc(MAP_FONT_FAMILY)}">${b.hidden > 99 ? "99+" : b.hidden}</text>`,
+      );
+    }
+  }
+  out.push("</svg>");
+  return out.join("\n");
 }

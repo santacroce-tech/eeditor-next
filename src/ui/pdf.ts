@@ -24,6 +24,8 @@ const PRINT_CSS = `
   img { max-width: 100%; page-break-inside: avoid; }
   .mermaid-diagram { margin: 0 0 .8em; text-align: center; page-break-inside: avoid; }
   .mermaid-diagram svg { max-width: 100%; height: auto; }
+  .mindmap-print { text-align: center; }
+  .mindmap-print svg { max-width: 100%; max-height: 240mm; height: auto; }
   .mermaid-error { font: 9pt ui-monospace, Menlo, monospace; color: #b00; margin: 0 0 4px; white-space: pre-wrap; }
   .md-missing { font-size: .9em; color: #777; border: 1px dashed #bbb; border-radius: 4px; padding: 2px 8px; }
   table { border-collapse: collapse; }

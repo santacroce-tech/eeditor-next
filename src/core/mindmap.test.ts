@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   addChild,
+  autoFold,
+  displayText,
+  mapSvg,
   addSibling,
   clampPath,
   isMindmapPath,
@@ -196,8 +199,16 @@ describe("layout", () => {
   });
 
   it("colours a whole branch alike", () => {
-    const L = layoutMindmap(n("R", n("a", n("a1")), n("b", n("b1"))), opts);
-    expect(L.boxes.map((b) => b.branch)).toEqual([-1, 0, 0, 1, 1]);
+    const L = layoutMindmap(n("R", n("a", n("a1", n("x"))), n("b", n("b1")), n("c")), opts);
+    expect(L.boxes.map((b) => [b.text, b.branch])).toEqual([["R", -1], ["a", 0], ["a1", 0], ["x", 0], ["b", 1], ["b1", 1], ["c", 2]]);
+  });
+
+  it("with only one or two main branches, colours each section under them", () => {
+    const L = layoutMindmap(n("R", n("a", n("a1", n("x")), n("a2")), n("b", n("b1"))), opts);
+    const colour = Object.fromEntries(L.boxes.map((b) => [b.text, b.branch]));
+    expect([colour.a, colour.b]).toEqual([0, 1]);
+    expect([colour.a1, colour.x, colour.a2, colour.b1]).toEqual([2, 2, 3, 4]);
+    expect(L.edges.find((e) => e.to.join() === "0,0,0")!.branch).toBe(2);
   });
 
   it("wraps words to the width, a long word on its own line", () => {
@@ -212,5 +223,52 @@ describe("links in nodes", () => {
     expect(nodeLink("see [[Lisbon|the city]] and [[Porto]]")).toBe("Lisbon");
     expect(nodeLink("[[Notes#Heading]]")).toBe("Notes");
     expect(nodeLink("no link")).toBeNull();
+  });
+});
+
+describe("big maps and pictures", () => {
+  const wide = (n: number, kids: number): MapNode =>
+    ({ text: "R", children: Array.from({ length: n }, (_, i) => ({ text: `s${i}`, children: Array.from({ length: kids }, (_, j) => ({ text: `s${i}.${j}`, children: [] })) })) });
+
+  it("leaves a small map open", () => {
+    expect(autoFold(wide(3, 3)).size).toBe(0);
+  });
+
+  it("folds a big map down to its sections", () => {
+    const m = wide(8, 20); // 1 + 8 + 160 nodes
+    const f = autoFold(m, 60);
+    expect(f.size).toBe(8);
+    expect(f.has("s0")).toBe(true);
+    const L = layoutMindmap(m, { measure: (s: string) => s.length * 7, lineHeight: () => 18, padX: 10, padY: 6, gapX: 40, gapY: 10, maxWidth: 200, folded: f });
+    expect(L.boxes).toHaveLength(9);
+  });
+
+  it("folds one level deeper when the sections and their topics still fit", () => {
+    const m: MapNode = { text: "R", children: wide(4, 5).children.map((s) => ({ ...s, children: s.children.map((c) => ({ ...c, children: Array.from({ length: 10 }, (_, k) => ({ text: `${c.text}.${k}`, children: [] })) })) })) };
+    // 1 + 4 + 20 shown, 200 below
+    const f = autoFold(m, 60);
+    expect(f.size).toBe(20);
+    expect(f.has("s0\u0000s0.0")).toBe(true);
+  });
+
+  it("writes a standalone SVG with the colours in and the text escaped", () => {
+    const L = layoutMindmap(n("R & D", n("<a>"), n("b", n("c"))), {
+      measure: (s: string) => s.length * 7, lineHeight: () => 18, padX: 10, padY: 6, gapX: 40, gapY: 10, maxWidth: 200,
+    });
+    const s = mapSvg(L);
+    expect(s.startsWith('<svg xmlns="http://www.w3.org/2000/svg"')).toBe(true);
+    expect(s).toContain("R &amp; D");
+    expect(s).toContain("&lt;a&gt;");
+    expect(s).not.toContain("var(--");
+    expect((s.match(/<path /g) ?? []).length).toBe(3);
+  });
+});
+
+describe("what a node shows", () => {
+  it("draws inline markdown without its marks", () => {
+    expect(displayText("`(defn sq (x) (* x x))` — define")).toBe("(defn sq (x) (* x x)) — define");
+    expect(displayText("`` `(1 ,x ,@xs) `` quasiquote")).toBe("`(1 ,x ,@xs) quasiquote");
+    expect(displayText("**bold** and *it* but 2 * 3 * 4")).toBe("bold and it but 2 * 3 * 4");
+    expect(displayText("see [[Lisbon|the city]] and [[Porto]]")).toBe("see the city and Porto");
   });
 });

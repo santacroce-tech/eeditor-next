@@ -11,6 +11,10 @@
 
 import {
   addChild,
+  autoFold,
+  mapFont,
+  mapLine,
+  mapSvg,
   addSibling,
   clampPath,
   layoutMindmap,
@@ -35,8 +39,12 @@ export interface MindmapView {
   /** Show the map in `src`, the file at `path` — whose name is the root's when it has no heading. */
   load(src: string, path: string): void;
   focus(): void;
-  /** Forget a closed file's selection, folds and position. */
+  /** Forget a closed file's selection and position (its folds are remembered). */
   forget(path: string): void;
+  /** The file was renamed: keep what the view knows about it, under the new name. */
+  rename(from: string, to: string): void;
+  /** The map on screen as a standalone SVG, light colours, folds as shown. */
+  svg(): string;
 }
 
 export interface MindmapOptions {
@@ -46,6 +54,8 @@ export interface MindmapOptions {
   onRedo: () => void;
   /** ⌘-click (or ⌘Enter) on a node with a `[[link]]` in it. */
   onOpenLink: (name: string) => void;
+  /** The toolbar's export buttons. */
+  onExport: (kind: "png" | "svg") => void;
 }
 
 /** What the view remembers about one file while it is open. */
@@ -73,10 +83,8 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
 };
 const clamp = (n: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, n));
 
-const FONT_FAMILY = "system-ui, -apple-system, sans-serif";
-const FONT = (depth: number): string =>
-  depth === 0 ? `600 17px ${FONT_FAMILY}` : depth === 1 ? `600 14px ${FONT_FAMILY}` : `13px ${FONT_FAMILY}`;
-const LINE = (depth: number): number => (depth === 0 ? 22 : depth === 1 ? 19 : 17);
+const FONT = mapFont;
+const LINE = mapLine;
 /** Branch colours — `--mm-1` … `--mm-6` in styles.css, per theme. */
 const PALETTE = 6;
 const MIN_K = 0.2;
@@ -112,10 +120,14 @@ export function createMindmapView(opts: MindmapOptions): MindmapView {
   button("+ sibling", "Add a node beside this one (Enter)", () => void startAdd(addSibling(tree, sel())));
   const delBtn = button("delete", "Remove this node and what is under it (Delete)", () => removeSelected());
   const foldBtn = button("fold", "Hide or show what is under this node (⌘/)", () => toggleFold(sel()));
+  const unfoldAllBtn = button("unfold all", "Show every branch (⌘⇧/)", () => unfoldAll());
   bar.append(el("span", "mm-bar-gap"));
   button("−", "Zoom out (⌘−)", () => zoomBy(1 / 1.2));
   button("+", "Zoom in (⌘=)", () => zoomBy(1.2));
   button("fit", "Fit the whole map (⌘0)", () => fit());
+  bar.append(el("span", "mm-bar-sep"));
+  button("PNG", "Save the map as a picture beside it", () => opts.onExport("png"));
+  button("SVG", "Save the map as an SVG drawing beside it", () => opts.onExport("svg"));
 
   const states = new Map<string, FileState>();
   let path = "";
@@ -161,6 +173,7 @@ export function createMindmapView(opts: MindmapOptions): MindmapView {
       });
       p.style.setProperty("--c", `var(--mm-${(e.branch % PALETTE) + 1})`);
       if (e.to.length > 1) p.classList.add("mm-edge-thin");
+      p.dataset.to = e.to.join(".");
       edges.append(p);
     }
     world.append(edges);
@@ -201,6 +214,7 @@ export function createMindmapView(opts: MindmapOptions): MindmapView {
     delBtn.disabled = st.sel.length === 0;
     foldBtn.disabled = !node?.children.length;
     foldBtn.textContent = st.folded.has(textKey(tree, st.sel)) ? "unfold" : "fold";
+    unfoldAllBtn.style.display = st.folded.size ? "" : "none";
     applyTransform();
   }
 
@@ -211,17 +225,31 @@ export function createMindmapView(opts: MindmapOptions): MindmapView {
 
   const boxOf = (p: NodePath): Box | undefined => groups.get(p.join("."))?.box;
 
-  /** Pan just enough to bring the selected node on screen, with a margin. */
-  function reveal(p: NodePath): void {
+  /**
+   * Pan just enough to bring a node on screen, with a margin — or, with `branch`, all of what is
+   * under it too, as far as it fits (the node itself always wins).
+   */
+  function reveal(p: NodePath, branch = false): void {
     const b = boxOf(p);
     if (!b) return;
     const W = stage.clientWidth;
     const H = stage.clientHeight;
     const m = 24;
-    const x0 = b.x * st.k + st.tx;
-    const y0 = b.y * st.k + st.ty;
-    const x1 = x0 + b.w * st.k;
-    const y1 = y0 + b.h * st.k;
+    let [bx0, by0, bx1, by1] = [b.x, b.y, b.x + b.w, b.y + b.h];
+    if (branch) {
+      const key = p.join(".");
+      for (const [k, { box }] of groups) {
+        if (key && !k.startsWith(key + ".")) continue;
+        const nx0 = Math.min(bx0, box.x), ny0 = Math.min(by0, box.y);
+        const nx1 = Math.max(bx1, box.x + box.w), ny1 = Math.max(by1, box.y + box.h);
+        // grow the area only while it still fits on screen
+        if ((nx1 - nx0) * st.k <= W - 2 * m && (ny1 - ny0) * st.k <= H - 2 * m) [bx0, by0, bx1, by1] = [nx0, ny0, nx1, ny1];
+      }
+    }
+    const x0 = bx0 * st.k + st.tx;
+    const y0 = by0 * st.k + st.ty;
+    const x1 = bx1 * st.k + st.tx;
+    const y1 = by1 * st.k + st.ty;
     if (x0 < m) st.tx += m - x0;
     else if (x1 > W - m) st.tx -= Math.min(x1 - (W - m), x0 - m);
     if (y0 < m) st.ty += m - y0;
@@ -289,8 +317,35 @@ export function createMindmapView(opts: MindmapOptions): MindmapView {
     const key = textKey(tree, p);
     if (st.folded.has(key)) st.folded.delete(key);
     else st.folded.add(key);
+    saveFolds();
     draw();
-    reveal(p);
+    reveal(p, !st.folded.has(key));
+  }
+
+  function unfoldAll(): void {
+    st.folded.clear();
+    saveFolds();
+    draw();
+    reveal(st.sel);
+  }
+
+  // Folds outlive the session — a big map stays the way you left it — but they are the view's, not
+  // the file's: kept in this browser, by path, so the outline on disk never changes for one.
+  const FOLDS = "eeditor.mindmap.folds:";
+  function loadFolds(file: string): Set<string> | null {
+    try {
+      const raw = localStorage.getItem(FOLDS + file);
+      return raw ? new Set(JSON.parse(raw) as string[]) : null;
+    } catch {
+      return null;
+    }
+  }
+  function saveFolds(file = path, folded = st.folded): void {
+    try {
+      localStorage.setItem(FOLDS + file, JSON.stringify([...folded]));
+    } catch {
+      // private window, storage full: folds just don't outlive the session
+    }
   }
 
   // ── editing a node's text, in a textarea laid over it ──
@@ -360,7 +415,10 @@ export function createMindmapView(opts: MindmapOptions): MindmapView {
     }
     // rename keeps a fold on the node: its key is its text
     const oldKey = textKey(tree, p);
-    if (st.folded.delete(oldKey)) st.folded.add(textKey(renamed.root, p));
+    if (st.folded.delete(oldKey)) {
+      st.folded.add(textKey(renamed.root, p));
+      saveFolds();
+    }
     tree = before;
     commit({ root: renamed.root, sel: p });
     return p;
@@ -443,6 +501,7 @@ export function createMindmapView(opts: MindmapOptions): MindmapView {
     let handled = true;
     if (mod && (k === "z" || k === "Z")) e.shiftKey ? opts.onRedo() : opts.onUndo();
     else if (mod && k === "y") opts.onRedo();
+    else if (mod && e.shiftKey && (k === "/" || k === "?")) unfoldAll();
     else if (mod && k === "/") toggleFold(st.sel);
     else if (mod && k === "0") fit();
     else if (mod && (k === "=" || k === "+")) zoomBy(1.2);
@@ -550,9 +609,23 @@ export function createMindmapView(opts: MindmapOptions): MindmapView {
     if (!drag.moved && Math.hypot(dx, dy) < 5) return;
     if (!drag.path.length) return; // the root stays where it is
     drag.moved = true;
-    const g = groups.get(drag.path.join("."))?.g;
-    g?.classList.add("mm-dragging");
-    g?.setAttribute("transform", `translate(${dx / st.k} ${dy / st.k})`);
+    // the whole branch follows the pointer; the line that held it to its parent lets go
+    const key = drag.path.join(".");
+    const inBranch = (k: string | undefined): boolean => k === key || !!k?.startsWith(key + ".");
+    const move = `translate(${dx / st.k} ${dy / st.k})`;
+    for (const [k, { g }] of groups) {
+      if (!inBranch(k)) continue;
+      g.classList.add("mm-dragging");
+      g.setAttribute("transform", move);
+    }
+    for (const edge of world.querySelectorAll<SVGPathElement>(".mm-edge")) {
+      const to = edge.dataset.to;
+      if (to === key) edge.style.display = "none";
+      else if (inBranch(to)) {
+        edge.classList.add("mm-dragging");
+        edge.setAttribute("transform", move);
+      }
+    }
     const target = dropTarget(toWorld(p), drag.path);
     if (!(target && drag.target && samePath(target, drag.target))) {
       if (drag.target) groups.get(drag.target.join("."))?.g.classList.remove("mm-drop");
@@ -624,6 +697,8 @@ export function createMindmapView(opts: MindmapOptions): MindmapView {
       }
       const stem = (file.split("/").pop() ?? file).replace(/\.mindmap\.md$/i, "");
       tree = parseMindmap(src, stem || "Central topic");
+      // first sight of a file this session: its remembered folds, or — a big map — its sections only
+      if (st.fresh && !st.folded.size) st.folded = loadFolds(file) ?? autoFold(tree);
       st.sel = clampPath(tree, st.sel);
       draw();
       place();
@@ -634,5 +709,42 @@ export function createMindmapView(opts: MindmapOptions): MindmapView {
     forget(file) {
       states.delete(file);
     },
+    rename(from, to) {
+      const s = from === path ? st : states.get(from);
+      states.delete(from);
+      if (s) states.set(to, s);
+      if (from === path) path = to;
+      const folds = loadFolds(from);
+      if (folds) saveFolds(to, folds);
+      try {
+        localStorage.removeItem(FOLDS + from);
+      } catch {
+        // nothing to tidy
+      }
+    },
+    svg() {
+      return mapSvg(layout);
+    },
   };
+}
+
+/** An SVG document drawn into a PNG at `scale` times its size — through an <img>, so its fonts are the system's. */
+export async function svgToPng(svgText: string, scale = 2): Promise<Uint8Array> {
+  const url = URL.createObjectURL(new Blob([svgText], { type: "image/svg+xml" }));
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.ceil(img.naturalWidth * scale);
+    canvas.height = Math.ceil(img.naturalHeight * scale);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("no canvas to draw on");
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>((ok) => canvas.toBlob(ok, "image/png"));
+    if (!blob) throw new Error("the picture could not be encoded");
+    return new Uint8Array(await blob.arrayBuffer());
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
