@@ -13,6 +13,7 @@ workspace/.eeditor/eeditor.db*
 
 # the UI tests' workspace and their reports
 .ui-workspace/
+.ui-empty/
 playwright-report/
 test-results/
 

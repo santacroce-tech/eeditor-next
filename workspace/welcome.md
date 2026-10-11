@@ -1,14 +1,27 @@
-# Welcome to eeditor-next
+# Welcome to EEditor
 
-A native Markdown editor with an embedded **EELisp** engine (Rust).
+A Markdown editor with an embedded **EELisp** engine (Rust). Your notes are plain files in this
+folder; pick one from the sidebar, edit here, and it saves itself (⌘S saves now).
 
-Pick a file from the sidebar, edit here, and press ⌘/Ctrl+S to save.
+Tags like #welcome and #demo are indexed from your notes, and [[todo]] is a wiki-link —
+⌘-click it.
 
-Tags like #welcome and #demo are indexed from your notes.
+## What's in here
 
-Try the REPL on the right:
+- **examples/** — forms you can run (▶ run in the tab): **Office** ties the others together;
+  **Books**, **Orders** and **Tables** are dBASE-style data screens, **Agenda** is the agenda as a
+  form, **Functions** lists every function with its source, and **Spectrum** is a ZX Spectrum.
+- **examples/EEditor.mindmap.md** — every shortcut and the EELisp dialect, as a mind map.
+- **Contacts.eeform** — a small form to take apart in the designer.
+
+## Try the REPL
+
+⌘J opens it. Or put the caret in this block and press ⌘⇧↩:
 
 ```eelisp
-(add-item "Try the agenda" :when "2026-09-01" :priority 1)
+(add "Try the agenda tomorrow")
 (items)
 ```
+
+⌘P opens any note by name, ⌘⇧F searches them all, ⌘D opens today's note, and ⌘⇧K opens the
+shortcut table — which is EELisp too.
