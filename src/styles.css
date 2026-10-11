@@ -1148,3 +1148,54 @@ body.screen-window .zx-host { width: 100%; height: 100%; }
 .screen-window-problem { position: fixed; left: 8px; right: 8px; bottom: 8px; padding: 6px 10px; border-radius: 4px;
   background: #5a1d1d; color: #fdd; font: 12px var(--mono); }
 .screen-window-problem[hidden] { display: none; }
+
+/* ── mind maps (.mindmap.md): an outline drawn as a map ── */
+:root {
+  --mm-1: #89b4fa; --mm-2: #a6e3a1; --mm-3: #fab387; --mm-4: #cba6f7; --mm-5: #f9e2af; --mm-6: #94e2d5;
+}
+:root[data-theme="light"] {
+  --mm-1: #268bd2; --mm-2: #859900; --mm-3: #cb4b16; --mm-4: #6c71c4; --mm-5: #b58900; --mm-6: #2aa198;
+}
+:root[data-theme="vb6"] {
+  --mm-1: #000080; --mm-2: #008000; --mm-3: #800000; --mm-4: #800080; --mm-5: #808000; --mm-6: #008080;
+}
+.mindmap-host { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.mm { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
+.mm-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 5px 8px;
+  border-bottom: 1px solid var(--border); background: var(--bg-2); }
+.mm-bar-gap { flex: 1; }
+.mm-btn:disabled { opacity: .4; cursor: default; }
+.mm-stage { flex: 1; min-height: 0; position: relative; overflow: hidden; outline: none; cursor: default;
+  touch-action: none; user-select: none; -webkit-user-select: none;
+  background-image: radial-gradient(color-mix(in srgb, var(--muted) 22%, transparent) 1px, transparent 1px);
+  background-size: 22px 22px; }
+.mm-stage:focus-visible { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent); }
+.mm-stage.mm-panning { cursor: grabbing; }
+.mm-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.mm-edge { fill: none; stroke: var(--c); stroke-width: 2.5; stroke-linecap: round; opacity: .8; }
+.mm-edge-thin { stroke-width: 1.5; }
+.mm-node { cursor: pointer; }
+.mm-box { fill: var(--bg-2); stroke: var(--c, var(--accent)); stroke-width: 1.5; }
+.mm-text { fill: var(--fg); }
+.mm-d0 .mm-box { fill: var(--accent); stroke: none; }
+.mm-d0 .mm-text { fill: var(--bg); }
+.mm-d1 .mm-box { fill: color-mix(in srgb, var(--c) 16%, var(--bg)); stroke-width: 2; }
+.mm-d2 .mm-box { fill: transparent; stroke: transparent; }
+.mm-d2:hover .mm-box { fill: color-mix(in srgb, var(--c) 10%, transparent); }
+.mm-node.mm-sel .mm-box { stroke: var(--fg); stroke-width: 2; stroke-dasharray: none; }
+.mm-d2.mm-sel .mm-box { fill: color-mix(in srgb, var(--c) 14%, transparent); stroke: var(--c); }
+.mm-d0.mm-sel .mm-box { stroke: var(--fg); }
+.mm-linked .mm-text { text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--fg) 40%, transparent); }
+.mm-node.mm-editing .mm-text { visibility: hidden; }
+.mm-node.mm-dragging { opacity: .55; pointer-events: none; }
+.mm-node.mm-drop .mm-box { stroke: var(--accent); stroke-width: 3; stroke-dasharray: 5 3; }
+.mm-badge circle { fill: var(--bg); stroke: var(--c, var(--accent)); stroke-width: 1.5; }
+.mm-badge text { fill: var(--fg); font: 600 10px system-ui, sans-serif; }
+.mm-badge:hover circle { fill: var(--bg-2); }
+.mm-input { position: absolute; z-index: 2; margin: 0; padding: 6px 11px; resize: none; overflow: hidden;
+  border: 2px solid var(--accent); border-radius: 7px; background: var(--bg); color: var(--fg);
+  outline: none; box-shadow: 0 4px 14px rgba(0, 0, 0, .25); }
+.mm-hint { position: absolute; left: 10px; bottom: 8px; font: 11px var(--mono); color: var(--muted);
+  pointer-events: none; opacity: .8; }
+@media (max-width: 700px) { .mm-hint { display: none; } }
+:root[data-theme="vb6"] .mm-box { rx: 0; }
