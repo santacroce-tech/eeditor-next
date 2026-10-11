@@ -64,7 +64,8 @@ three minutes away, notes whose tasks are linked to those items, a tracker and a
 days of history, a dashboard of blocks, and `TRY ME.md` — a tutorial: a setup check (is the build
 new enough, are the keys live), every key in one table, a short lesson per feature saying what to
 press and what you should see, and what to do when something doesn't work. Its keybindings are the
-app's defaults followed by the PIM, as the install below does. Open the folder as the workspace. Dates are relative to the day it's made, so make it
+app's defaults followed by the PIM, as the install below does. The repo's `workspace/` (welcome,
+notes, the example forms and the mind map) is copied in too, so it's the one folder that shows everything. Open the folder as the workspace. Dates are relative to the day it's made, so make it
 again on the day you try it (it starts from scratch each time). It needs the engine binary, like
 `dev/pim-check.ts`.
 
