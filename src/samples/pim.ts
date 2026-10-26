@@ -14,6 +14,7 @@ import CAPTURE from "../../docs/pim/Capture.eeform?raw";
 import PRELUDE from "../keybindings/prelude.eelisp?raw";
 import DEFAULTS from "../keybindings/default.eelisp?raw";
 import { clockDefs, lispString, parseKeybindings } from "../core/keybindings";
+import { pimBlock } from "../core/pim-install";
 
 export interface PimSampleHost {
   /** Evaluate on the sample's engine: the value, or throw with the engine's error. */
@@ -310,7 +311,7 @@ ${opts.by === "app"
   // The workspace's file replaces the bundled defaults outright, so they go first — what docs/PIM.md's
   // install step does by appending. Without them ⌘J, ⌘P, ⌘S and ⌘⇧K would do nothing here.
   await write(".eeditor/keybindings.eelisp", `${DEFAULTS}
-${CONFIG}
+${pimBlock(CONFIG)}
 ;; ── this sample ──────────────────────────────────────────────────────────────
 ;; Later forms win (on-start) or add up (on-load): projects/ is an agenda file, and EEditor opens
 ;; on ${startPage} instead of today's note.

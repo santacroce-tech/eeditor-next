@@ -376,6 +376,24 @@ sequenceDiagram
       daily, weekly and monthly, with intervals like <em>every 2 weeks</em> — without depending on
       an external calendar.
     </p>
+
+    <h3>The PIM: notes kept in step with the agenda</h3>
+    <p>
+      The PIM is a set of keys and functions, written in EELisp, that ties notes and the agenda
+      together: a line like <code>- [ ] pay the rent tomorrow !! {#12}</code> <em>is</em> agenda item
+      12, ticked in the note when it's done in the panel and the other way round. With it come capture
+      (<kbd>⌘⌥N</kbd>), refile (<kbd>⌘⌥F</kbd>), reminders, a time clock (<kbd>⌘⌥I</kbd>/<kbd>⌘⌥O</kbd>),
+      a tracker (<kbd>⌘⌥L</kbd>), live blocks that refresh with <kbd>⌘⌥U</kbd>, and a weekly review
+      (<kbd>⌘⌥V</kbd>).
+    </p>
+    <p>
+      Its keys aren't part of the defaults. A folder gets them with the sample notes, or — for a
+      folder you already use — right-click the workspace and choose <strong>Install the PIM keys…</strong>:
+      they're added to your keybindings, your own keys stay as they are, and <kbd>⌘⌥K</kbd> answering
+      <em>No clock running</em> says they're live. The
+      <a href="https://github.com/santacroce-tech/eeditor-next/blob/main/docs/PIM.md">PIM guide</a> has
+      every key and function.
+    </p>
   </div></div>
 </section>
 
@@ -1146,6 +1164,7 @@ zzalinhar — function
       <tr><td><code>open-keys</code> / <code>reload-keys</code></td><td>edit or re-read this config</td></tr>
       <tr><td><code>open-functions</code> / <code>reload-functions</code></td><td>edit or re-read your own spreadsheet functions (<code>.eeditor/functions.eelisp</code>)</td></tr>
       <tr><td><code>add-samples</code></td><td>add the sample notes and the PIM tour to this folder, keeping what is there</td></tr>
+      <tr><td><code>install-pim</code></td><td>add the PIM's keys and library to this folder's keybindings — again later to update them; your own keys stay</td></tr>
       <tr><td><code>about</code></td><td>who makes EEditor, and which version is running — also in the workspace's right-click menu</td></tr>
       <tr><td><code>toggle-repl</code> / <code>focus-repl</code></td><td>show/hide the REPL, or jump into it</td></tr>
       <tr><td><code>focus-editor</code></td><td>put the caret back in the document</td></tr>
