@@ -142,6 +142,13 @@
 <pre><code>shasum -a 256 EEditor-macOS.dmg</code></pre>
 
       <h2>Release notes</h2>
+      <p><strong>2.5.0</strong> — spreadsheet functions in every sheet. <a href="https://github.com/santacroce-tech/eeditor-next/releases/tag/v2.5.0">Full notes</a>.</p>
+      <ul>
+        <li><strong>Spreadsheet functions</strong>, ready in any formula with nothing to load: <code>countif</code>, <code>sumif</code>, <code>averageif</code> and their <code>…ifs</code> forms, <code>vlookup</code>, <code>xlookup</code>, <code>index</code>, <code>match</code>, <code>median</code>, <code>stdev</code>, <code>rank</code>, <code>left</code>, <code>mid</code>, <code>proper</code>, <code>textjoin</code> and more. Criteria read the way a spreadsheet reads them: <code>"Work"</code>, <code>"&gt;10"</code>, <code>"&lt;&gt;Done"</code>, <code>"W*"</code>.</li>
+        <li><strong>Whole columns</strong>: <code>=(countif E:E "Work")</code> reads column E down to its last filled row, and keeps up as rows are added.</li>
+        <li>A range wider and taller than one cell now arrives as a list of rows, so lookups know where a row ends. One row or one column is still a flat list.</li>
+        <li><strong>Your own functions</strong>: put them in <code>.eeditor/functions.eelisp</code> (the <code>open-functions</code> command creates it). They load at launch and again whenever the file is saved.</li>
+      </ul>
       <p><strong>2.4.0</strong> — mind maps, and a workspace that starts with something in it. <a href="https://github.com/santacroce-tech/eeditor-next/releases/tag/v2.4.0">Full notes</a>.</p>
       <ul>
         <li><strong>Mind maps</strong>: a note named <code>Name.mindmap.md</code> — a heading and a bullet list — opens as a map. Tab adds a child, Enter a sibling, drag a branch to move it; <em>map | text</em> flips back to the outline, which is all the file holds. Save it as PNG or SVG, or print it to PDF.</li>
