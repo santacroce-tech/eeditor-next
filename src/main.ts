@@ -30,6 +30,7 @@ import { createCalendar } from "./ui/calendar";
 import { createAgendaSetup } from "./ui/agenda-setup";
 import { createSnippets } from "./ui/snippets";
 import { createKeybindings, type CommandTable } from "./ui/keybindings";
+import { createSheetFunctions, FUNCTIONS_PATH, FUNCTIONS_TEMPLATE } from "./sheets/functions";
 import { createOpenWith } from "./ui/openwith";
 import { exportPdf } from "./ui/pdf";
 import { dataUrl, parseMarkdown, renderMedia } from "./ui/markdown";
@@ -1409,6 +1410,8 @@ function main(): void {
     void agenda.refresh();
     void checkDatabase();
     await sidebar.refresh().catch(() => {}); // an unreadable tree must not cost us the shortcuts
+    // before anything can open a sheet: its formulas may call them (countif, vlookup…)
+    await sheetFns.load().catch(() => []);
     await keys.reload();
     void keys.loadPrelude(); // so (ed-…) works at the REPL before any key has fired
     if (sidebar.files().length === 0 && (await agendaCount()) === 0) {
@@ -1537,6 +1540,7 @@ function main(): void {
       await keys.reload();
       toast(`Keybindings reloaded — ${keys.bindings().length} shortcuts`);
     }
+    if (sheetFns.isUserPath(tab.path)) await reloadSheetFunctions();
   };
 
   /**
@@ -1827,6 +1831,8 @@ function main(): void {
     },
     "open-keys": () => void keys.openConfig(),
     "reload-keys": () => void keys.reload(),
+    "open-functions": () => void openOrCreate(FUNCTIONS_PATH, FUNCTIONS_TEMPLATE),
+    "reload-functions": () => void reloadSheetFunctions(),
     "add-samples": () => void offerSampleNotes(),
     "toggle-repl": toggleRepl,
     "focus-repl": () => {
@@ -1986,6 +1992,13 @@ function main(): void {
     notify: (title, body) => void notifyUser(title, body),
   });
   keysBtn.addEventListener("click", () => void keys.openConfig());
+
+  const sheetFns = createSheetFunctions({ engine, ws, note: (t) => repl.note(t) });
+  /** After the workspace's functions changed. Sheets run nothing until edited, so ↻ picks them up. */
+  async function reloadSheetFunctions(): Promise<void> {
+    const problems = await sheetFns.load();
+    toast(problems.length ? `Sheet functions: ${problems.length} problem(s) — see the REPL` : "Sheet functions reloaded — ↻ a sheet to use them");
+  }
 
   // ── closing the app: unsaved work goes to disk, it doesn't go away ──
   // The autosave debounce means the last second of typing may still be in memory when the window

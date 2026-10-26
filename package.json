@@ -17,6 +17,7 @@
     "test": "vitest run",
     "smoke": "node dev/smoke.mjs",
     "spectrum:test": "node dev/spectrum.mjs",
+    "sheets:test": "node dev/sheetfns.mjs",
     "spectrum:bench": "node dev/spectrum.mjs bench",
     "spectrum:fuse": "node dev/spectrum-fuse.mjs",
     "test:ui": "playwright test",

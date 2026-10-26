@@ -1,0 +1,102 @@
+;; functions.test.eelisp — the spreadsheet functions, on lists and inside real sheet formulas.
+;; Run with: npm run sheets:test
+
+(def fx-failures 0)
+(defn check (name got want)
+  (if (= got want)
+      (println "ok   " name)
+      (do (set! fx-failures (+ fx-failures 1))
+          (println "FAIL " name " — got " got ", want " want))))
+
+;; ── lists ──
+(check "flatten drops blanks and nesting" (flatten '(1 (2 (3 nil)) 4)) '(1 2 3 4))
+(check "unique keeps the first spelling" (unique '(1 2 1 "a" "A")) '(1 2 "a"))
+(check "sort leaves text out" (sort '(3 "x" 1 nil 2)) '(1 2 3))
+
+;; ── criteria ──
+(check "a value, ignoring case" (criterion? "work" "Work") true)
+(check "a comparison" (criterion? ">10" 12) true)
+(check "a comparison on text is false" (criterion? ">10" "12") false)
+(check "<= at the edge" (criterion? "<=5" 5) true)
+(check "<> is not-equal" (criterion? "<>Work" "work") false)
+(check "<> matches a blank" (criterion? "<>Work" nil) true)
+(check "a wildcard" (criterion? "w*" "Work") true)
+(check "? is one character" (criterion? "?ork" "fork") true)
+(check "a dot is only a dot" (criterion? "a.b" "axb") false)
+(check "a function" (criterion? (fn (x) (> x 1)) 5) true)
+(check "a number" (criterion? 3 3) true)
+
+;; ── counting and adding up ──
+(def kinds '("Work" "Home" nil "work" "Gym"))
+(def hours '(10 20 30 40 50))
+(check "countif" (countif kinds "Work") 2)
+(check "countifs holds on the same row" (countifs kinds "Work" hours ">15") 1)
+(check "counta" (counta kinds) 4)
+(check "countblank" (countblank kinds) 1)
+(check "sumif with a range to add" (sumif kinds "Work" hours) 50)
+(check "sumif on itself" (sumif hours ">25") 120)
+(check "sumifs" (sumifs hours kinds "<>Work") 100)
+(check "averageif" (averageif kinds "Work" hours) 25)
+(check "averageif with no match" (averageif kinds "Swim" hours) nil)
+(check "averageifs" (averageifs hours kinds "<>Work" hours "<50") 25)
+
+;; ── looking things up ──
+(def fruit '(("apple" 3 "red") ("pear" 5 "green") ("fig" nil "purple")))
+(check "match" (match "pear" '("apple" "pear")) 2)
+(check "match misses" (match "kiwi" '("apple" "pear")) nil)
+(check "index in a block" (index fruit 2 3) "green")
+(check "index in a column" (index hours 4) 40)
+(check "vlookup" (vlookup "PEAR" fruit 3) "green")
+(check "vlookup misses" (vlookup "kiwi" fruit 3) nil)
+(check "hlookup" (hlookup "b" '(("a" "b") (1 2) (3 4)) 3) 4)
+(check "xlookup" (xlookup "fig" '("apple" "pear" "fig") '(1 2 3)) 3)
+(check "xlookup if-not-found" (xlookup "kiwi" '("apple") '(1) "none") "none")
+
+;; ── choosing ──
+(check "ifs" (ifs false 1 true 2) 2)
+(check "ifs with nothing true" (ifs false 1) nil)
+(check "switch" (switch "GBP" "eur" 1.1 "gbp" 1.3 1) 1.3)
+(check "switch default" (switch "usd" "eur" 1.1 "gbp" 1.3 1) 1)
+
+;; ── statistics ──
+(check "median, even count" (median '(5 1 3 2)) 2.5)
+(check "median, odd count" (median '(5 1 3)) 3)
+(check "mode" (mode '(1 2 2 3 3 3)) 3)
+(check "mode with no repeat" (mode '(1 2 3)) nil)
+(check "var" (round-to (var '(2 4 4 4 5 5 7 9)) 4) 4.5714)
+(check "stdevp" (stdevp '(2 4 4 4 5 5 7 9)) 2)
+(check "large" (large '(5 1 9 3) 2) 5)
+(check "small" (small '(5 1 9 3) 1) 1)
+(check "rank" (rank 5 '(5 1 9 3)) 2)
+(check "rank ascending" (rank 5 '(5 1 9 3) true) 3)
+
+;; ── rounding and text ──
+(check "round-to" (round-to 3.14159 2) 3.14)
+(check "roundup" (roundup 3.141 2) 3.15)
+(check "rounddown toward zero" (rounddown -3.149 2) -3.14)
+(check "left" (left "invoice-42" 7) "invoice")
+(check "left past the end" (left "ab" 5) "ab")
+(check "right" (right "invoice-42" 2) "42")
+(check "mid" (mid "invoice-42" 9 2) "42")
+(check "trim" (trim "  too   many  spaces ") "too many spaces")
+(check "proper" (proper "ada LOVELACE") "Ada Lovelace")
+(check "textjoin skips blanks" (textjoin ", " '("a" nil "b")) "a, b")
+(check "concat" (concat "x" '(1 2) "y") "x12y")
+
+;; ── in a sheet: whole columns and blocks ──
+(sheet-new "fx-test")
+(sheet-put "fx-test" "A1" '(("Kind" "Hours") ("Work" 8) ("Home" 2) ("work" 6) (nil 1) ("Gym" 3)))
+(sheet-set "fx-test" "D1" "=(countif A:A \"Work\")")
+(sheet-set "fx-test" "D2" "=(sumif A2:A6 \"Work\" B2:B6)")
+(sheet-set "fx-test" "D3" "=(vlookup \"gym\" A2:B6 2)")
+(sheet-set "fx-test" "D4" "=(countifs A:A \"<>Work\" B:B \">1\")")
+(check "countif over a whole column" (sheet-get "fx-test" "D1") 2)
+(check "sumif in a formula" (sheet-get "fx-test" "D2") 14)
+(check "vlookup reads a block as rows" (sheet-get "fx-test" "D3") 3)
+(check "countifs lines whole columns up" (sheet-get "fx-test" "D4") 2)
+(sheet-set "fx-test" "A7" "Work")
+(check "a new row is counted" (sheet-get "fx-test" "D1") 3)
+
+(if (= fx-failures 0)
+    (println "all passed")
+    (println fx-failures " failed"))

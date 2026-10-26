@@ -117,6 +117,8 @@
 ;; ── built-in commands ──────────────────────────────────────────────────────
 ;; save · quick-open · search · daily-note · new-file · new-sheet · new-form · new-mindmap · new-folder
 ;; open-keys
+;; open-functions      your own spreadsheet functions (.eeditor/functions.eelisp), created if needed
+;; reload-functions    load them again (saving the file does this too)
 ;; reload-keys · toggle-repl · focus-repl · toggle-preview · toggle-theme · export-pdf · snippets
 ;; theme-dark · theme-light · theme-vb6   pick a theme (toggle-theme walks all three)
 ;; calendar · agenda-setup · agenda-refresh · close-tab · next-tab · prev-tab · focus-editor

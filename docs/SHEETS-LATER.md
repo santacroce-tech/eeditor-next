@@ -55,7 +55,17 @@ Struck through when it lands, with the branch that did it.
 
 - Several sheets per file — tabs inside one workbook.
 - A per‑sheet script: helper `defn`s stored in the file's `meta`, so a sheet carries the functions its
-  formulas call instead of depending on what a session happens to have loaded.
+  formulas call instead of depending on what a session happens to have loaded. Halfway there on
+  `feat/sheet-functions`: a library of spreadsheet functions (`countif`, `sumif`, `vlookup`,
+  `median`, `left`… in `src/sheets/functions.eelisp`) and the workspace's `.eeditor/functions.eelisp`
+  load before any sheet can recalculate — but a sheet copied to another workspace still depends on
+  that workspace having the same functions.
+- ~~Ranges are flat and stop at a row number.~~ Landed on `feat/sheet-ranges` (engine): whole columns
+  (`E:E`, `B:D`, `Rates!E:E`) read down to the last filled row, and a block wider and taller than one
+  cell reads as a list of rows, so lookups can tell where a row ends. Still missing around it: whole
+  rows (`2:2`), named ranges, and cell context for a formula (`row()`, `column()`, `offset`,
+  `indirect`).
+- No `iferror`: EELisp has no way to catch an error, so a formula can't recover from one it calls.
 - Result sets spilling into a range, and a live two‑way binding between a range and a `deftable`;
   `sheet-put` is a one‑off snapshot today.
 - Charts.
