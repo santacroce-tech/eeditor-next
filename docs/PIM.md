@@ -71,6 +71,16 @@ again on the day you try it (it starts from scratch each time). It needs the eng
 
 ## Install
 
+**One command:** right-click the workspace in the file tree and choose **Install the PIM keys…**
+(or run the `install-pim` command — `(ed-cmd "install-pim")` at the REPL, or bind it to a key). It
+adds the PIM to the end of the folder's keybindings between two marker lines, copies the capture
+window to `pim/Capture.eeform`, and reloads: ⌘⌥K says *No clock running* straight away. Your own
+keys stay as they were; if your file already says what opens at launch, the PIM's `(on-start …)` is
+left out. Run it again after an update to EEditor and it replaces what's between the markers —
+nothing else. (The sample notes put the PIM in with the same markers.)
+
+**By hand**, as before:
+
 1. ⌘⇧K opens `.eeditor/keybindings.eelisp`. **Append** the whole of `docs/pim/pim.eelisp` to it
    (keep your own `bind`s; later bindings win, so the PIM's ⌘D replaces the plain daily note).
    If your file already has an `(on-start …)`, delete it — the PIM's opens today's note.

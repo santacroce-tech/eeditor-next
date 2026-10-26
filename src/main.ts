@@ -48,6 +48,11 @@ import { addSamples } from "./samples/workspace";
 import "./styles.css";
 import { openScreenWindow } from "./ui/screenwindow";
 import { aboutModal } from "./ui/about";
+import { installPim } from "./core/pim-install";
+import PIM_CONFIG from "../docs/pim/pim.eelisp?raw";
+import PIM_CAPTURE from "../docs/pim/Capture.eeform?raw";
+import DEFAULT_KEYS from "./keybindings/default.eelisp?raw";
+import { KEYBINDINGS_PATH } from "./ui/keybindings";
 
 const parentDir = (p: string): string => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
 const joinPath = (dir: string, name: string): string => (dir ? `${dir}/${name}` : name);
@@ -1331,6 +1336,7 @@ function main(): void {
     ];
     if (node.path === "") {
       items.push({ label: "Add sample notes…", action: () => void offerSampleNotes() });
+      items.push({ label: "Install the PIM keys…", action: () => void offerInstallPim() });
       items.push({ label: "About EEditor", action: () => void aboutModal() });
     }
     if (isSheetPath(node.path)) {
@@ -1466,6 +1472,57 @@ function main(): void {
     } catch (e) {
       toast(`Could not add the sample notes: ${String(e)}`);
     }
+  }
+
+  /**
+   * The PIM's keys and library (docs/pim/pim.eelisp) into this folder's keybindings — between
+   * markers, so doing it again updates them and leaves your own lines alone — and its capture
+   * form beside them. For a folder that didn't get them with the samples.
+   */
+  async function installPimKeys(): Promise<void> {
+    await saveAllDirty();
+    let current: string;
+    try {
+      current = await ws.read(KEYBINDINGS_PATH);
+    } catch {
+      current = DEFAULT_KEYS; // a workspace's own file replaces the defaults, so they come along
+    }
+    const r = installPim(current, PIM_CONFIG);
+    if (r.action === "by-hand") {
+      await infoModal(
+        "The PIM is already in your keybindings, pasted in by hand — EEditor won't rewrite that copy. To get the current one: delete it from the file, then install again.",
+        KEYBINDINGS_PATH,
+      );
+      return;
+    }
+    try {
+      if (r.action !== "unchanged") await ws.write(KEYBINDINGS_PATH, r.text);
+      try {
+        await ws.read("pim/Capture.eeform");
+      } catch {
+        await ws.create("pim/Capture.eeform", false).catch(() => {});
+        await ws.write("pim/Capture.eeform", PIM_CAPTURE);
+      }
+    } catch (e) {
+      toast(`Could not install the PIM: ${String(e)}`);
+      return;
+    }
+    await keys.reload();
+    await sidebar.refresh().catch(() => {});
+    toast(
+      r.action === "unchanged"
+        ? "The PIM is installed and up to date"
+        : `PIM ${r.action} — ⌘⌥T on a line makes it a task, ⌘⌥K checks the keys are live`,
+    );
+  }
+
+  async function offerInstallPim(): Promise<void> {
+    const yes = await confirmModal(
+      "Add the PIM's keys (⌘⌥T, ⌘⌥U, ⌘⌥N…) and library to this folder's keybindings? Your own keys stay as they are; installing again later updates the PIM's part only.",
+      "Install",
+      false,
+    );
+    if (yes) await installPimKeys();
   }
 
   /** The workspace menu's way in, for a folder that isn't empty. */
@@ -1838,6 +1895,7 @@ function main(): void {
     "open-functions": () => void openOrCreate(FUNCTIONS_PATH, FUNCTIONS_TEMPLATE),
     "reload-functions": () => void reloadSheetFunctions(),
     "add-samples": () => void offerSampleNotes(),
+    "install-pim": () => void installPimKeys(),
     about: () => void aboutModal(),
     "toggle-repl": toggleRepl,
     "focus-repl": () => {
