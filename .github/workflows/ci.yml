@@ -105,6 +105,13 @@ jobs:
           EELISP_BIN: ${{ github.workspace }}/eelisp-rs/target/release/eelisp
         run: npm run spectrum:test
 
+      # The spreadsheet functions every sheet formula can call (src/sheets/functions.eelisp).
+      - name: The sheet functions
+        working-directory: eeditor-next
+        env:
+          EELISP_BIN: ${{ github.workspace }}/eelisp-rs/target/release/eelisp
+        run: npm run sheets:test
+
       # The grid only exists in a browser: scrolling, the clipboard and a drag have no unit test.
       - name: The grid, in a browser
         working-directory: eeditor-next

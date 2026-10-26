@@ -107,7 +107,11 @@ CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);   -- version, cre
 - A formula is **one** EELisp form after `=`. Inside it, an uppercase symbol shaped like a cell
   (`^\$?[A-Z]{1,3}\$?[1-9][0-9]*$`) is a reference, and `REF:REF` a range. Lowercase `a1` stays an
   ordinary name. (Documented consequence: `A1` can't be a `let` name inside a formula.)
-- A reference binds to the cell's value; a range to a **flat, row‑major list** (`nil` for blanks).
+- A reference binds to the cell's value; a range to a **flat, row‑major list** (`nil` for blanks) when
+  it is one row or one column, and to a **list of rows** when it is wider and taller than that.
+  Whole columns (`E:E`, `B:D`) read down to the last filled row of those columns.
+- Spreadsheet functions (`countif`, `sumif`, `vlookup`…) are EELisp in `src/sheets/functions.eelisp`,
+  loaded at launch with the workspace's own `.eeditor/functions.eelisp` after it — see that file.
 - Evaluation: `env::child(global)`, define each referenced symbol, `eval::eval`. Any result type is
   stored; the grid shows lists/dicts with `scalarText`.
 - `Name!A1` is recognised and answers *"cross-sheet references aren't supported yet — use

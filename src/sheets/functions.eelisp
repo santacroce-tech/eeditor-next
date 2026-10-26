@@ -1,0 +1,294 @@
+;; functions.eelisp — spreadsheet functions for sheet formulas
+;;
+;; Loaded by EEditor at launch, before any sheet can recalculate, so a formula can always call these:
+;;   =(countif E:E "Work")
+;;   =(sumif E2:E99 "Work" F2:F99)
+;;   =(vlookup "pear" A1:C9 3)
+;;
+;; They are ordinary EELisp — (source countif) shows one. Add your own, or redefine these, in
+;; .eeditor/functions.eelisp in the workspace: it is loaded right after this file, and again when
+;; it's saved.
+;;
+;; A range arrives as a list: flat for one row or column, a list of rows for a block. Every
+;; function here flattens what it's given, so either works. Text compares the way a spreadsheet
+;; compares it, ignoring case.
+
+;; ─── lists ─────────────────────────────────────────────────────────────
+
+;; (flatten '(1 (2 (3)) 4))   → (1 2 3 4)
+;; Blanks (nil) are dropped, so (flatten A1:C9) is every filled cell, row by row.
+(defn flatten (xs)
+  (cond (nil? xs)  (list)
+        (list? xs) (apply append (map flatten xs))
+        true       (list xs)))
+
+;; (unique '(1 2 1 "a" "A"))   → (1 2 "a")
+(defn unique (xs)
+  (reduce (fn (seen x) (if (some? (fn (y) (same? x y)) seen) seen (append seen (list x))))
+          (list) (flatten xs)))
+
+;; (sort '(3 1 2))   → (1 2 3)   — numbers only; text and blanks are left out
+(defn sort (xs)
+  (sort-by id (numbers xs)))
+
+;; (numbers '(1 "a" nil 2.5))   → (1 2.5)
+(defn numbers (xs)
+  (filter number? (flatten xs)))
+
+;; ─── criteria, the way COUNTIF reads them ──────────────────────────────
+
+;; Equal, ignoring case between two pieces of text.
+;; (same? "Work" "WORK")   → true
+(defn same? (a b)
+  (if (and (string? a) (string? b))
+      (= (str-lower a) (str-lower b))
+      (= a b)))
+
+(defn numeric-text? (s)
+  (if (str-matches s "^\\s*-?[0-9]+(\\.[0-9]+)?\\s*$") true false))
+
+;; A wildcard pattern (* any run, ? one character) as an anchored, case-blind regex.
+(defn wildcard-regex (pattern)
+  (let (escaped (reduce (fn (s c) (str-replace s c (str "\\" c)))
+                        pattern
+                        (list "\\" "." "+" "(" ")" "[" "]" "{" "}" "^" "$" "|")))
+    (str "(?i)^" (str-replace (str-replace escaped "*" ".*") "?" ".") "$")))
+
+;; Does x meet a criterion? The criterion can be:
+;;   a value           "Work", 42           equal (text ignoring case)
+;;   a comparison      ">10" "<=5" "<>Work"  numbers compare as numbers, "<>" is not-equal
+;;   a wildcard        "W*" "?ork"          * any run, ? one character
+;;   a function        (fn (x) (> x 10))    whatever it says
+;; (criterion? ">10" 12)   → true
+;; (criterion? "w*" "Work")   → true
+(defn criterion? (crit x)
+  (cond (fn? crit)          (if (crit x) true false)
+        (not (string? crit)) (same? x crit)
+        true
+        (let (op   (cond (str-starts-with crit ">=") ">="
+                         (str-starts-with crit "<=") "<="
+                         (str-starts-with crit "<>") "<>"
+                         (str-starts-with crit ">")  ">"
+                         (str-starts-with crit "<")  "<"
+                         (str-starts-with crit "=")  "="
+                         true                        "")
+              rest (substr crit (str-len op) (str-len crit))
+              want (if (numeric-text? rest) (->number rest) rest))
+          (cond (= op "<>") (not (criterion? want x))
+                (= op "=")  (criterion? want x)
+                (= op "")   (if (and (string? want) (str-matches want "[*?]"))
+                                (and (string? x) (if (str-matches x (wildcard-regex want)) true false))
+                                (same? x want))
+                ;; > >= < <= : numbers only, as a spreadsheet does
+                (not (and (number? x) (number? want))) false
+                (= op ">")  (> x want)
+                (= op ">=") (>= x want)
+                (= op "<")  (< x want)
+                true        (<= x want)))))
+
+;; Positions (0-based) where every (range criterion) pair holds.
+(defn matching-indexes (pairs)
+  (let (ranges (map (fn (p) (flatten-keep (first p))) pairs)
+        size   (apply min (map length ranges)))
+    (filter (fn (i) (every? (fn (k) (criterion? (second (nth pairs k)) (nth (nth ranges k) i)))
+                            (range (length pairs))))
+            (range size))))
+
+;; Like flatten, but blanks stay as nil — so two ranges side by side stay lined up.
+(defn flatten-keep (xs)
+  (cond (list? xs) (apply append (map (fn (x) (if (list? x) (flatten-keep x) (list x))) xs))
+        true       (list xs)))
+
+;; (pairs-of '(a 1 b 2))   → ((a 1) (b 2))
+(defn pairs-of (xs)
+  (if (< (length xs) 2) (list) (cons (list (first xs) (second xs)) (pairs-of (drop 2 xs)))))
+
+(defn pick (xs indexes)
+  (let (flat (flatten-keep xs))
+    (map (fn (i) (nth flat i)) indexes)))
+
+;; ─── counting and adding up ────────────────────────────────────────────
+
+;; (countif E:E "Work")    (countif B2:B99 ">100")
+(defn countif (rng crit)
+  (length (filter (fn (x) (criterion? crit x)) (flatten-keep rng))))
+
+;; (countifs E:E "Work" F:F ">10")   — every pair must hold on the same row
+(defn countifs (. args)
+  (length (matching-indexes (pairs-of args))))
+
+;; (counta A1:C9)   → how many cells aren't blank
+(defn counta (. xs)
+  (length (filter (fn (x) (not (= x ""))) (flatten xs))))
+
+;; (countblank A1:A9)
+(defn countblank (rng)
+  (length (filter (fn (x) (or (nil? x) (= x ""))) (flatten-keep rng))))
+
+;; (sumif E2:E99 "Work" F2:F99)   — or (sumif F2:F99 ">100") to add the matching cells themselves
+(defn sumif (rng crit . sum-range)
+  (sum (pick (if (empty? sum-range) rng (first sum-range))
+             (matching-indexes (list (list rng crit))))))
+
+;; (sumifs F:F E:E "Work" G:G ">2026-01-01")   — the range to add comes first, as in a spreadsheet
+(defn sumifs (sum-range . args)
+  (sum (pick sum-range (matching-indexes (pairs-of args)))))
+
+;; (averageif E2:E99 "Work" F2:F99)   → nil when nothing matches
+(defn averageif (rng crit . avg-range)
+  (let (ns (numbers (pick (if (empty? avg-range) rng (first avg-range))
+                          (matching-indexes (list (list rng crit))))))
+    (if (empty? ns) nil (avg ns))))
+
+;; (averageifs F:F E:E "Work" G:G ">0")
+(defn averageifs (avg-range . args)
+  (let (ns (numbers (pick avg-range (matching-indexes (pairs-of args)))))
+    (if (empty? ns) nil (avg ns))))
+
+;; ─── looking things up ─────────────────────────────────────────────────
+
+;; The rows of a block; a flat range is one column, so each cell is a row of one.
+(defn rows-of (rng)
+  (map (fn (r) (if (list? r) r (list r))) rng))
+
+;; (match "pear" A1:A9)   → 1-based position of the first match, or nil
+;; The value may be any criterion: (match ">100" B1:B9)
+(defn match (value rng)
+  (let (cells (flatten-keep rng)
+        hits  (filter (fn (i) (criterion? value (nth cells i))) (range (length cells))))
+    (if (empty? hits) nil (+ 1 (first hits)))))
+
+;; (index A1:C9 2 3)   → row 2, column 3, counting from 1   ·   (index A1:A9 4) on one column
+(defn index (rng row . col)
+  (let (r (nth rng (- row 1)))
+    (cond (empty? col) r
+          (list? r)    (nth r (- (first col) 1))
+          true         (if (= (first col) 1) r nil))))
+
+;; (vlookup "pear" A1:C9 3)   → column 3 of the first row whose first cell is "pear", or nil
+(defn vlookup (value table col)
+  (let (hit (filter (fn (r) (criterion? value (first r))) (rows-of table)))
+    (if (empty? hit) nil (nth (first hit) (- col 1)))))
+
+;; (hlookup "Q3" A1:F4 2)   → row 2 under the first header that is "Q3"
+(defn hlookup (value table row)
+  (let (headers (first (rows-of table))
+        at      (match value headers))
+    (if (nil? at) nil (nth (nth (rows-of table) (- row 1)) (- at 1)))))
+
+;; (xlookup "pear" A1:A9 C1:C9)   (xlookup "kiwi" A1:A9 C1:C9 "none")   — the last is if-not-found
+(defn xlookup (value lookup results . missing)
+  (let (at (match value lookup))
+    (if (nil? at)
+        (if (empty? missing) nil (first missing))
+        (nth (flatten-keep results) (- at 1)))))
+
+;; ─── choosing ──────────────────────────────────────────────────────────
+
+;; (ifs (> A1 90) "A" (> A1 80) "B" true "C")   → the value after the first true test
+(defn ifs (. args)
+  (let (hit (filter (fn (p) (first p)) (pairs-of args)))
+    (if (empty? hit) nil (second (first hit)))))
+
+;; (switch B1 "eur" 1.1 "gbp" 1.3 1)   → the result for the matching case, else the default
+(defn switch (value . cases)
+  (let (hit (filter (fn (p) (same? value (first p))) (pairs-of cases)))
+    (cond (not (empty? hit))        (second (first hit))
+          (odd? (length cases))     (last cases)
+          true                      nil)))
+
+;; ─── statistics ────────────────────────────────────────────────────────
+
+;; (median B1:B9)
+(defn median (. xs)
+  (let (ns (sort xs)
+        n  (length ns)
+        m  (floor (/ n 2)))
+    (cond (= n 0)   nil
+          (odd? n)  (nth ns m)
+          true      (/ (+ (nth ns (- m 1)) (nth ns m)) 2))))
+
+;; (mode B1:B9)   → the number seen most often (the first such, on a tie), nil if none repeats
+(defn mode (. xs)
+  (let (ns   (numbers xs)
+        tally (map (fn (n) (list n (length (filter (fn (y) (= y n)) ns)))) (unique ns))
+        best (reduce (fn (b t) (if (> (second t) (second b)) t b)) (list nil 1) tally))
+    (first best)))
+
+(defn squares-about-mean (ns)
+  (let (m (avg ns))
+    (sum (map (fn (x) (* (- x m) (- x m))) ns))))
+
+;; (var B1:B9)    sample variance   ·   (varp B1:B9)   population
+(defn var (. xs)
+  (let (ns (numbers xs))
+    (if (< (length ns) 2) nil (/ (squares-about-mean ns) (- (length ns) 1)))))
+(defn varp (. xs)
+  (let (ns (numbers xs))
+    (if (empty? ns) nil (/ (squares-about-mean ns) (length ns)))))
+
+;; (stdev B1:B9)  sample standard deviation   ·   (stdevp B1:B9)   population
+(defn stdev (. xs)
+  (let (v (apply var xs)) (if (nil? v) nil (pow v 0.5))))
+(defn stdevp (. xs)
+  (let (v (apply varp xs)) (if (nil? v) nil (pow v 0.5))))
+
+;; (large B1:B9 1)   → the biggest   ·   (small B1:B9 2)   → the second smallest
+(defn large (rng k)
+  (nth (reverse (sort rng)) (- k 1)))
+(defn small (rng k)
+  (nth (sort rng) (- k 1)))
+
+;; (rank B2 B1:B9)   → 1 for the biggest   ·   (rank B2 B1:B9 true) → 1 for the smallest
+(defn rank (x rng . ascending)
+  (let (ns (numbers rng)
+        ahead (if (and (not (empty? ascending)) (first ascending))
+                  (filter (fn (y) (< y x)) ns)
+                  (filter (fn (y) (> y x)) ns)))
+    (if (some? (fn (y) (= y x)) ns) (+ 1 (length ahead)) nil)))
+
+;; ─── rounding ──────────────────────────────────────────────────────────
+
+;; (round-to 3.14159 2)   → 3.14   — round itself takes one argument and keeps its meaning
+(defn round-to (x digits)
+  (let (f (pow 10 digits)) (/ (round (* x f)) f)))
+
+;; (roundup 3.141 2)   → 3.15   ·   (rounddown 3.149 2)   → 3.14   — away from / toward zero
+(defn roundup (x digits)
+  (let (f (pow 10 digits)
+        y (* (abs x) f))
+    (* (if (< x 0) -1 1) (/ (ceil y) f))))
+(defn rounddown (x digits)
+  (let (f (pow 10 digits)
+        y (* (abs x) f))
+    (* (if (< x 0) -1 1) (/ (floor y) f))))
+
+;; ─── text ──────────────────────────────────────────────────────────────
+
+;; (left "invoice-42" 7)   → "invoice"   ·   (right "invoice-42" 2)   → "42"
+(defn left (s n)
+  (substr s 0 (min n (str-len s))))
+(defn right (s n)
+  (substr s (max 0 (- (str-len s) n)) (str-len s)))
+
+;; (mid "invoice-42" 9 2)   → "42"   — start counts from 1, as in a spreadsheet
+(defn mid (s start n)
+  (let (from (min (str-len s) (max 0 (- start 1))))
+    (substr s from (min (str-len s) (+ from n)))))
+
+;; (trim "  too   many  spaces ")   → "too many spaces"
+(defn trim (s)
+  (str-join " " (filter (fn (w) (not (= w ""))) (str-split (str-trim s) " "))))
+
+;; (proper "ada LOVELACE")   → "Ada Lovelace"
+(defn proper (s)
+  (str-join " " (map (fn (w) (if (= w "") w (str (str-upper (substr w 0 1)) (str-lower (substr w 1 (str-len w))))))
+                     (str-split s " "))))
+
+;; (textjoin ", " A1:A9)   → the filled cells joined, blanks skipped
+(defn textjoin (sep . xs)
+  (str-join sep (map (fn (x) (str x)) (filter (fn (x) (not (= x ""))) (flatten xs)))))
+
+;; (concat A1 " " B1)   → every argument, ranges included, end to end
+(defn concat (. xs)
+  (str-join "" (map (fn (x) (str x)) (flatten xs))))
