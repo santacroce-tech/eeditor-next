@@ -250,13 +250,11 @@ The library's building blocks, all callable in blocks, the REPL and your own bin
 - **`items` / `items-on` return result sets**; wrap them in `records` to `map`/`filter`.
 - **`item-done` forgets the item** (soft delete). That is why the `done` table exists: without it
   the weekly review would have nothing to show.
-- **`defcategory` doesn't evaluate its argument** — `(defcategory c)` defines a category called
-  "c". The library builds the form as text: `(eval (parse (str "(defcategory " c ")")))`.
-- **`assign` doesn't define the category**, so it's missing from `(categories)` and the panel's
-  list. Define it first (`pim-file-under` does both).
-- **`(items :category "work")` doesn't include `work/admin`**; `pim-category` does.
-- **With `(auto-categorize true)`, the item `add` returns is from before the rules ran** — read it
-  again with `item-get`.
+- **Fixed in the engine since, so no longer a trap** (checked 2026-10-26): `defcategory` evaluates
+  its argument (`(defcategory (str "home/" room))` works); `assign` defines a category it doesn't
+  know; `(items :category "work")` includes `work/admin`; and with `(auto-categorize true)`, the
+  item `add` returns already has what the rules assigned. The library still does it the long way
+  (`pim-file-under`, `pim-category`, defining a category as text), which keeps working.
 - **Templates are broken in the engine today:** `from-template` drops the item's text, and running
   `deftemplate` again adds a second template of the same name (the docs' `(deftemplate x (…))`
   shape errors too; it takes flat keywords). The capture window uses categories instead.

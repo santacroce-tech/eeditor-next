@@ -11,9 +11,9 @@ Cost: **S** a day or less · **M** a few days · **L** a week or more. *Engine* 
 | | Item | Where | Cost | Decision |
 |---|---|---|---|---|
 | 1 | [The `http-get` manual says it returns text](#1-http-get-is-documented-wrong) | engine | S | **Fixed** with this roadmap |
-| 2 | [Catching an error: `try`](#2-catching-an-error-try) — and `iferror` with it | engine + app | M | **Do next** |
-| 3 | [`http-get` options: timeout and headers](#3-http-get-options-timeout-and-headers) | engine | S | **Do next** |
-| 4 | [`csv-parse` in the language](#4-csv-parse-in-the-language) | engine | S | **Do next** |
+| 2 | [Catching an error: `try`](#2-catching-an-error-try) — and `iferror` with it | engine + app | M | **In review** — eelisp-rs#23 |
+| 3 | [`http-get` options: timeout and headers](#3-http-get-options-timeout-and-headers) | engine | S | **In review** — eelisp-rs#24 |
+| 4 | [`csv-parse` in the language](#4-csv-parse-in-the-language) | engine | S | **In review** — eelisp-rs#25 |
 | 5 | [Installing the PIM keys in a folder that has its own](#5-installing-the-pim-keys-in-any-folder) | app | S | **Do next** |
 | 6 | [Formulas that read the database recalculate by themselves](#6-formulas-that-read-the-database-recalculate-by-themselves) | engine | M–L | Later |
 | 7 | [Charts](#7-charts) | app + engine | M, then L | Later — sparklines first |
@@ -25,6 +25,7 @@ Cost: **S** a day or less · **M** a few days · **L** a week or more. *Engine* 
 | 13 | [A built-in stock price source](#13-a-built-in-stock-price-source) | — | — | **No** |
 | 14 | [Whole rows, and a formula knowing its own cell](#14-whole-rows-and-a-formula-knowing-its-own-cell) | engine | M | Not until asked |
 | 15 | [An easter egg: a raycaster in EELisp](#15-an-easter-egg-a-raycaster-in-eelisp) | app | M | Someday |
+| 16 | [Small engine fixes found by the book](#16-small-engine-fixes-found-by-the-book) | engine | S each | **In review** — eelisp-rs#22, #26 |
 
 What sheets in particular still lack — formatting, the grid, sheets as first-class files — has its
 own running list: [SHEETS-LATER.md](SHEETS-LATER.md).
@@ -214,3 +215,27 @@ A Wolfenstein-style maze drawn by EELisp on the screen control the ZX Spectrum f
 hundred multiplications a column, which the engine can do at a playable rate; DOOM proper (BSP
 maps, WAD files) is out of reach for an interpreter. **Someday** — it's fun, it shows off the
 engine, and nothing depends on it.
+
+---
+
+## Small things
+
+### 16. Small engine fixes found by the book
+
+Writing all sixteen chapters of *Zero to Hero* against the engine turned up a handful of small
+gaps. Each is a few lines and a test; together they remove the workarounds the book has to
+explain.
+
+| | What happens | How to fix |
+|---|---|---|
+| a | **People parsing takes a word, not a name.** `(add "call the bank")` files a person called "the". | Skip articles and possessives after *call, email, meet, text, with, for, from* (`the`, `a`, `an`, `my`, `our`, `your`). |
+| b | **`:choices` isn't enforced.** `(deftable t ((kind :type choice :choices ("a" "b"))))` accepts `"z"` on `insert`; only forms honour it. | Refuse a value outside the choices in `insert` and `update`, with the field named in the message. |
+| c | **`:select` given text is ignored.** `(query t :select "a, b")` returns every field; only a quoted list works, `:select '(a b)`. | Accept the text form too. |
+| d | **No folder can be made.** `export-agenda` to a path in a folder that doesn't exist fails, and nothing in EELisp creates one. The book exports into `.eeditor/` and copies with `ed-write`. | Create the missing folders inside the workspace (the same rule `ed-write` follows). |
+| e | **A row is not a dict.** `json-stringify` of a query's records gives quoted strings; there's `item->dict` for agenda items but no `record->dict`. (A table *named by a value* already works: a call in the table's place is evaluated, `(query (str name))`.) | `(record->dict r)`. |
+| f | **`sheet-put` doesn't clear.** Writing fewer rows over more leaves the old ones; the book deletes rows first. | `(sheet-clear name area)`, and a `:clear true` option on `sheet-put` that empties the area below what it writes. |
+| g | **Manual drift.** `export-agenda` was documented as `(export-agenda "f.json") → number`; it takes the agenda's name and returns a message, and the example's agenda `memory` is called `eeditor` in the app. | Fixed in eelisp-rs alongside this item. |
+
+**Decision: do next** — a to f in santacroce-tech/eelisp-rs#26, g in #22. Each makes the book
+shorter.
+
