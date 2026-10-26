@@ -69,7 +69,8 @@ Struck through when it lands, with the branch that did it.
   `=(iferror (/ A1 B1) 0)` shows the fallback instead of #ERR.
 - Result sets spilling into a range, and a live two‑way binding between a range and a `deftable`;
   `sheet-put` is a one‑off snapshot today.
-- Charts.
+- Charts. Sparklines landed on `feat/sparkline` (`=(sparkline B2:B30)`, a line in the cell); real
+  charts — a chart object over the grid, printed — are still to come.
 - Column‑level formats. Formatting a whole column writes a row per cell, which is why it is capped at
   a million.
 - Paging a big sheet by viewport (see the risks above), and refreshing volatile formulas — the ones

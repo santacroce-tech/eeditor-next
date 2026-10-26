@@ -257,11 +257,51 @@ export interface Shown {
   /** The full error, for a tooltip. */
   title?: string;
   error: boolean;
+  /** A sparkline's numbers — the grid draws them as a line; `text` is the same as bars, for copying. */
+  spark?: number[];
+}
+
+/**
+ * A sparkline's numbers, when a value is one: what `(sparkline B2:B30)` returns, `{:sparkline (…)}`.
+ * Anything that isn't a number in it is left out.
+ */
+export function sparklineOf(value: JsonValue): number[] | null {
+  if (value === null || typeof value !== "object" || !("$dict" in value)) return null;
+  const hit = (value as { $dict: [string, JsonValue][] }).$dict.find(([k]) => k === "sparkline");
+  if (!hit || !Array.isArray(hit[1])) return null;
+  return (hit[1] as JsonValue[]).filter((n): n is number => typeof n === "number" && Number.isFinite(n));
+}
+
+const BARS = "▁▂▃▄▅▆▇█";
+
+/** The numbers as a row of bar characters — a sparkline that survives being copied as text. */
+export function sparkText(ns: number[]): string {
+  if (ns.length === 0) return "";
+  const lo = Math.min(...ns);
+  const hi = Math.max(...ns);
+  return ns.map((n) => BARS[hi === lo ? 3 : Math.round(((n - lo) / (hi - lo)) * (BARS.length - 1))]).join("");
+}
+
+/**
+ * The line through the numbers, as SVG path data inside a `w`×`h` box with `pad` around it: the
+ * first number at the left edge, the last at the right, the lowest at the bottom. One number is a
+ * flat line across the middle.
+ */
+export function sparkPath(ns: number[], w: number, h: number, pad = 2): string {
+  if (ns.length === 0) return "";
+  const lo = Math.min(...ns);
+  const hi = Math.max(...ns);
+  const x = (i: number): number => (ns.length === 1 ? pad : pad + (i * (w - 2 * pad)) / (ns.length - 1));
+  const y = (n: number): number => (hi === lo ? h / 2 : pad + ((hi - n) * (h - 2 * pad)) / (hi - lo));
+  const pts = ns.length === 1 ? [[pad, h / 2], [w - pad, h / 2]] : ns.map((n, i) => [x(i), y(n)]);
+  return pts.map(([px, py], i) => `${i ? "L" : "M"}${px.toFixed(1)},${py.toFixed(1)}`).join(" ");
 }
 
 export function display(cell: Cell | undefined, locale?: string): Shown {
   if (!cell) return { text: "", align: "left", error: false };
   if (cell.error) return { text: errorTag(cell.error), align: "left", title: cell.error, error: true };
+  const spark = sparklineOf(cell.value);
+  if (spark) return { text: sparkText(spark), align: "left", error: false, spark };
   const text = formatValue(cell.value, cell.fmt, locale);
   const natural = typeof cell.value === "number" || (cell.fmt?.date && isoDate(cell.value)) ? "right" : "left";
   return { text, align: cell.fmt?.align ?? natural, error: false };
