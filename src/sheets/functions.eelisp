@@ -86,10 +86,12 @@
                 (= op "<")  (< x want)
                 true        (<= x want)))))
 
-;; Positions (0-based) where every (range criterion) pair holds.
+;; Positions (0-based) where every (range criterion) pair holds. Whole columns stop at their own
+;; last filled row, so they can differ in length: the longest decides, and a shorter one reads
+;; blank past its end — as it would in a spreadsheet, where "<>Work" matches an empty cell.
 (defn matching-indexes (pairs)
   (let (ranges (map (fn (p) (flatten-keep (first p))) pairs)
-        size   (apply min (map length ranges)))
+        size   (apply max (map length ranges)))
     (filter (fn (i) (every? (fn (k) (criterion? (second (nth pairs k)) (nth (nth ranges k) i)))
                             (range (length pairs))))
             (range size))))
@@ -102,6 +104,10 @@
 ;; (pairs-of '(a 1 b 2))   → ((a 1) (b 2))
 (defn pairs-of (xs)
   (if (< (length xs) 2) (list) (cons (list (first xs) (second xs)) (pairs-of (drop 2 xs)))))
+
+;; The pairs, plus the range the answer comes from — held to no condition, but as long as it is.
+(defn with-target (target pairs)
+  (cons (list target (fn (x) true)) pairs))
 
 (defn pick (xs indexes)
   (let (flat (flatten-keep xs))
@@ -127,22 +133,22 @@
 
 ;; (sumif E2:E99 "Work" F2:F99)   — or (sumif F2:F99 ">100") to add the matching cells themselves
 (defn sumif (rng crit . sum-range)
-  (sum (pick (if (empty? sum-range) rng (first sum-range))
-             (matching-indexes (list (list rng crit))))))
+  (let (target (if (empty? sum-range) rng (first sum-range)))
+    (sum (pick target (matching-indexes (with-target target (list (list rng crit))))))))
 
 ;; (sumifs F:F E:E "Work" G:G ">2026-01-01")   — the range to add comes first, as in a spreadsheet
 (defn sumifs (sum-range . args)
-  (sum (pick sum-range (matching-indexes (pairs-of args)))))
+  (sum (pick sum-range (matching-indexes (with-target sum-range (pairs-of args))))))
 
 ;; (averageif E2:E99 "Work" F2:F99)   → nil when nothing matches
 (defn averageif (rng crit . avg-range)
-  (let (ns (numbers (pick (if (empty? avg-range) rng (first avg-range))
-                          (matching-indexes (list (list rng crit))))))
+  (let (target (if (empty? avg-range) rng (first avg-range))
+        ns     (numbers (pick target (matching-indexes (with-target target (list (list rng crit)))))))
     (if (empty? ns) nil (avg ns))))
 
 ;; (averageifs F:F E:E "Work" G:G ">0")
 (defn averageifs (avg-range . args)
-  (let (ns (numbers (pick avg-range (matching-indexes (pairs-of args)))))
+  (let (ns (numbers (pick avg-range (matching-indexes (with-target avg-range (pairs-of args))))))
     (if (empty? ns) nil (avg ns))))
 
 ;; ─── looking things up ─────────────────────────────────────────────────
@@ -249,10 +255,7 @@
 
 ;; ─── rounding ──────────────────────────────────────────────────────────
 
-;; (round-to 3.14159 2)   → 3.14   — round itself takes one argument and keeps its meaning
-(defn round-to (x digits)
-  (let (f (pow 10 digits)) (/ (round (* x f)) f)))
-
+;; (round 3.14159 2) → 3.14 is a builtin already; these two round one way only.
 ;; (roundup 3.141 2)   → 3.15   ·   (rounddown 3.149 2)   → 3.14   — away from / toward zero
 (defn roundup (x digits)
   (let (f (pow 10 digits)

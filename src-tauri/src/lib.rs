@@ -97,6 +97,12 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::
         version: Some(pkg.version.to_string()),
         copyright: app.config().bundle.copyright.clone(),
         authors: app.config().bundle.publisher.clone().map(|p| vec![p]),
+        // macOS shows `credits`; Windows and Linux show `comments` and the website
+        credits: Some("Developed by Roberto Santacroce Martins.\nhttps://eeditor.app".into()),
+        comments: Some("Notes, an agenda, sheets and forms — with a Lisp inside.".into()),
+        website: Some("https://eeditor.app".into()),
+        website_label: Some("eeditor.app".into()),
+        license: Some("MIT".into()),
         ..Default::default()
     };
     let quit = MenuItem::with_id(app, MENU_QUIT, format!("Quit {name}"), true, Some("CmdOrCtrl+Q"))?;

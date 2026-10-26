@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "eeditor-next",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "identifier": "com.eeditor.app",
   "build": {
     "frontendDist": "../dist",
@@ -27,6 +27,8 @@
   },
   "bundle": {
     "active": true,
+    "publisher": "Roberto Santacroce Martins",
+    "copyright": "© 2026 Roberto Santacroce Martins",
     "targets": "all",
     "fileAssociations": [
       {

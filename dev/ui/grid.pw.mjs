@@ -171,9 +171,9 @@ test("a number typed the way people write one arrives with its format", async ({
   await type(page, "50%");
   await go(page, "D6");
   await type(page, "$1,200");
-  const cells = await shown(page);
-  expect(cells).toContain("50%");
-  expect(cells.some((c) => c.includes("1,200"))).toBe(true); // the currency symbol follows the locale
+  // poll rather than read once: the write is queued, and `settled` can run before it has begun
+  await expect.poll(() => shown(page)).toContain("50%");
+  await expect.poll(async () => (await shown(page)).some((c) => c.includes("1,200"))).toBe(true); // the currency symbol follows the locale
   // what was typed is what the cell keeps
   await go(page, "D5");
   await expect(page.locator(".sheet-formula")).toHaveValue("50%");

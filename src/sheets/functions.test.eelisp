@@ -63,7 +63,7 @@
 (check "median, odd count" (median '(5 1 3)) 3)
 (check "mode" (mode '(1 2 2 3 3 3)) 3)
 (check "mode with no repeat" (mode '(1 2 3)) nil)
-(check "var" (round-to (var '(2 4 4 4 5 5 7 9)) 4) 4.5714)
+(check "var" (round (var '(2 4 4 4 5 5 7 9)) 4) 4.5714)
 (check "stdevp" (stdevp '(2 4 4 4 5 5 7 9)) 2)
 (check "large" (large '(5 1 9 3) 2) 5)
 (check "small" (small '(5 1 9 3) 1) 1)
@@ -71,7 +71,7 @@
 (check "rank ascending" (rank 5 '(5 1 9 3) true) 3)
 
 ;; ── rounding and text ──
-(check "round-to" (round-to 3.14159 2) 3.14)
+(check "round takes digits already" (round 3.14159 2) 3.14)
 (check "roundup" (roundup 3.141 2) 3.15)
 (check "rounddown toward zero" (rounddown -3.149 2) -3.14)
 (check "left" (left "invoice-42" 7) "invoice")
@@ -94,6 +94,9 @@
 (check "sumif in a formula" (sheet-get "fx-test" "D2") 14)
 (check "vlookup reads a block as rows" (sheet-get "fx-test" "D3") 3)
 (check "countifs lines whole columns up" (sheet-get "fx-test" "D4") 2)
+(sheet-put "fx-test" "E1" '(("x" 1) (nil 2)))
+(sheet-set "fx-test" "D5" "=(sumifs F:F E:E \"<>x\")")
+(check "columns of different lengths line up; the shorter reads blank" (sheet-get "fx-test" "D5") 2)
 (sheet-set "fx-test" "A7" "Work")
 (check "a new row is counted" (sheet-get "fx-test" "D1") 3)
 
