@@ -207,6 +207,14 @@
 
 ;; ─── choosing ──────────────────────────────────────────────────────────
 
+;; The value of an expression, or a fallback if it fails — what a cell shows instead of #ERR.
+;; (iferror (/ A1 B1) 0)   → 0 when B1 is 0 or empty
+;; (iferror (vlookup "kiwi" A1:C9 3) "not found")
+;; A macro, so the expression is evaluated inside the try, and the fallback only when it fails.
+(defmacro iferror (expr fallback)
+  `(try ,expr (catch e ,fallback)))
+
+
 ;; Several tests in a row: the value after the first that is true.
 ;; (ifs (> A1 90) "A" (> A1 80) "B" true "C")   → the value after the first true test
 (defn ifs (. args)
