@@ -22,15 +22,18 @@
         (list? xs) (apply append (map flatten xs))
         true       (list xs)))
 
+;; Each value once, in the order first seen; text that differs only in case counts as the same.
 ;; (unique '(1 2 1 "a" "A"))   → (1 2 "a")
 (defn unique (xs)
   (reduce (fn (seen x) (if (some? (fn (y) (same? x y)) seen) seen (append seen (list x))))
           (list) (flatten xs)))
 
+;; The numbers in a list or range, smallest first.
 ;; (sort '(3 1 2))   → (1 2 3)   — numbers only; text and blanks are left out
 (defn sort (xs)
   (sort-by id (numbers xs)))
 
+;; Only the numbers in a list or range.
 ;; (numbers '(1 "a" nil 2.5))   → (1 2.5)
 (defn numbers (xs)
   (filter number? (flatten xs)))
@@ -115,37 +118,45 @@
 
 ;; ─── counting and adding up ────────────────────────────────────────────
 
+;; How many cells meet a condition.
 ;; (countif E:E "Work")    (countif B2:B99 ">100")
 (defn countif (rng crit)
   (length (filter (fn (x) (criterion? crit x)) (flatten-keep rng))))
 
+;; How many rows meet every condition, each on its own range.
 ;; (countifs E:E "Work" F:F ">10")   — every pair must hold on the same row
 (defn countifs (. args)
   (length (matching-indexes (pairs-of args))))
 
+;; How many cells are filled.
 ;; (counta A1:C9)   → how many cells aren't blank
 (defn counta (. xs)
   (length (filter (fn (x) (not (= x ""))) (flatten xs))))
 
+;; How many cells are empty.
 ;; (countblank A1:A9)
 (defn countblank (rng)
   (length (filter (fn (x) (or (nil? x) (= x ""))) (flatten-keep rng))))
 
+;; Adds up the cells beside the ones that meet a condition.
 ;; (sumif E2:E99 "Work" F2:F99)   — or (sumif F2:F99 ">100") to add the matching cells themselves
 (defn sumif (rng crit . sum-range)
   (let (target (if (empty? sum-range) rng (first sum-range)))
     (sum (pick target (matching-indexes (with-target target (list (list rng crit))))))))
 
+;; Adds up a range on the rows that meet every condition.
 ;; (sumifs F:F E:E "Work" G:G ">2026-01-01")   — the range to add comes first, as in a spreadsheet
 (defn sumifs (sum-range . args)
   (sum (pick sum-range (matching-indexes (with-target sum-range (pairs-of args))))))
 
+;; The mean of the cells beside the ones that meet a condition.
 ;; (averageif E2:E99 "Work" F2:F99)   → nil when nothing matches
 (defn averageif (rng crit . avg-range)
   (let (target (if (empty? avg-range) rng (first avg-range))
         ns     (numbers (pick target (matching-indexes (with-target target (list (list rng crit)))))))
     (if (empty? ns) nil (avg ns))))
 
+;; The mean of a range on the rows that meet every condition; nil when none do.
 ;; (averageifs F:F E:E "Work" G:G ">0")
 (defn averageifs (avg-range . args)
   (let (ns (numbers (pick avg-range (matching-indexes (with-target avg-range (pairs-of args))))))
@@ -157,6 +168,7 @@
 (defn rows-of (rng)
   (map (fn (r) (if (list? r) r (list r))) rng))
 
+;; Where a value first appears in a range, counting from 1.
 ;; (match "pear" A1:A9)   → 1-based position of the first match, or nil
 ;; The value may be any criterion: (match ">100" B1:B9)
 (defn match (value rng)
@@ -164,6 +176,7 @@
         hits  (filter (fn (i) (criterion? value (nth cells i))) (range (length cells))))
     (if (empty? hits) nil (+ 1 (first hits)))))
 
+;; What is at a row (and column) of a range, counting from 1.
 ;; (index A1:C9 2 3)   → row 2, column 3, counting from 1   ·   (index A1:A9 4) on one column
 (defn index (rng row . col)
   (let (r (nth rng (- row 1)))
@@ -171,17 +184,20 @@
           (list? r)    (nth r (- (first col) 1))
           true         (if (= (first col) 1) r nil))))
 
+;; Finds a row by its first cell and returns another of its columns.
 ;; (vlookup "pear" A1:C9 3)   → column 3 of the first row whose first cell is "pear", or nil
 (defn vlookup (value table col)
   (let (hit (filter (fn (r) (criterion? value (first r))) (rows-of table)))
     (if (empty? hit) nil (nth (first hit) (- col 1)))))
 
+;; Finds a column by its header and returns another of its rows.
 ;; (hlookup "Q3" A1:F4 2)   → row 2 under the first header that is "Q3"
 (defn hlookup (value table row)
   (let (headers (first (rows-of table))
         at      (match value headers))
     (if (nil? at) nil (nth (nth (rows-of table) (- row 1)) (- at 1)))))
 
+;; Finds a value in one range and returns what sits beside it in another.
 ;; (xlookup "pear" A1:A9 C1:C9)   (xlookup "kiwi" A1:A9 C1:C9 "none")   — the last is if-not-found
 (defn xlookup (value lookup results . missing)
   (let (at (match value lookup))
@@ -191,11 +207,13 @@
 
 ;; ─── choosing ──────────────────────────────────────────────────────────
 
+;; Several tests in a row: the value after the first that is true.
 ;; (ifs (> A1 90) "A" (> A1 80) "B" true "C")   → the value after the first true test
 (defn ifs (. args)
   (let (hit (filter (fn (p) (first p)) (pairs-of args)))
     (if (empty? hit) nil (second (first hit)))))
 
+;; Picks the result for a value from a list of cases.
 ;; (switch B1 "eur" 1.1 "gbp" 1.3 1)   → the result for the matching case, else the default
 (defn switch (value . cases)
   (let (hit (filter (fn (p) (same? value (first p))) (pairs-of cases)))
@@ -205,6 +223,7 @@
 
 ;; ─── statistics ────────────────────────────────────────────────────────
 
+;; The middle number — the mean of the two middle ones for an even count.
 ;; (median B1:B9)
 (defn median (. xs)
   (let (ns (sort xs)
@@ -214,6 +233,7 @@
           (odd? n)  (nth ns m)
           true      (/ (+ (nth ns (- m 1)) (nth ns m)) 2))))
 
+;; The number that appears most often.
 ;; (mode B1:B9)   → the number seen most often (the first such, on a tie), nil if none repeats
 (defn mode (. xs)
   (let (ns   (numbers xs)
@@ -225,6 +245,7 @@
   (let (m (avg ns))
     (sum (map (fn (x) (* (- x m) (- x m))) ns))))
 
+;; How spread out the numbers are: var for a sample, varp for a whole population.
 ;; (var B1:B9)    sample variance   ·   (varp B1:B9)   population
 (defn var (. xs)
   (let (ns (numbers xs))
@@ -233,18 +254,21 @@
   (let (ns (numbers xs))
     (if (empty? ns) nil (/ (squares-about-mean ns) (length ns)))))
 
+;; The standard deviation: stdev for a sample, stdevp for a whole population.
 ;; (stdev B1:B9)  sample standard deviation   ·   (stdevp B1:B9)   population
 (defn stdev (. xs)
   (let (v (apply var xs)) (if (nil? v) nil (pow v 0.5))))
 (defn stdevp (. xs)
   (let (v (apply varp xs)) (if (nil? v) nil (pow v 0.5))))
 
+;; The k-th biggest number (large) or the k-th smallest (small).
 ;; (large B1:B9 1)   → the biggest   ·   (small B1:B9 2)   → the second smallest
 (defn large (rng k)
   (nth (reverse (sort rng)) (- k 1)))
 (defn small (rng k)
   (nth (sort rng) (- k 1)))
 
+;; A number's place among the others.
 ;; (rank B2 B1:B9)   → 1 for the biggest   ·   (rank B2 B1:B9 true) → 1 for the smallest
 (defn rank (x rng . ascending)
   (let (ns (numbers rng)
@@ -255,6 +279,7 @@
 
 ;; ─── rounding ──────────────────────────────────────────────────────────
 
+;; Rounding one way only: roundup away from zero, rounddown toward it.
 ;; (round 3.14159 2) → 3.14 is a builtin already; these two round one way only.
 ;; (roundup 3.141 2)   → 3.15   ·   (rounddown 3.149 2)   → 3.14   — away from / toward zero
 (defn roundup (x digits)
@@ -268,30 +293,36 @@
 
 ;; ─── text ──────────────────────────────────────────────────────────────
 
+;; The first (left) or last (right) n characters of a text.
 ;; (left "invoice-42" 7)   → "invoice"   ·   (right "invoice-42" 2)   → "42"
 (defn left (s n)
   (substr s 0 (min n (str-len s))))
 (defn right (s n)
   (substr s (max 0 (- (str-len s) n)) (str-len s)))
 
+;; n characters from the middle of a text.
 ;; (mid "invoice-42" 9 2)   → "42"   — start counts from 1, as in a spreadsheet
 (defn mid (s start n)
   (let (from (min (str-len s) (max 0 (- start 1))))
     (substr s from (min (str-len s) (+ from n)))))
 
+;; Text with the spaces tidied: none at the ends, one between words.
 ;; (trim "  too   many  spaces ")   → "too many spaces"
 (defn trim (s)
   (str-join " " (filter (fn (w) (not (= w ""))) (str-split (str-trim s) " "))))
 
+;; Text with each word capitalised.
 ;; (proper "ada LOVELACE")   → "Ada Lovelace"
 (defn proper (s)
   (str-join " " (map (fn (w) (if (= w "") w (str (str-upper (substr w 0 1)) (str-lower (substr w 1 (str-len w))))))
                      (str-split s " "))))
 
+;; The filled cells joined by a separator.
 ;; (textjoin ", " A1:A9)   → the filled cells joined, blanks skipped
 (defn textjoin (sep . xs)
   (str-join sep (map (fn (x) (str x)) (filter (fn (x) (not (= x ""))) (flatten xs)))))
 
+;; Everything given, ranges included, joined end to end.
 ;; (concat A1 " " B1)   → every argument, ranges included, end to end
 (defn concat (. xs)
   (str-join "" (map (fn (x) (str x)) (flatten xs))))
