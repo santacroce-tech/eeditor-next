@@ -432,9 +432,11 @@ sequenceDiagram
       <tr><th>You write</th><th>It means</th></tr>
       <tr><td><code>B1</code></td><td>what is in B1</td></tr>
       <tr><td><code>B1:B9</code></td><td>those nine cells as a list — what <code>sum</code> and its friends take</td></tr>
+      <tr><td><code>A1:C9</code></td><td>a block, as a list of rows — <code>(("apple" 3 "red") ("pear" 5 "green") …)</code> — so a lookup knows where each row ends</td></tr>
+      <tr><td><code>E:E</code> · <code>B:D</code></td><td>whole columns, read down to the last filled row: a new row at the bottom is counted too</td></tr>
       <tr><td><code>$B$1</code></td><td>B1, pinned: copy the formula somewhere else and it still reads B1</td></tr>
       <tr><td><code>B$1</code> · <code>$B1</code></td><td>only the row pinned · only the column pinned</td></tr>
-      <tr><td><code>Rates!A1</code></td><td>A1 in the sheet called Rates, sitting beside this one</td></tr>
+      <tr><td><code>Rates!A1</code> · <code>Rates!E:E</code></td><td>A1, or column E, in the sheet called Rates, sitting beside this one</td></tr>
     </table></div>
     <p>
       References are written in capitals: <code>B1</code> is a cell, <code>b1</code> is an ordinary name.
@@ -465,11 +467,56 @@ sequenceDiagram
       <tr><td><code>=Rates!A1</code> · <code>=(sheet-get "Rates" "A1")</code></td><td>a cell of another sheet, named or worked out as it runs</td></tr>
     </table></div>
     <p>
-      There is no separate list of "spreadsheet functions": a cell can call anything the language
-      knows, including the functions you write in your own notes. In the REPL,
-      <code>(functions "date-")</code> lists what is in scope and <code>(source sum)</code> shows how
-      one was written — the
+      A cell can call anything the language knows, including the functions you write in your own
+      notes. In the REPL, <code>(functions "date-")</code> lists what is in scope and
+      <code>(source sum)</code> shows how one was written — the
       <a href="https://eelisp.app/reference.html">EELisp reference</a> has them all.
+    </p>
+
+    <h3>Spreadsheet functions</h3>
+    <p>
+      The functions you know from other spreadsheets are there in every sheet, with nothing to load.
+      They are written in EELisp, so <code>(source countif)</code> in the REPL shows exactly what one
+      does. Text compares the way a spreadsheet compares it, ignoring case: <code>"Work"</code>
+      matches <em>work</em>.
+    </p>
+    <div class="table-wrap"><table>
+      <tr><th>Formula</th><th>Gives</th></tr>
+      <tr><td><code>=(countif E:E "Work")</code></td><td>how many cells in column E say Work</td></tr>
+      <tr><td><code>=(sumif E2:E99 "Work" F2:F99)</code></td><td>the hours in F on the rows where E says Work</td></tr>
+      <tr><td><code>=(countifs E:E "Work" F:F "&gt;2")</code> · <code>=(sumifs F:F E:E "&lt;&gt;Work")</code></td><td>several conditions, all on the same row — <code>sumifs</code> takes the range to add first</td></tr>
+      <tr><td><code>=(averageif E2:E99 "Work" F2:F99)</code></td><td>the mean of the matching rows</td></tr>
+      <tr><td><code>=(counta A:A)</code> · <code>=(countblank A1:A20)</code></td><td>the filled cells · the empty ones</td></tr>
+      <tr><td><code>=(vlookup "pear" A1:C9 3)</code></td><td>column 3 of the first row starting with <em>pear</em></td></tr>
+      <tr><td><code>=(xlookup "pear" A1:A9 C1:C9 "none")</code></td><td>the same, from two columns, with an answer for no match</td></tr>
+      <tr><td><code>=(match "pear" A1:A9)</code> · <code>=(index A1:C9 2 3)</code></td><td>where it is, counting from 1 · what is at row 2, column 3</td></tr>
+      <tr><td><code>=(ifs (&gt; B1 90) "A" (&gt; B1 80) "B" true "C")</code></td><td>the answer after the first true test</td></tr>
+      <tr><td><code>=(switch B1 "eur" 1.1 "gbp" 1.3 1)</code></td><td>the answer for B1's case, or the last one</td></tr>
+      <tr><td><code>=(median B:B)</code> · <code>(mode …)</code> · <code>(stdev …)</code> · <code>(var …)</code></td><td>statistics — <code>stdevp</code> and <code>varp</code> for a whole population</td></tr>
+      <tr><td><code>=(large B:B 1)</code> · <code>=(small B:B 2)</code> · <code>=(rank B2 B:B)</code></td><td>the biggest · the second smallest · B2's place, 1 for the biggest</td></tr>
+      <tr><td><code>=(roundup B1 2)</code> · <code>=(rounddown B1 2)</code></td><td>rounded away from zero · toward it (<code>round</code> rounds to the nearest)</td></tr>
+      <tr><td><code>=(left A1 3)</code> · <code>(right …)</code> · <code>=(mid A1 2 3)</code></td><td>pieces of text, counting from 1 as a spreadsheet does</td></tr>
+      <tr><td><code>=(trim A1)</code> · <code>=(proper A1)</code></td><td>spaces tidied · <em>Each Word Capitalised</em></td></tr>
+      <tr><td><code>=(textjoin ", " A1:A9)</code> · <code>=(concat A1 " " B1)</code></td><td>joined, skipping blanks · end to end</td></tr>
+      <tr><td><code>=(unique A:A)</code> · <code>=(sort B:B)</code></td><td>each value once · the numbers in order</td></tr>
+    </table></div>
+    <p>
+      A condition can be a value (<code>"Work"</code>, <code>42</code>), a comparison
+      (<code>"&gt;10"</code>, <code>"&lt;=5"</code>, <code>"&lt;&gt;Done"</code> for <em>not</em>), a
+      wildcard (<code>"W*"</code> for anything starting with W, <code>"?ork"</code> for one character
+      then <em>ork</em>), or a function of your own: <code>(countif B:B (fn (x) (even? x)))</code>.
+    </p>
+
+    <h3>Your own functions</h3>
+    <p>
+      Put the functions you want in every sheet in <code>.eeditor/functions.eelisp</code> in the
+      workspace — the <code>open-functions</code> command creates it. It is loaded at launch, right
+      after EEditor's own, and again whenever you save it; reuse a name and yours wins.
+    </p>
+<pre><code>(defn commission (amount) (* amount 0.05))</code></pre>
+    <p>
+      Then <code>=(commission B2)</code> works in any sheet. A sheet doesn't recalculate because a
+      function changed — press <strong>↻</strong> to bring it up to date.
     </p>
 
     <h3>Reading another sheet</h3>
@@ -1097,7 +1144,9 @@ zzalinhar — function
       <tr><td><code>open-file</code></td><td>pick any file; asks whether to copy it in or edit in place</td></tr>
       <tr><td><code>copy-into-workspace</code></td><td>turn the current ↗ note into a copy in the workspace</td></tr>
       <tr><td><code>open-keys</code> / <code>reload-keys</code></td><td>edit or re-read this config</td></tr>
+      <tr><td><code>open-functions</code> / <code>reload-functions</code></td><td>edit or re-read your own spreadsheet functions (<code>.eeditor/functions.eelisp</code>)</td></tr>
       <tr><td><code>add-samples</code></td><td>add the sample notes and the PIM tour to this folder, keeping what is there</td></tr>
+      <tr><td><code>about</code></td><td>who makes EEditor, and which version is running — also in the workspace's right-click menu</td></tr>
       <tr><td><code>toggle-repl</code> / <code>focus-repl</code></td><td>show/hide the REPL, or jump into it</td></tr>
       <tr><td><code>focus-editor</code></td><td>put the caret back in the document</td></tr>
       <tr><td><code>toggle-preview</code></td><td>editor ⇄ rendered Markdown</td></tr>

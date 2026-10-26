@@ -47,6 +47,7 @@ import { appendUnder } from "./core/append";
 import { addSamples } from "./samples/workspace";
 import "./styles.css";
 import { openScreenWindow } from "./ui/screenwindow";
+import { aboutModal } from "./ui/about";
 
 const parentDir = (p: string): string => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
 const joinPath = (dir: string, name: string): string => (dir ? `${dir}/${name}` : name);
@@ -1328,7 +1329,10 @@ function main(): void {
       // the root row is the workspace itself — worth locating, even though it can't be renamed
       ...locationItems(node.path),
     ];
-    if (node.path === "") items.push({ label: "Add sample notes…", action: () => void offerSampleNotes() });
+    if (node.path === "") {
+      items.push({ label: "Add sample notes…", action: () => void offerSampleNotes() });
+      items.push({ label: "About EEditor", action: () => void aboutModal() });
+    }
     if (isSheetPath(node.path)) {
       items.push({ label: "Export as CSV", action: () => void exportSheetCsv(node.path) });
     }
@@ -1834,6 +1838,7 @@ function main(): void {
     "open-functions": () => void openOrCreate(FUNCTIONS_PATH, FUNCTIONS_TEMPLATE),
     "reload-functions": () => void reloadSheetFunctions(),
     "add-samples": () => void offerSampleNotes(),
+    about: () => void aboutModal(),
     "toggle-repl": toggleRepl,
     "focus-repl": () => {
       showRepl();
