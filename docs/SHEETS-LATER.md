@@ -65,7 +65,8 @@ Struck through when it lands, with the branch that did it.
   cell reads as a list of rows, so lookups can tell where a row ends. Still missing around it: whole
   rows (`2:2`), named ranges, and cell context for a formula (`row()`, `column()`, `offset`,
   `indirect`).
-- No `iferror`: EELisp has no way to catch an error, so a formula can't recover from one it calls.
+- ~~No `iferror`.~~ Landed on `feat/iferror`, on the engine's `try` (eelisp-rs `feat/try`):
+  `=(iferror (/ A1 B1) 0)` shows the fallback instead of #ERR.
 - Result sets spilling into a range, and a live two‑way binding between a range and a `deftable`;
   `sheet-put` is a one‑off snapshot today.
 - Charts.

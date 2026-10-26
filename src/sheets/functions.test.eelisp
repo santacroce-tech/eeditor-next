@@ -58,6 +58,10 @@
 (check "switch" (switch "GBP" "eur" 1.1 "gbp" 1.3 1) 1.3)
 (check "switch default" (switch "usd" "eur" 1.1 "gbp" 1.3 1) 1)
 
+(check "iferror on an error" (iferror (/ 1 0) 0) 0)
+(check "iferror when all is well" (iferror (/ 6 3) 0) 2)
+(check "iferror evaluates the fallback only on failure" (iferror 1 (error "not reached")) 1)
+
 ;; ── statistics ──
 (check "median, even count" (median '(5 1 3 2)) 2.5)
 (check "median, odd count" (median '(5 1 3)) 3)
@@ -97,6 +101,8 @@
 (sheet-put "fx-test" "E1" '(("x" 1) (nil 2)))
 (sheet-set "fx-test" "D5" "=(sumifs F:F E:E \"<>x\")")
 (check "columns of different lengths line up; the shorter reads blank" (sheet-get "fx-test" "D5") 2)
+(sheet-set "fx-test" "F1" "=(iferror (/ B2 0) \"n/a\")")
+(check "iferror in a formula" (sheet-get "fx-test" "F1") "n/a")
 (sheet-set "fx-test" "A7" "Work")
 (check "a new row is counted" (sheet-get "fx-test" "D1") 3)
 
