@@ -49,6 +49,9 @@
                    (qty :type number) (unit :type string) (note :type string)))
   ;; reminded: the reminders already shown, so each fires once.
   (deftable reminded ((item :type number) (day :type string) (at :type string)))
+  ;; dropped: tasks deleted rather than done. To the agenda both are just gone, so this is how a
+  ;; sweep tells them apart — a done task's lines are ticked, a deleted one's are taken out.
+  (deftable dropped ((item :type number) (at :type string)))
 
   ;; ── text ───────────────────────────────────────────────────────────────────
   ;; The caret's line, rewritten. *line-from* / *line-to* are offsets as the editor counts them, so
@@ -172,6 +175,22 @@
         true
           (list (pim-set-line (str ind "- " (pim-unlink (pim-unstamp body))))))))
 
+  ;; The caret's task deleted, not done: out of the agenda — a repeating one too, with no next
+  ;; date — and its line out of the note. Nothing goes in the done log. `dropped` remembers it, so
+  ;; the sweep takes its line out of the other notes that link it instead of ticking it there.
+  (defn pim-delete (line)
+    (let (p (pim-parse line) id (pim-item-id (nth p 2)))
+      (cond
+        (nil? id) (ed-message "No task on this line — a task line ends in {#id}")
+        true (do
+               (when (pim-live? id)
+                 (delete _items id)
+                 (insert dropped (dict :item id :at *now*)))
+               (list (cond (< *line* *lines*) (ed-replace-range *line-from* (+ *line-to* 1) "")
+                           (> *line* 1)       (ed-replace-range (- *line-from* 1) *line-to* "")
+                           true               (ed-replace-range *line-from* *line-to* ""))
+                     (ed-message (str "Deleted " (pim-title (nth p 2)))))))))
+
   ;; ── priority (org S-up / S-down) ───────────────────────────────────────────
   ;; On a linked line the item's priority changes too.
   (defn pim-next-bangs (b) (cond (= b "") "!!!" (= b "!!!") "!!" (= b "!!") "!" true ""))
@@ -236,16 +255,20 @@
   (defn pim-category (c)
     (pim-lines (filter (fn (r) (pim-in? c r)) (records (items))) (str "_nothing in " c "_")))
 
-  ;; Lines whose item was finished elsewhere — the agenda panel's Done, the REPL — are ticked here.
+  ;; Lines whose item was finished elsewhere — the agenda panel's Done, the REPL — are ticked here;
+  ;; lines whose item was deleted (⌘⌥⌫ in another note) are taken out.
+  (defn pim-dropped? (id) (> (count-records dropped :where "item = ?" :params (list id)) 0))
   (defn pim-sync-in (text file live)
     (str-join "\n"
-      (map (fn (l)
-             (let (p (pim-parse l) id (pim-item-id (nth p 2)))
-               (cond (and (= (nth p 1) "todo") id (not (some? (fn (x) (= x id)) live)))
-                       (do (pim-log-done (pim-title (nth p 2)) id file)
-                           (str (nth p 0) "- [x] " (nth p 2) " ✓ " *date*))
-                     true l)))
-           (str-split text "\n"))))
+      (filter (fn (l) (not (nil? l)))
+        (map (fn (l)
+               (let (p (pim-parse l) id (pim-item-id (nth p 2)))
+                 (cond (and (= (nth p 1) "todo") id (not (some? (fn (x) (= x id)) live)))
+                         (cond (pim-dropped? id) nil
+                               true (do (pim-log-done (pim-title (nth p 2)) id file)
+                                        (str (nth p 0) "- [x] " (nth p 2) " ✓ " *date*)))
+                       true l)))
+             (str-split text "\n")))))
   (defn pim-sync (text) (pim-sync-in text *file* (pim-live-ids)))
 
   ;; ── every note at once ─────────────────────────────────────────────────────
@@ -566,6 +589,8 @@
 
 ;; ⌘⌥T — cycle the caret's line: text → - [ ] {#id} (an agenda item) → - [x] ✓ date (done there too) → -
 (bind "Mod-Alt-t" (pim-cycle *line-text*))
+;; ⌘⌥⌫ — delete the caret's task: gone from the agenda and the note, not logged as done
+(bind "Mod-Alt-Backspace" (pim-delete *line-text*))
 ;; ⌘⌥P — cycle its priority: !!! → !! → ! → none
 (bind "Mod-Alt-p" (pim-priority *line-text*))
 ;; ⌘⌥A — link a hand-typed task to the agenda, or push an edited linked line to its item
@@ -607,3 +632,10 @@
 (bind "Mod-Alt-e" (ed-prompt "When?" pim-set-when))
 ;; ⌘⌥G — file the caret's task under a category
 (bind "Mod-Alt-g" (ed-prompt "Category" pim-set-category "" (pim-category-names)))
+
+;; ── buttons ──────────────────────────────────────────────────────────────────
+;; In the editor's header, beside the theme button. A key does what that key does; any body a
+;; (bind …) takes works too: (button "today" (ed-cmd "daily-note")).
+(button "↻ update" "Mod-Alt-u")
+(button "✓ task" "Mod-Alt-t")
+(button "⌫ delete" "Mod-Alt-Backspace")

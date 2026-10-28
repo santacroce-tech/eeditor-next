@@ -43,6 +43,7 @@ and your rules (the ⚙ panel) run over it. So the item appears in the agenda pa
 |---|---|
 | ⌘⌥T on a line (make a task) | `add` + categories + notes + `apply-rules` |
 | ⌘⌥T on a `- [ ] … {#12}` (tick it) | `item-done 12`; a repeating item rolls forward and the line follows it |
+| ⌘⌥⌫ on a `- [ ] … {#12}` (delete it) | `(delete _items 12)` — gone, a repeating one too, and not in the done log; the line goes, and a sweep takes it out of the other notes that link it |
 | ⌘⌥P (priority) on a linked line | `item-set 12 :priority …` |
 | Edit the line, ⌘⌥A | `item-set 12` with the re-parsed text, date, priority, notes, tags |
 | Done / reschedule in the agenda panel or the calendar | within a minute the line is ticked, in whichever note it is (and logged); ⌘⌥S or ⌘⌥U does it now |
@@ -78,6 +79,11 @@ window to `pim/Capture.eeform`, and reloads: ⌘⌥K says *No clock running* str
 keys stay as they were; if your file already says what opens at launch, the PIM's `(on-start …)` is
 left out. Run it again after an update to EEditor and it replaces what's between the markers —
 nothing else. (The sample notes put the PIM in with the same markers.)
+
+It also puts three buttons in the editor's header, beside the theme button — **↻ update** (⌘⌥U),
+**✓ task** (⌘⌥T) and **⌫ delete** (⌘⌥⌫). They are the `(button …)` lines at the end of the file:
+`(button "label" "Mod-Alt-u")` clicks a key, and any body a `bind` takes works too. Change them
+there — but outside the markers, or the next install puts the PIM's back.
 
 **By hand**, as before:
 
@@ -120,6 +126,7 @@ to what the file says.
 | `org-agenda-files` | `pim-agenda-files`: notes or folders whose hand-typed `- [ ]` lines ⌘⌥S makes agenda items | ⌘⌥S |
 | Appointment reminders (`org-notify`, `appt`) | An item for today with a time — `call Ana at 15:00`, or `(item-set 12 :remind "14:45")` — notifies you then | — |
 | Clocking (`C-c C-x C-i/o`) + clock report | Clock in on the task or heading at the caret (stops the previous one), out, status; `(pim-clock-report from to)` | ⌘⌥I ⌘⌥O ⌘⌥K |
+| Killing a task (`C-k` on the heading) | The caret's task deleted from the agenda and its line from the note — not done, so nothing is logged and a repeating one doesn't come back | ⌘⌥⌫ |
 | Archive (`C-c C-x C-a`) | Every `- [x]` line moves under `## Archive` at the end of the note | ⌘⌥X |
 | Habits / `org-habit` | The life tracker + `(pim-streak "exercise")` | ⌘⌥L ⌘⌥C ⌘⌥R |
 | `org-journal` / datetree | Daily note from a template (agenda block, Log, Notes) | ⌘D |

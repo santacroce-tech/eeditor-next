@@ -477,6 +477,34 @@ check("sweeping again changes nothing", doc.messages[0] === "Every note is in st
 await ev(`(item-done ${spec})`);
 await tick();
 check("the minute tick ticks it too", (await note("projects/site.md")).includes(`- [x] write the spec {#${spec}} ✓ ${TODAY}`), await note("projects/site.md"));
+
+// ── deleting a task (⌘⌥⌫) ──
+doc.file = "todo.md";
+setDoc("# Things\n- call the plumber\n- keep\nlast", 2);
+await press("Mod-Alt-t");
+const plumber = Number(/\{#(\d+)\}$/.exec(lineAt(2))?.[1]);
+await ev(`(item-set ${plumber} :when "${TODAY}" :recurrence (every 1 :weeks))`);
+await writeNote("elsewhere.md", `# Elsewhere\n- [ ] call the plumber {#${plumber}}\n- [ ] stay\n`);
+const doneBefore = await ev("(count-records done)");
+await press("Mod-Alt-Backspace");
+check("⌘⌥⌫ takes the caret's task line out of the note", doc.text === "# Things\n- keep\nlast", doc.text);
+check("…and the item out of the agenda — a repeating one too, with no next date",
+  !(await ids()).includes(plumber) && (await ev(`(length (records (items :search "plumber")))`)) === 0);
+check("…not logged as done", (await ev("(count-records done)")) === doneBefore);
+check("…and says so", doc.messages[0] === "Deleted call the plumber", doc.messages);
+await press("Mod-Alt-s");
+check("a sweep takes a deleted task's line out of the other notes, instead of ticking it",
+  (await note("elsewhere.md")) === "# Elsewhere\n- [ ] stay\n", await note("elsewhere.md"));
+const lastId = Number(await ev(`(dict-get (item->dict (add "last one")) :id)`));
+setDoc(`a\n- [ ] last one {#${lastId}}`, 2);
+await press("Mod-Alt-Backspace");
+check("…the last line of a note goes with the newline before it", doc.text === "a", doc.text);
+setDoc("just words", 1);
+await press("Mod-Alt-Backspace");
+check("…a line with no task is left alone", doc.text === "just words" && doc.messages[0].startsWith("No task"), doc.messages);
+check("every (button …) presses a key the config binds",
+  parsed.buttons.length === 3 && parsed.buttons.every((b) => b.key !== undefined && parsed.bindings.some((k) => k.id === b.key)),
+  parsed.buttons);
 const typed = await ev(`(ed-write "someday.md" "new text" "what it said an hour ago")`);
 await apply(typed);
 check("ed-write leaves a note that changed since it was read", (await note("someday.md")) === "- [ ] learn to juggle\n");
