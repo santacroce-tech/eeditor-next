@@ -11,10 +11,10 @@ Cost: **S** a day or less · **M** a few days · **L** a week or more. *Engine* 
 | | Item | Where | Cost | Decision |
 |---|---|---|---|---|
 | 1 | [The `http-get` manual says it returns text](#1-http-get-is-documented-wrong) | engine | S | **Fixed** with this roadmap |
-| 2 | [Catching an error: `try`](#2-catching-an-error-try) — and `iferror` with it | engine + app | M | **In review** — eelisp-rs#23 |
-| 3 | [`http-get` options: timeout and headers](#3-http-get-options-timeout-and-headers) | engine | S | **In review** — eelisp-rs#24 |
-| 4 | [`csv-parse` in the language](#4-csv-parse-in-the-language) | engine | S | **In review** — eelisp-rs#25 |
-| 5 | [Installing the PIM keys in a folder that has its own](#5-installing-the-pim-keys-in-any-folder) | app | S | **Do next** |
+| 2 | [Catching an error: `try`](#2-catching-an-error-try) — and `iferror` with it | engine + app | M | **Done** — eelisp-rs#23, eeditor-next#48 (`iferror`) |
+| 3 | [`http-get` options: timeout and headers](#3-http-get-options-timeout-and-headers) | engine | S | **Done** — eelisp-rs#24 |
+| 4 | [`csv-parse` in the language](#4-csv-parse-in-the-language) | engine | S | **Done** — eelisp-rs#25 |
+| 5 | [Installing the PIM keys in a folder that has its own](#5-installing-the-pim-keys-in-any-folder) | app | S | **Done** — eeditor-next#47 |
 | 6 | [Formulas that read the database recalculate by themselves](#6-formulas-that-read-the-database-recalculate-by-themselves) | engine | M–L | Later |
 | 7 | [Charts](#7-charts) | app + engine | M, then L | **Sparklines done** (eeditor-next `feat/sparkline`); charts later |
 | 8 | [`.xlsx` import](#8-xlsx-import) | engine + app | M | Later |
@@ -25,14 +25,20 @@ Cost: **S** a day or less · **M** a few days · **L** a week or more. *Engine* 
 | 13 | [A built-in stock price source](#13-a-built-in-stock-price-source) | — | — | **No** |
 | 14 | [Whole rows, and a formula knowing its own cell](#14-whole-rows-and-a-formula-knowing-its-own-cell) | engine | M | Not until asked |
 | 15 | [An easter egg: a raycaster in EELisp](#15-an-easter-egg-a-raycaster-in-eelisp) | app | M | Someday |
-| 16 | [Small engine fixes found by the book](#16-small-engine-fixes-found-by-the-book) | engine | S each | **In review** — eelisp-rs#22, #26 |
+| 16 | [Small engine fixes found by the book](#16-small-engine-fixes-found-by-the-book) | engine | S each | **Done** — eelisp-rs#22, #26 |
 
 What sheets in particular still lack — formatting, the grid, sheets as first-class files — has its
 own running list: [SHEETS-LATER.md](SHEETS-LATER.md).
 
 ---
 
-## Do next
+## Done
+
+Items 1–5 and 16 were the first round, all merged on 2026-10-26: `try` and `iferror`, `http-get`
+options, CSV in the language, `install-pim`, and the small fixes. The *Zero to Hero* book uses them.
+Their sections below stay as the record of why and how.
+
+## Was "do next"
 
 ### 1. `http-get` is documented wrong
 
