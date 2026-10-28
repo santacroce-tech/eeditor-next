@@ -160,9 +160,10 @@ export function eventKeyId(e: KeyboardEvent): string {
 
 // ── config parsing ─────────────────────────────────────────────────────────
 
-interface Form {
+export interface Form {
   text: string; // including the outer parens
   line: number; // 1-based
+  start: number; // offset of the "(" in the source
 }
 
 /** Read a lisp string literal starting at `src[i] === '"'`. Returns null if unterminated. */
@@ -185,7 +186,7 @@ function readString(src: string, i: number): { value: string; end: number } | nu
 }
 
 /** Split a config into its top-level parenthesised forms, skipping `;` comments and strings. */
-function topLevelForms(src: string): { forms: Form[]; errors: string[] } {
+export function topLevelForms(src: string): { forms: Form[]; errors: string[] } {
   const forms: Form[] = [];
   const errors: string[] = [];
   let depth = 0;
@@ -222,7 +223,7 @@ function topLevelForms(src: string): { forms: Form[]; errors: string[] } {
         continue;
       }
       depth--;
-      if (depth === 0) forms.push({ text: src.slice(start, i), line: startLine });
+      if (depth === 0) forms.push({ text: src.slice(start, i), line: startLine, start });
     } else {
       i++;
     }

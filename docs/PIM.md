@@ -85,6 +85,11 @@ It also puts three buttons in the editor's header, beside the theme button — *
 `(button "label" "Mod-Alt-u")` clicks a key, and any body a `bind` takes works too. Change them
 there — but outside the markers, or the next install puts the PIM's back.
 
+**Pasted in by hand earlier?** Install anyway: EEditor offers to replace that copy with the
+current one, keeps your own keys and settings around it, saves the file as it was as
+`.eeditor/keybindings.before-pim-<date>.eelisp`, and puts the new one between the markers — so
+from then on installing again is a plain update.
+
 **By hand**, as before:
 
 1. ⌘⇧K opens `.eeditor/keybindings.eelisp`. **Append** the whole of `docs/pim/pim.eelisp` to it

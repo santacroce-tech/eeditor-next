@@ -56,10 +56,29 @@ test("install-pim adds the PIM to a folder's own keybindings, and its keys come 
   expect((await readFile(CONFIG, "utf8")).split("put here by EEditor's install-pim").length).toBe(2);
 });
 
-test("a PIM pasted in by hand is left alone, with a word on why", async ({ page }) => {
-  await writeFile(CONFIG, MINE + "(on-load (defn pim-cycle (line) line))\n");
+test("a PIM pasted in by hand: replaced when you say so, with the file kept beside it", async ({ page }) => {
+  const pasted = MINE + "(on-load (defn pim-cycle (line) line))\n(bind \"Mod-Alt-t\" (pim-cycle *line-text*))\n(bind \"Mod-Shift-y\" (ed-message \"mine\"))\n";
+  await writeFile(CONFIG, pasted);
   await page.goto("/");
+
+  // Cancel: nothing changes
   await run(page, '(ed-cmd "install-pim")');
   await expect(page.locator(".dlg-panel")).toContainText("pasted in by hand");
-  expect(await readFile(CONFIG, "utf8")).toBe(MINE + "(on-load (defn pim-cycle (line) line))\n");
+  await page.locator(".dlg-btn", { hasText: "Cancel" }).click();
+  expect(await readFile(CONFIG, "utf8")).toBe(pasted);
+
+  // Replace: the copy goes, the current PIM comes in between markers, your keys stay
+  await run(page, '(ed-cmd "install-pim")');
+  await page.locator(".dlg-btn", { hasText: "Replace" }).click();
+  await expect(page.locator(".toast", { hasText: "PIM updated" })).toBeVisible();
+  const now = await readFile(CONFIG, "utf8");
+  expect(now.split("put here by EEditor's install-pim").length).toBe(2);
+  expect(now.split("(defn pim-cycle").length).toBe(2);
+  expect(now).toContain('(bind "Mod-Shift-y" (ed-message "mine"))');
+  expect(now).toContain('(bind "Mod-s" (ed-cmd "save"))');
+  const d = new Date();
+  const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const backup = `${UI_WORKSPACE}/.eeditor/keybindings.before-pim-${day}.eelisp`;
+  expect(await readFile(backup, "utf8")).toBe(pasted);
+  await rm(backup, { force: true });
 });
