@@ -244,6 +244,19 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-s
 .ag-cat-add-btn { background: var(--bg); color: var(--fg); border: 1px solid var(--border);
   border-radius: 5px; padding: 2px 9px; font-size: 12px; cursor: pointer; }
 .ag-cat-add-btn:hover { border-color: var(--accent); }
+.ag-notes-group { margin-top: 8px; }
+.ag-notes-head { width: 100%; text-align: left; background: none; border: none; color: var(--muted);
+  font: 11px var(--mono); padding: 4px 2px; cursor: pointer; }
+.ag-notes-head:hover { color: var(--accent); }
+.ag-note-name { color: var(--muted); font: 10px var(--mono); padding: 6px 2px 2px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.ag-note-task { display: flex; align-items: center; gap: 6px; padding: 3px 2px 3px 8px; font: 12px var(--mono); }
+.ag-note-task .ag-text { cursor: pointer; }
+.ag-note-task .ag-text:hover { color: var(--accent); }
+.ag-note-add { background: none; border: 1px solid transparent; color: var(--muted); cursor: pointer;
+  border-radius: 4px; padding: 0 4px; font-size: 11px; }
+.ag-note-add:hover { border-color: var(--accent); color: var(--accent); }
+.ag-note-add:disabled { opacity: .4; cursor: default; }
 
 /* ── header button groups (files/agenda) ── */
 .side-head-btns { display: flex; gap: 4px; }

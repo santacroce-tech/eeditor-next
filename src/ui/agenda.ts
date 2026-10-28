@@ -1,13 +1,27 @@
 // Agenda panel: smart quick-add + an editable item list. Each item expands to an inline editor
 // (text / when / priority) with Save (item-set) and Done (item-done). Backed by the engine.
+// Under the items, a folding group lists the "- [ ] …" lines in notes that aren't agenda items yet
+// (no "{#12}"): click one to open the note at it, ＋ to make it an item and link the line.
 
 import type { EngineClient } from "../engine/client";
 import type { Envelope, JsonValue } from "../engine/types";
 import { isResultSet, isItem } from "../engine/types";
+import { type NoteTask, unlinkedTasks, replaceTaskLine, linkLine } from "../core/notetasks";
 
 export interface AgendaPanel {
   refresh(): Promise<void>;
 }
+
+/** Where the panel finds the notes' own tasks, and how it opens and rewrites a note. */
+export interface NoteTasksSource {
+  files(): string[];
+  read(path: string): Promise<string>;
+  open(path: string, line: number): void;
+  /** Compare-and-swap, like `ed-write`: false when the note no longer says `expected`. */
+  write(path: string, content: string, expected: string): Promise<boolean>;
+}
+
+const NOTES_OPEN_KEY = "eeditor.agenda.notesOpen";
 
 interface AgItem {
   id: number;
@@ -50,7 +64,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
   return e;
 }
 
-export function createAgendaPanel(parent: HTMLElement, engine: EngineClient): AgendaPanel {
+export function createAgendaPanel(parent: HTMLElement, engine: EngineClient, notes?: NoteTasksSource): AgendaPanel {
   const root = el("div", "agenda");
 
   const addRow = el("div", "agenda-add");
@@ -206,14 +220,95 @@ export function createAgendaPanel(parent: HTMLElement, engine: EngineClient): Ag
     return row;
   }
 
-  async function refresh(): Promise<void> {
-    const items = parseItems(await engine.evalSrc("(items)"));
-    list.innerHTML = "";
-    if (items.length === 0) {
-      list.appendChild(el("div", "ag-empty", "(no items)"));
+  let notesOpen = false;
+  try {
+    notesOpen = localStorage.getItem(NOTES_OPEN_KEY) === "1";
+  } catch {
+    // no storage: the group starts folded
+  }
+
+  async function scanNotes(): Promise<NoteTask[]> {
+    if (!notes) return [];
+    const paths = notes.files().filter((p) => /\.(md|markdown|txt)$/i.test(p));
+    const texts = await Promise.all(paths.map((p) => notes.read(p).catch(() => "")));
+    return paths.flatMap((p, i) => unlinkedTasks(p, texts[i]));
+  }
+
+  /**
+   * Into the agenda, and the line linked to it. With the PIM loaded its own `pim-link-new` does it —
+   * the same parse as ⌘⌥T: #tags become categories, " | …" the notes, the rules run. Without it, a
+   * plain `add` and the same " {#id}".
+   */
+  async function linkTask(t: NoteTask): Promise<void> {
+    if (!notes) return;
+    const before = await notes.read(t.path).catch(() => null);
+    if (before === null || replaceTaskLine(before, t, t.raw) === null) {
+      void refresh(); // the line changed since it was listed
       return;
     }
+    let linked: string | null = null;
+    const pim = await engine.evalSrc(`(pim-link-new ${JSON.stringify(t.raw)})`);
+    if (pim.ok && typeof pim.result === "string" && /\{#\d+\}/.test(pim.result)) linked = pim.result;
+    else {
+      const added = await engine.evalSrc(`(add ${JSON.stringify(t.text)})`);
+      if (added.ok && isItem(added.result)) linked = linkLine(t.raw, added.result.$item.id);
+    }
+    const after = linked === null ? null : replaceTaskLine(before, t, linked);
+    if (after !== null) await notes.write(t.path, after, before);
+    await refresh();
+  }
+
+  function renderNotes(tasks: NoteTask[]): HTMLElement | null {
+    if (tasks.length === 0) return null;
+    const group = el("div", "ag-notes-group");
+    const head = el("button", "ag-notes-head");
+    head.title = "Tasks typed in notes that aren't in the agenda yet";
+    const body = el("div", "ag-notes-body");
+    const draw = (): void => {
+      head.textContent = `${notesOpen ? "▾" : "▸"} in notes, not in the agenda · ${tasks.length}`;
+      body.style.display = notesOpen ? "" : "none";
+    };
+    head.addEventListener("click", () => {
+      notesOpen = !notesOpen;
+      try {
+        localStorage.setItem(NOTES_OPEN_KEY, notesOpen ? "1" : "0");
+      } catch {
+        // remembered for this session only
+      }
+      draw();
+    });
+    let lastPath = "";
+    for (const t of tasks) {
+      if (t.path !== lastPath) {
+        lastPath = t.path;
+        body.appendChild(el("div", "ag-note-name", t.path.replace(/\.(md|markdown|txt)$/i, "")));
+      }
+      const row = el("div", "ag-note-task");
+      const text = el("span", "ag-text", t.text);
+      text.title = `${t.path}:${t.line}`;
+      text.addEventListener("click", () => notes?.open(t.path, t.line));
+      const add = el("button", "ag-note-add", "＋");
+      add.title = "Add to the agenda (links the line)";
+      add.addEventListener("click", () => {
+        add.disabled = true;
+        void linkTask(t);
+      });
+      row.append(text, add);
+      body.appendChild(row);
+    }
+    group.append(head, body);
+    draw();
+    return group;
+  }
+
+  async function refresh(): Promise<void> {
+    const [env, tasks] = await Promise.all([engine.evalSrc("(items)"), scanNotes()]);
+    const items = parseItems(env);
+    list.innerHTML = "";
+    if (items.length === 0) list.appendChild(el("div", "ag-empty", "(no items)"));
     for (const it of items) list.appendChild(renderItem(it));
+    const group = renderNotes(tasks);
+    if (group) list.appendChild(group);
   }
 
   input.addEventListener("keydown", (e) => {
