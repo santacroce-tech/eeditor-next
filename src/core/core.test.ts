@@ -6,7 +6,7 @@ import { codeToRun, eelispBlockAt } from "./blocks";
 import { searchFiles } from "./search";
 import { wikiLinkAt, wikiLinkTargets } from "./wikilink";
 import { backlinksTo } from "./backlinks";
-import { parseKeybindings, parseKeySpec, eventKeyId, lispString } from "./keybindings";
+import { parseKeybindings, parseKeySpec, eventKeyId, keyLabel, lispString } from "./keybindings";
 import { uniqueName } from "./uniquename";
 import { highlightEelisp } from "./lisphl";
 
@@ -229,6 +229,37 @@ describe("keybindings config", () => {
     expect(parseKeybindings(`(bind "Mod-i" (ed-cmd "save")`, true).errors[0]).toContain("unbalanced");
     expect(parseKeybindings(`(bind "Mod-Hyper-i" (ed-cmd "save"))`, true).errors[0]).toContain("unknown modifier");
     expect(parseKeybindings(`(bind "Mod-i")`, true).errors[0]).toContain("no body");
+  });
+
+  it("reads (button …): a key to press, or a body of its own, in the order written", () => {
+    const c = parseKeybindings(
+      `(button "↻ update" "Mod-Alt-u")\n(bind "Mod-Alt-u" (ed-message "u"))\n(button "save" (ed-cmd "save"))\n(button "hi" (ed-message "a") (ed-message "b"))`,
+      true,
+    );
+    expect(c.errors).toEqual([]);
+    expect(c.bindings).toHaveLength(1);
+    expect(c.buttons.map((b) => b.label)).toEqual(["↻ update", "save", "hi"]);
+    expect(c.buttons[0]).toMatchObject({ key: "ma:u", spec: "Mod-Alt-u", line: 1 });
+    expect(c.buttons[0].key).toBe(c.bindings[0].id);
+    expect(c.buttons[1].key).toBeUndefined();
+    expect(c.buttons[1].command).toBe("save");
+    expect(c.buttons[2].source).toBe(`(list (ed-message "a") (ed-message "b"))`);
+    // a string that is only part of the body is lisp, not a key
+    expect(parseKeybindings(`(button "x" "Mod-Alt-u" (ed-message "y"))`, true).buttons[0].key).toBeUndefined();
+    expect(parseKeybindings(`(button "x" "u")`, true).errors[0]).toContain("needs a modifier");
+    expect(parseKeybindings(`(button "x")`, true).errors[0]).toContain("nothing to do");
+    expect(parseKeybindings(`(button "" "Mod-u")`, true).errors[0]).toContain("label is empty");
+    expect(parseKeybindings(`(button (ed-cmd "save"))`, true).errors[0]).toContain("quoted label");
+  });
+
+  it("names a key the way a person reads it", () => {
+    expect(keyLabel("Mod-Alt-u", true)).toBe("⌘⌥U");
+    expect(keyLabel("Mod-Alt-Backspace", true)).toBe("⌘⌥⌫");
+    expect(keyLabel("Ctrl-Shift-k", true)).toBe("⌃⇧K");
+    expect(keyLabel("Mod-Alt-u", false)).toBe("Ctrl+Alt+U");
+    expect(keyLabel("F5", false)).toBe("F5");
+    expect(keyLabel("Mod--", true)).toBe("⌘-");
+    expect(keyLabel("Hyper-u", true)).toBe("Hyper-u");
   });
 
   it("collects every (on-load …) and (on-tick …), in order", () => {

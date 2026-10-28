@@ -30,6 +30,7 @@ import { createCalendar } from "./ui/calendar";
 import { createAgendaSetup } from "./ui/agenda-setup";
 import { createSnippets } from "./ui/snippets";
 import { createKeybindings, type CommandTable } from "./ui/keybindings";
+import { isMacPlatform, keyLabel } from "./core/keybindings";
 import { createSheetFunctions, FUNCTIONS_PATH, FUNCTIONS_TEMPLATE } from "./sheets/functions";
 import { createOpenWith } from "./ui/openwith";
 import { exportPdf } from "./ui/pdf";
@@ -178,6 +179,9 @@ function main(): void {
   headRight.className = "head-right";
   const themeBtn = document.createElement("button");
   themeBtn.className = "head-btn";
+  // The (button …) forms of the keybindings file, beside the theme button — filled in by keys.reload().
+  const userBtns = document.createElement("span");
+  userBtns.className = "user-btns";
   const previewBtn = document.createElement("button");
   previewBtn.className = "head-btn";
   previewBtn.textContent = "preview";
@@ -248,7 +252,7 @@ function main(): void {
     mapModeButtons.set(mode, b);
     mapModes.append(b);
   }
-  headRight.append(copyInBtn, themeBtn, imageBtn, formModes, mapModes, previewBtn, pdfBtn, keysBtn, replBtn);
+  headRight.append(copyInBtn, userBtns, themeBtn, imageBtn, formModes, mapModes, previewBtn, pdfBtn, keysBtn, replBtn);
   editorPane.head.append(nameEl, headRight);
 
   const tabBar = document.createElement("div");
@@ -2053,6 +2057,20 @@ function main(): void {
     writeFile: writeNote,
     appendFile: appendNote,
     notify: (title, body) => void notifyUser(title, body),
+    onButtons: (list) => {
+      userBtns.replaceChildren(
+        ...list.map((b) => {
+          const btn = document.createElement("button");
+          btn.className = "head-btn";
+          btn.textContent = b.label;
+          btn.title = b.key === undefined ? b.label : `${b.label} — ${keyLabel(b.spec, isMacPlatform())}`;
+          // keep the caret where it was: the binding reads *cursor* / *line-text* off the editor
+          btn.addEventListener("mousedown", (e) => e.preventDefault());
+          btn.addEventListener("click", () => void keys.press(b));
+          return btn;
+        }),
+      );
+    },
   });
   keysBtn.addEventListener("click", () => void keys.openConfig());
 

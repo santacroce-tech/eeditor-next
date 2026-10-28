@@ -166,6 +166,7 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-s
 
 /* ── header button group ── */
 .head-right { display: flex; align-items: center; gap: 6px; }
+.user-btns { display: contents; }
 
 /* ── calendar ── */
 .cal-panel { width: 380px; background: var(--bg-2); border: 1px solid var(--border);

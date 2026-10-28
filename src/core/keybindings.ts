@@ -7,6 +7,7 @@
 //   (on-start (ed-open "todo.md"))
 //   (on-load (defn my-helper (x) …))       ; at launch and on every reload — a library
 //   (on-tick (my-reminders))               ; once a minute
+//   (button "↻ update" "Mod-Alt-u")         ; a button in the editor's header that presses ⌘⌥U
 //
 // We only parse far enough to pull out the key and the *source text* of the body — the body itself
 // is EELisp and is evaluated by the engine when the key fires. Wrapping it in `(list …)` means a
@@ -29,6 +30,19 @@ export interface Binding extends Body {
   line: number;
 }
 
+/**
+ * `(button "label" body…)`: a button in the editor's header. Its body is a binding's — or just a key,
+ * `(button "↻" "Mod-Alt-u")`, and the button does what that key does at the time it's clicked.
+ */
+export interface Button extends Body {
+  label: string;
+  /** Set when the body is a key: the canonical id of the binding to run. */
+  key?: string;
+  /** The key as written, or the label — for messages and the tooltip. */
+  spec: string;
+  line: number;
+}
+
 /** What `(on-start …)` runs when the workspace has finished loading. */
 export interface StartHook extends Body {
   line: number;
@@ -45,6 +59,8 @@ export interface ParsedConfig {
   load: StartHook[];
   /** Every `(on-tick …)`, in order: run once a minute, on the minute, for as long as the app is open. */
   tick: StartHook[];
+  /** Every `(button …)`, in the order they're written — the order they appear in. */
+  buttons: Button[];
   errors: string[];
 }
 
@@ -113,6 +129,21 @@ export function parseKeySpec(spec: string, mac: boolean): { id: string } | { err
     return { error: `"${spec}" needs a modifier (Mod-, Ctrl-, Alt-)` };
   }
   return { id: id(meta, ctrl, alt, shift, k) };
+}
+
+const MAC_GLYPH: Record<ModName, string> = { mod: "⌘", meta: "⌘", ctrl: "⌃", alt: "⌥", shift: "⇧" };
+const KEY_GLYPH: Record<string, string> = { backspace: "⌫", delete: "⌦", enter: "↩", escape: "⎋", tab: "⇥", space: "Space" };
+
+/** "Mod-Alt-u" as a person reads it: "⌘⌥U" on a Mac, "Ctrl+Alt+U" elsewhere. Unparseable → as written. */
+export function keyLabel(spec: string, mac: boolean): string {
+  const parts = spec.split(/[-+]/);
+  const key = parts.pop() || spec.slice(-1);
+  const mods = parts.filter((p) => p !== "").map((p) => MODIFIERS[p.toLowerCase()]);
+  if (mods.some((m) => !m)) return spec;
+  const k = KEY_GLYPH[key.toLowerCase()] ?? (key.length === 1 ? key.toUpperCase() : key);
+  if (mac) return mods.map((m) => MAC_GLYPH[m]).join("") + k;
+  const name: Record<ModName, string> = { mod: "Ctrl", meta: "Win", ctrl: "Ctrl", alt: "Alt", shift: "Shift" };
+  return [...mods.map((m) => name[m]), k].join("+");
 }
 
 /**
@@ -210,13 +241,21 @@ function compileBody(text: string): Body {
 function parseForm(
   form: Form,
   mac: boolean,
-): { binding: Binding } | { start: StartHook } | { hook: Hook; body: StartHook } | { error: string } {
+):
+  | { binding: Binding }
+  | { start: StartHook }
+  | { hook: Hook; body: StartHook }
+  | { button: Button }
+  | { error: string } {
   const inner = form.text.slice(1, -1);
-  const head = /^\s*(bind|on-start|on-load|on-tick)(?=[\s)]|$)/.exec(inner);
+  const head = /^\s*(bind|button|on-start|on-load|on-tick)(?=[\s)]|$)/.exec(inner);
   if (!head) {
     const what = form.text.slice(0, 40).replace(/\s+/g, " ");
-    return { error: `line ${form.line}: expected (bind "Key" …), (on-start …), (on-load …) or (on-tick …), got ${what}…` };
+    return {
+      error: `line ${form.line}: expected (bind "Key" …), (button "Label" …), (on-start …), (on-load …) or (on-tick …), got ${what}…`,
+    };
   }
+  if (head[1] === "button") return parseButton(inner, head[0].length, form.line, mac);
   if (head[1] !== "bind") {
     const body = { ...compileBody(inner.slice(head[0].length).trim()), line: form.line };
     return head[1] === "on-start" ? { start: body } : { hook: head[1] as Hook, body };
@@ -237,6 +276,26 @@ function parseForm(
   return { binding: { ...compileBody(body), id: key.id, spec: str.value, line: form.line } };
 }
 
+function parseButton(inner: string, from: number, line: number, mac: boolean): { button: Button } | { error: string } {
+  let i = from;
+  while (i < inner.length && /\s/.test(inner[i])) i++;
+  if (inner[i] !== '"') return { error: `line ${line}: button needs a quoted label, e.g. (button "↻" "Mod-Alt-u")` };
+  const label = readString(inner, i);
+  if (!label) return { error: `line ${line}: unterminated label string` };
+  if (label.value.trim() === "") return { error: `line ${line}: the button's label is empty` };
+
+  const body = inner.slice(label.end).trim();
+  if (body === "") return { error: `line ${line}: (button "${label.value}" …) has nothing to do` };
+  // A body that is one string is a key to press, not lisp to run.
+  const str = body.startsWith('"') ? readString(body, 0) : null;
+  if (str && str.end === body.length) {
+    const key = parseKeySpec(str.value, mac);
+    if ("error" in key) return { error: `line ${line}: ${key.error}` };
+    return { button: { source: EMPTY_BODY, label: label.value, key: key.id, spec: str.value, line } };
+  }
+  return { button: { ...compileBody(body), label: label.value, spec: label.value, line } };
+}
+
 /**
  * Parse a keybindings config. Later forms win over earlier ones (per key, and for `on-start`);
  * `on-load` and `on-tick` forms add up instead.
@@ -247,14 +306,16 @@ export function parseKeybindings(src: string, mac: boolean = isMacPlatform()): P
   let start: StartHook | undefined;
   const load: StartHook[] = [];
   const tick: StartHook[] = [];
+  const buttons: Button[] = [];
   for (const form of forms) {
     const r = parseForm(form, mac);
     if ("error" in r) errors.push(r.error);
+    else if ("button" in r) buttons.push(r.button);
     else if ("start" in r) start = r.start;
     else if ("hook" in r) (r.hook === "on-load" ? load : tick).push(r.body);
     else byId.set(r.binding.id, r.binding);
   }
-  return { bindings: [...byId.values()], start, load, tick, errors };
+  return { bindings: [...byId.values()], start, load, tick, buttons, errors };
 }
 
 // ── emitting lisp ──────────────────────────────────────────────────────────
