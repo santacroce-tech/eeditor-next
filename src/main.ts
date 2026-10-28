@@ -131,26 +131,19 @@ function main(): void {
   const agendaSec = section(sidebarEl, "agenda", "agenda-section");
   const agendaBody = agendaSec.body;
 
-  // new file / new folder / open-folder buttons in the files header
+  // the files header: ＋ (what you can make) and ⋯ (the workspace — open another, samples, …). Both
+  // are menus with the same items as a right-click on the tree, filled in by fileMenu's helpers.
   const newBtn = document.createElement("button");
   newBtn.className = "side-btn";
   newBtn.textContent = "＋";
-  newBtn.title = "New file";
-  const newFolderBtn = document.createElement("button");
-  newFolderBtn.className = "side-btn";
-  newFolderBtn.textContent = "＋dir";
-  newFolderBtn.title = "New folder";
-  const openFileBtn = document.createElement("button");
-  openFileBtn.className = "side-btn";
-  openFileBtn.textContent = "file…";
-  openFileBtn.title = "Open a file from anywhere — you choose: copy it in, or edit it in place";
-  const openBtn = document.createElement("button");
-  openBtn.className = "side-btn";
-  openBtn.textContent = "folder…";
-  openBtn.title = "Open a folder (iOS: Files / Downloads / iCloud)";
+  newBtn.title = "New file, sheet, form, mind map or folder";
+  const moreBtn = document.createElement("button");
+  moreBtn.className = "side-btn";
+  moreBtn.textContent = "⋯";
+  moreBtn.title = "Open a file or folder, and more";
   const filesBtns = document.createElement("span");
   filesBtns.className = "side-head-btns";
-  filesBtns.append(newBtn, newFolderBtn, openFileBtn, openBtn);
+  filesBtns.append(newBtn, moreBtn);
   filesSec.head.appendChild(filesBtns);
 
   // rules/categories + calendar buttons in the agenda header
@@ -1327,22 +1320,29 @@ function main(): void {
     return items;
   }
 
+  /** What can be made in a folder — the top of the tree's menu, and the ＋ button's. */
+  const newItems = (dir: string): MenuItem[] => [
+    { label: "New file…", action: () => void newFile(dir) },
+    { label: "New sheet…", action: () => void newSheet(dir) },
+    { label: "New form…", action: () => void newForm(dir) },
+    { label: "New mind map…", action: () => void newMindmap(dir) },
+    { label: "New folder…", action: () => void newFolder(dir) },
+  ];
+  /** The workspace's own items: the root row's menu below the location, and the ⋯ button's. */
+  const workspaceItems = (): MenuItem[] => [
+    { label: "Add sample notes…", action: () => void offerSampleNotes() },
+    { label: "Install the PIM keys…", action: () => void offerInstallPim() },
+    { label: "About EEditor", action: () => void aboutModal() },
+  ];
+
   const fileMenu = (node: FileNode, x: number, y: number): void => {
     const dir = node.isDir ? node.path : parentDir(node.path);
     const items: MenuItem[] = [
-      { label: "New file…", action: () => void newFile(dir) },
-      { label: "New sheet…", action: () => void newSheet(dir) },
-      { label: "New form…", action: () => void newForm(dir) },
-      { label: "New mind map…", action: () => void newMindmap(dir) },
-      { label: "New folder…", action: () => void newFolder(dir) },
+      ...newItems(dir),
       // the root row is the workspace itself — worth locating, even though it can't be renamed
       ...locationItems(node.path),
     ];
-    if (node.path === "") {
-      items.push({ label: "Add sample notes…", action: () => void offerSampleNotes() });
-      items.push({ label: "Install the PIM keys…", action: () => void offerInstallPim() });
-      items.push({ label: "About EEditor", action: () => void aboutModal() });
-    }
+    if (node.path === "") items.push(...workspaceItems());
     if (isSheetPath(node.path)) {
       items.push({ label: "Export as CSV", action: () => void exportSheetCsv(node.path) });
     }
@@ -1371,8 +1371,12 @@ function main(): void {
     const text = await ws.read(p);
     return isExportedPage(text) ? "" : text;
   };
-  newBtn.addEventListener("click", () => void newFile(""));
-  newFolderBtn.addEventListener("click", () => void newFolder(""));
+  /** A header button's menu, dropped below it. */
+  const menuUnder = (btn: HTMLElement, items: MenuItem[]): void => {
+    const r = btn.getBoundingClientRect();
+    showContextMenu(r.left, r.bottom + 2, items);
+  };
+  newBtn.addEventListener("click", () => menuUnder(newBtn, newItems("")));
   const quickOpen = createQuickOpen(() => sidebar.files(), (p) => void openFile(p));
   // Search reads a sheet as its values — a row per line — so a match points at a cell.
   const search = createSearch(
@@ -1416,7 +1420,7 @@ function main(): void {
   };
 
   /**
-   * A workspace has just arrived — at launch, or picked with folder…. The engine is already on its
+   * A workspace has just arrived — at launch, or picked with ⋯ → Open another folder…. The engine is already on its
    * database. Its keybindings are its own, so they're read again; and a folder with nothing in it
    * (no notes, an empty agenda) is offered the sample notes before anything opens.
    */
@@ -1541,12 +1545,21 @@ function main(): void {
     await openFile("welcome.md").catch(() => {});
   }
 
-  openBtn.addEventListener("click", () => {
+  // The pickers start inside the menu item's click, so iOS still counts them as the person's gesture.
+  const openFolder = (): void => {
     void ws.pickWorkspace().then((picked) => {
       // the backend has already moved the engine to the new workspace's database
       if (picked) void enterWorkspace();
     });
-  });
+  };
+  moreBtn.addEventListener("click", () =>
+    menuUnder(moreBtn, [
+      { label: "Open a file…", action: () => void openWith.pickAndOpen() },
+      { label: "Open another folder…", action: openFolder },
+      ...locationItems(""),
+      ...workspaceItems(),
+    ]),
+  );
 
   /**
    * Write one tab back to disk — any tab, not only the visible one, so an edit made before you
@@ -2039,7 +2052,6 @@ function main(): void {
     },
   });
   // Picking a file asks the same question as dropping one, instead of silently importing.
-  openFileBtn.addEventListener("click", () => void openWith.pickAndOpen());
 
   const keys = createKeybindings({
     ws,

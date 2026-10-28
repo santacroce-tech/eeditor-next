@@ -4,7 +4,7 @@
 //                                     the browser dev build (contents only, no path)
 //   • Finder "Open With" / iOS      — the OS hands the path to the Rust side, which queues it and
 //     "Open in EEditor"               emits `open-paths`; we drain the queue
-//   • the file… button              — the native picker, then the same question: picking a file and
+//   • ⋯ → Open a file…              — the native picker, then the same question: picking a file and
 //                                     dropping it should not behave differently
 //
 // The question, asked once per file (or once for a whole batch): copy it into the workspace, or edit
@@ -196,7 +196,7 @@ export function createOpenWith(deps: OpenWithDeps): OpenWith {
     }
   }
 
-  /** The file… button. Same question as a drop — the route in shouldn't change the outcome. */
+  /** ⋯ → Open a file…. Same question as a drop — the route in shouldn't change the outcome. */
   async function pickAndOpen(): Promise<void> {
     if (ws.canOpenExternal()) {
       const path = await ws.pickFile();
