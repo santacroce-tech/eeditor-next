@@ -42,6 +42,7 @@ import {
   type Pos,
   type Selection,
   type SheetData,
+  sparkPath,
 } from "../core/sheet";
 import { confirmModal, showContextMenu, type MenuItem } from "./dialogs";
 
@@ -388,7 +389,23 @@ export function createSheetView(opts: SheetViewOptions): SheetView {
         if (edges.includes("l")) box.style.borderLeft = line;
         if (edges.includes("r")) box.style.borderRight = line;
       }
-      box.textContent = shown.text;
+      if (shown.spark && shown.spark.length > 0) {
+        // a sparkline: a line through the numbers, in the cell's own ink
+        const cw = cols.size(cell.col);
+        const ch = rows.size(cell.row);
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("class", "sheet-spark");
+        svg.setAttribute("width", String(cw - 8));
+        svg.setAttribute("height", String(Math.max(8, ch - 8)));
+        svg.setAttribute("aria-label", shown.text);
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", sparkPath(shown.spark, cw - 8, Math.max(8, ch - 8)));
+        svg.appendChild(path);
+        box.appendChild(svg);
+        box.title = shown.spark.join(" · ");
+      } else {
+        box.textContent = shown.text;
+      }
     }
     place(colHead, 0, 0, w, HEADER_HEIGHT);
     place(rowHead, 0, 0, gutter, h);

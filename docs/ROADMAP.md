@@ -16,7 +16,7 @@ Cost: **S** a day or less · **M** a few days · **L** a week or more. *Engine* 
 | 4 | [`csv-parse` in the language](#4-csv-parse-in-the-language) | engine | S | **In review** — eelisp-rs#25 |
 | 5 | [Installing the PIM keys in a folder that has its own](#5-installing-the-pim-keys-in-any-folder) | app | S | **Do next** |
 | 6 | [Formulas that read the database recalculate by themselves](#6-formulas-that-read-the-database-recalculate-by-themselves) | engine | M–L | Later |
-| 7 | [Charts](#7-charts) | app + engine | M, then L | Later — sparklines first |
+| 7 | [Charts](#7-charts) | app + engine | M, then L | **Sparklines done** (eeditor-next `feat/sparkline`); charts later |
 | 8 | [`.xlsx` import](#8-xlsx-import) | engine + app | M | Later |
 | 9 | [Query results that fill a range, and stay live](#9-query-results-that-fill-a-range) | engine + app | L | Later, after 6 |
 | 10 | [A place for API keys](#10-a-place-for-api-keys) | app | S | Later — with the book's chapter 16 |
@@ -137,6 +137,10 @@ sheets catch up on ↻, as they do for other sheets today.
 
 **Decision: later — sparklines first.** Step 1 is cheap and answers "how is it moving"; step 2 is
 worth it once sheets are used for reports.
+
+**Step 1 done:** `=(sparkline B2:B30)` in the spreadsheet functions returns `{:sparkline (…)}`; the
+grid draws it as a line in the cell's own ink, and everything that reads a cell as text — copy, CSV,
+PDF — gets the same numbers as bars, `▂▅▁█`, with nothing new to teach them.
 
 ### 8. `.xlsx` import
 

@@ -74,6 +74,8 @@
 (check "rank" (rank 5 '(5 1 9 3)) 2)
 (check "rank ascending" (rank 5 '(5 1 9 3) true) 3)
 
+(check "sparkline keeps the numbers" (dict-get (sparkline '(3 "x" nil 5) 2) :sparkline) '(3 5 2))
+
 ;; ── rounding and text ──
 (check "round takes digits already" (round 3.14159 2) 3.14)
 (check "roundup" (roundup 3.141 2) 3.15)

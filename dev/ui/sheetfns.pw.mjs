@@ -61,3 +61,26 @@ test("the workspace's own functions are there too", async ({ page }) => {
   await type(page, "=(double 21)");
   await expect.poll(() => shown(page)).toContain("42");
 });
+
+test("a sparkline is drawn in its cell, and copies as bars", async ({ page }) => {
+  await page.goto("/");
+  await page.locator(".tree-file", { hasText: "Tally.eesheet" }).click();
+  await page.waitForSelector(".sheet-scroller");
+  await go(page, "E1");
+  await type(page, "=(sparkline 3 5 2 8)");
+  const line = page.locator(".sheet-cell .sheet-spark path");
+  await expect(line).toHaveCount(1);
+  expect(await line.getAttribute("d")).toMatch(/^M[\d.]+,[\d.]+( L[\d.]+,[\d.]+){3}$/);
+  // what a copy gets: the same numbers, as bars
+  await go(page, "E1");
+  await page.locator(".sheet-scroller").focus();
+  const copied = await page.evaluate(
+    () =>
+      new Promise((resolve) => {
+        document.addEventListener("copy", (e) => resolve(e.clipboardData.getData("text/plain")), { once: true });
+        document.execCommand("copy");
+      }),
+  );
+  expect(copied).toBe("▂▅▁█");
+});
+

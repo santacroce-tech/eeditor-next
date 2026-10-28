@@ -285,6 +285,14 @@
                   (filter (fn (y) (> y x)) ns)))
     (if (some? (fn (y) (= y x)) ns) (+ 1 (length ahead)) nil)))
 
+;; ─── charts ────────────────────────────────────────────────────────────
+
+;; A small line through the numbers, drawn inside the cell — how a column is moving, at a glance.
+;; (sparkline B2:B30)   (sparkline 3 5 2 8)   — blanks and text are left out
+;; Copied or exported, the cell is the same as bars: ▂▅▁█
+(defn sparkline (. xs)
+  {:sparkline (numbers xs)})
+
 ;; ─── rounding ──────────────────────────────────────────────────────────
 
 ;; Rounding one way only: roundup away from zero, rounddown toward it.

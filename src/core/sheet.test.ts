@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import type { JsonValue } from "../engine/types";
 import {
   a1,
   blockArea,
@@ -27,6 +28,9 @@ import {
   selectCell,
   selectionArea,
   sheetOf,
+  sparklineOf,
+  sparkText,
+  sparkPath,
 } from "./sheet";
 import { createSheetClient } from "../engine/sheet";
 import type { Envelope } from "../engine/types";
@@ -288,5 +292,29 @@ describe("sheet client", () => {
   it("turns an engine error into a rejection", async () => {
     const { engine } = fake(() => ({ ok: false, error: "Error: no sheet at /w/Nope.eesheet" }));
     await expect(createSheetClient(engine).open("Nope")).rejects.toThrow("no sheet at");
+  });
+});
+
+describe("sparklines", () => {
+  const spark = { $dict: [["sparkline", [3, 5, 2, 8]] as [string, JsonValue]] };
+  it("are recognised by their key, numbers only", () => {
+    expect(sparklineOf(spark)).toEqual([3, 5, 2, 8]);
+    expect(sparklineOf({ $dict: [["sparkline", [1, "x", null, 2]]] })).toEqual([1, 2]);
+    expect(sparklineOf({ $dict: [["other", [1]]] })).toBeNull();
+    expect(sparklineOf(5)).toBeNull();
+  });
+  it("read as bars when copied", () => {
+    expect(sparkText([1, 2, 3, 4, 5, 6, 7, 8])).toBe("▁▂▃▄▅▆▇█");
+    expect(sparkText([4, 4])).toBe("▄▄");
+    expect(sparkText([])).toBe("");
+  });
+  it("draw from the left edge to the right, lowest at the bottom", () => {
+    expect(sparkPath([0, 10], 100, 20, 2)).toBe("M2.0,18.0 L98.0,2.0");
+    expect(sparkPath([5], 100, 20, 2)).toBe("M2.0,10.0 L98.0,10.0");
+  });
+  it("show in a cell as bars, with the numbers for the grid to draw", () => {
+    const shown = display({ row: 0, col: 0, input: "=(sparkline A1:A4)", value: spark, error: null, fmt: null });
+    expect(shown.text).toBe("▂▅▁█");
+    expect(shown.spark).toEqual([3, 5, 2, 8]);
   });
 });
