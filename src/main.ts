@@ -49,7 +49,7 @@ import { addSamples } from "./samples/workspace";
 import "./styles.css";
 import { openScreenWindow } from "./ui/screenwindow";
 import { aboutModal } from "./ui/about";
-import { installPim } from "./core/pim-install";
+import { installPim, replacePastedPim } from "./core/pim-install";
 import PIM_CONFIG from "../docs/pim/pim.eelisp?raw";
 import PIM_CAPTURE from "../docs/pim/Capture.eeform?raw";
 import DEFAULT_KEYS from "./keybindings/default.eelisp?raw";
@@ -1495,13 +1495,28 @@ function main(): void {
     } catch {
       current = DEFAULT_KEYS; // a workspace's own file replaces the defaults, so they come along
     }
-    const r = installPim(current, PIM_CONFIG);
+    let r = installPim(current, PIM_CONFIG);
     if (r.action === "by-hand") {
-      await infoModal(
-        "The PIM is already in your keybindings, pasted in by hand — EEditor won't rewrite that copy. To get the current one: delete it from the file, then install again.",
-        KEYBINDINGS_PATH,
-      );
-      return;
+      // A copy pasted in by hand, as the guide used to say: swapped for the current one only when
+      // asked, and with the file as it was kept beside it.
+      const replaced = replacePastedPim(current, PIM_CONFIG);
+      const backup = `.eeditor/keybindings.before-pim-${todayISO()}.eelisp`;
+      const yes =
+        replaced !== null &&
+        (await confirmModal(
+          `Your keybindings have a copy of the PIM pasted in by hand. Replace it with the current one? Your own keys and settings around it stay. The file as it is now is kept as ${backup}, and from then on installing again just updates the PIM.`,
+          "Replace",
+          false,
+        ));
+      if (!yes || replaced === null) return;
+      try {
+        await ws.create(backup, false).catch(() => {});
+        await ws.write(backup, current);
+      } catch (e) {
+        toast(`Could not keep a copy of the keybindings, so nothing was changed: ${String(e)}`);
+        return;
+      }
+      r = { action: "updated", text: replaced };
     }
     try {
       if (r.action !== "unchanged") await ws.write(KEYBINDINGS_PATH, r.text);
