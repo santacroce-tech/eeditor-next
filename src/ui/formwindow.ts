@@ -1,11 +1,15 @@
 // A floating window over the app for a running form — so a form can stay open, as a tool, beside
 // the note being written. Dragged by its handle, raised by a press anywhere on it. The window is
-// only a frame: what it holds (a FormRunner) draws itself and says when to close.
+// only a frame: what it holds (a FormRunner) draws itself and says when to close. Maximized, it
+// fills the app; the form's anchored controls stretch into the room (see `anchoredBox`).
 
 export interface FormWindow {
   readonly el: HTMLElement;
   raise(): void;
   close(): void;
+  /** Fill the app, or go back to where it was; `on` forces one. Remembered per form. */
+  toggleMaximized(on?: boolean): void;
+  readonly maximized: boolean;
 }
 
 /** Each new window lands a little down and right of the last, like a cascade. */
@@ -32,6 +36,23 @@ function remember(key: string, left: number, top: number): void {
   }
 }
 
+function rememberedMax(key: string): boolean {
+  try {
+    return localStorage.getItem("formwin-max:" + key) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function rememberMax(key: string, on: boolean): void {
+  try {
+    if (on) localStorage.setItem("formwin-max:" + key, "1");
+    else localStorage.removeItem("formwin-max:" + key);
+  } catch {
+    /* as above */
+  }
+}
+
 /** `key` names the form, so the window comes back where it was left. */
 export function createFormWindow(content: HTMLElement, handle: HTMLElement, key = ""): FormWindow {
   const win = document.createElement("div");
@@ -48,8 +69,18 @@ export function createFormWindow(content: HTMLElement, handle: HTMLElement, key 
   win.addEventListener("pointerdown", raise);
 
   let drag: { x0: number; y0: number; left: number; top: number } | null = null;
+  let maximized = false;
+  const toggleMaximized = (on = !maximized): void => {
+    maximized = on;
+    win.classList.toggle("maximized", on);
+    if (key) rememberMax(key, on);
+  };
+  handle.addEventListener("dblclick", (e) => {
+    if (!(e.target as HTMLElement).closest("button")) toggleMaximized();
+  });
+
   handle.addEventListener("pointerdown", (e) => {
-    if (e.button !== 0 || (e.target as HTMLElement).closest("button")) return;
+    if (e.button !== 0 || maximized || (e.target as HTMLElement).closest("button")) return;
     drag = { x0: e.clientX, y0: e.clientY, left: win.offsetLeft, top: win.offsetTop };
     handle.setPointerCapture(e.pointerId);
   });
@@ -71,10 +102,15 @@ export function createFormWindow(content: HTMLElement, handle: HTMLElement, key 
   handle.classList.add("formwin-handle");
 
   document.body.append(win);
+  if (key && rememberedMax(key)) toggleMaximized(true);
   raise();
   return {
     el: win,
     raise,
     close: () => win.remove(),
+    toggleMaximized,
+    get maximized() {
+      return maximized;
+    },
   };
 }

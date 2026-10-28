@@ -1,0 +1,522 @@
+;; TRYME.eeform — the PIM in one window: everything TRY ME.md walks through, as an interface. It
+;; needs the PIM library (Install the PIM keys…, or the sample notes) — the Start page says if it's
+;; missing. ⤢ in the title bar (or a double-click on it) fills the app; the lists grow into the room.
+;;
+;;   Start here  is the PIM live, what's in the workspace, and every key
+;;   Agenda      the agenda, big: quick add, filters, and an editor for one item
+;;   In notes    "- [ ] …" lines typed in notes that aren't agenda items yet — add them, open them
+;;   Capture     task / inbox / log, as ⌘⌥N does it, and what's in the inbox
+;;   Clock       clock in on an item or anything, out, and the time report
+;;   Tracker     the life log: type "coffee 2", see today and the week
+;;   Review      the next days, someday, what got done, time and tracker — and the review notes
+;;
+;; It is the same agenda, tables and notes as the sidebar, the keys and the REPL.
+
+(form "Try the PIM" :size (1040 680) :on-load tm-load :menu (("PIM" ("Refresh" tm-refresh-all) ("Sweep notes now" tm-sweep) ("-") ("Close" tm-close)) ("Open" ("Today's note" tm-open-today) ("This week's review" tm-open-week) ("TRY ME.md" tm-open-tryme) ("Keybindings" tm-open-keys)) ("Help" ("About" tm-about)))
+  (tabs tabMain :pages ("Start here" "Agenda" "In notes" "Capture" "Clock" "Tracker" "Review") :value "Agenda" :at (8 8) :size (1024 664) :anchor "tlbr" :on-change tm-page)
+  (label lblCheck :text "Is it all there?" :page "Start here" :at (20 48) :size (380 24))
+  (textbox txtCheck :multiline true :readonly true :mono true :page "Start here" :at (20 76) :size (380 340) :anchor "tlb")
+  (button btnCheck :text "Check again" :page "Start here" :at (20 428) :size (120 30) :anchor "lb" :on-click tm-check)
+  (button btnTryMe :text "Open TRY ME.md" :page "Start here" :at (148 428) :size (124 30) :anchor "lb" :on-click tm-open-tryme)
+  (button btnKeysFile :text "Keybindings" :page "Start here" :at (280 428) :size (120 30) :anchor "lb" :on-click tm-open-keys)
+  (label lblStartHelp :text "Keys act on the caret's line: click into a note first." :page "Start here" :at (20 472) :size (380 84) :anchor "lb")
+  (label lblKeys :text "Every key" :page "Start here" :at (420 48) :size (592 24))
+  (grid grdKeys :columns ("key" "does" "caret") :sortable true :filter true :page "Start here" :at (420 76) :size (592 580) :anchor "tlbr")
+  (textbox txtQuick :placeholder "add — e.g. call @Ana about the flat in 3 days !! #home | ask about the boiler" :page "Agenda" :at (20 44) :size (872 28) :anchor "tlr" :on-change tm-preview)
+  (button btnQuick :text "Add" :default true :page "Agenda" :at (900 44) :size (112 28) :anchor "tr" :on-click tm-quick)
+  (label lblParsed :page "Agenda" :at (20 76) :size (992 20) :anchor "tlr")
+  (dropdown cboShow :items ("overdue + next 7 days" "today" "next 7 days" "overdue" "someday (no date)" "inbox" "all") :value "overdue + next 7 days" :page "Agenda" :at (20 102) :size (172 28) :on-change tm-refresh)
+  (dropdown cboFilterCat :items ("") :page "Agenda" :at (200 102) :size (140 28) :on-change tm-refresh)
+  (textbox txtSearch :placeholder "search text and notes…" :page "Agenda" :at (348 102) :size (228 28) :on-change tm-refresh)
+  (label lblCount :page "Agenda" :at (584 106) :size (96 20))
+  (grid grdItems :columns ("text" "when" "priority" "categories" "recurrence") :sortable true :page "Agenda" :at (20 136) :size (660 496) :anchor "tlbr" :on-change tm-pick :on-dblclick tm-done)
+  (label lblStatus :page "Agenda" :at (20 640) :size (660 20) :anchor "lrb")
+  (label lblEdit :text "New item" :page "Agenda" :at (700 106) :size (312 24) :anchor "tr")
+  (textbox txtText :placeholder "what" :page "Agenda" :at (700 136) :size (312 28) :anchor "tr")
+  (label lblWhen :text "When" :page "Agenda" :at (700 176) :size (52 24) :anchor "tr")
+  (date dtWhen :page "Agenda" :at (752 172) :size (260 28) :anchor "tr")
+  (label lblPri :text "Priority" :page "Agenda" :at (700 210) :size (140 24) :anchor "tr")
+  (radio optPri :items ("1" "2" "3" "none") :value "none" :page "Agenda" :at (700 234) :size (140 100) :anchor "tr")
+  (label lblCat :text "Category" :page "Agenda" :at (852 210) :size (160 24) :anchor "tr")
+  (dropdown cboCat :items ("") :page "Agenda" :at (852 234) :size (160 28) :anchor "tr")
+  (label lblRecur :text "Repeats" :page "Agenda" :at (852 270) :size (160 24) :anchor "tr")
+  (dropdown cboRecur :items ("no" "daily" "weekly" "monthly") :value "no" :page "Agenda" :at (852 294) :size (160 28) :anchor "tr")
+  (label lblNotes :text "Notes" :page "Agenda" :at (700 340) :size (312 24) :anchor "tr")
+  (textbox txtNotes :multiline true :placeholder "notes…" :page "Agenda" :at (700 364) :size (312 236) :anchor "trb")
+  (button btnSave :text "Save" :page "Agenda" :at (700 612) :size (72 30) :anchor "rb" :on-click tm-save)
+  (button btnDone :text "Done ✓" :page "Agenda" :at (780 612) :size (72 30) :anchor "rb" :on-click tm-done)
+  (button btnDelete :text "Delete" :page "Agenda" :at (860 612) :size (72 30) :anchor "rb" :on-click tm-delete)
+  (button btnNew :text "New" :page "Agenda" :at (940 612) :size (72 30) :anchor "rb" :on-click tm-new)
+  (label lblNotesHelp :text "A typed \"- [ ] …\" is only text until it's linked ({#12}). ＋ links it, like ⌘⌥A on the line; Sweep does pim-agenda-files." :page "In notes" :at (20 44) :size (992 40) :anchor "tlr")
+  (checkbox chkSkipTryMe :text "Leave out TRY ME.md (its lessons are a checklist)" :value true :page "In notes" :at (20 88) :size (420 24) :on-change tm-scan)
+  (label lblNoteCount :page "In notes" :at (452 90) :size (560 20) :anchor "tlr")
+  (grid grdNoteTasks :columns ("task" "note" "line") :sortable true :filter true :page "In notes" :at (20 116) :size (992 488) :anchor "tlbr" :on-dblclick tm-open-task)
+  (button btnLink :text "＋ Add to the agenda" :page "In notes" :at (20 616) :size (168 30) :anchor "lb" :on-click tm-link)
+  (button btnOpenTask :text "Open the note" :page "In notes" :at (196 616) :size (128 30) :anchor "lb" :on-click tm-open-task)
+  (button btnSweep :text "Sweep now (⌘⌥S)" :page "In notes" :at (332 616) :size (148 30) :anchor "lb" :on-click tm-sweep)
+  (button btnScan :text "Refresh" :page "In notes" :at (488 616) :size (96 30) :anchor "lb" :on-click tm-scan)
+  (label lblLinkStatus :page "In notes" :at (596 620) :size (416 24) :anchor "lrb")
+  (textbox txtCap :placeholder "dentist tomorrow !! #health   ·   ask about the boiler   ·   coffee 2" :page "Capture" :at (20 48) :size (872 28) :anchor "tlr")
+  (button btnCap :text "Capture" :page "Capture" :at (900 48) :size (112 28) :anchor "tr" :on-click tm-capture)
+  (radio optKind :items ("task" "inbox" "log") :value "task" :page "Capture" :at (20 88) :size (110 84))
+  (label lblCapHelp :text "task → the agenda, and a line under ## Tasks in today's note · inbox → the same, filed under inbox, the line in inbox.md · log → the tracker, and a line under ## Log. ⌘⌥N opens the small capture window anywhere." :page "Capture" :at (140 88) :size (872 48) :anchor "tlr")
+  (label lblCapStatus :page "Capture" :at (140 140) :size (872 24) :anchor "tlr")
+  (label lblInbox :text "In the inbox — pick one and file it in the Agenda tab" :page "Capture" :at (20 184) :size (992 24) :anchor "tlr")
+  (grid grdInbox :columns ("text" "when" "priority" "categories") :sortable true :page "Capture" :at (20 212) :size (992 444) :anchor "tlbr" :on-dblclick tm-inbox-edit)
+  (label lblClockNow :page "Clock" :at (20 48) :size (992 28) :anchor "tlr")
+  (label lblClockOn :text "Clock in on an agenda item…" :page "Clock" :at (20 88) :size (300 24))
+  (dropdown cboClockItem :items ("") :page "Clock" :at (20 112) :size (480 28) :anchor "tl")
+  (label lblClockOr :text "…or anything" :page "Clock" :at (516 88) :size (300 24))
+  (textbox txtClockTask :placeholder "write the report" :page "Clock" :at (516 112) :size (256 28))
+  (button btnClockIn :text "⏱ Clock in" :page "Clock" :at (780 112) :size (112 28) :on-click tm-clock-in)
+  (button btnClockOut :text "Clock out" :page "Clock" :at (900 112) :size (112 28) :anchor "tl" :on-click tm-clock-out)
+  (label lblRepFrom :text "From" :page "Clock" :at (20 160) :size (44 24))
+  (date dtRepFrom :page "Clock" :at (64 156) :size (160 28))
+  (label lblRepTo :text "to" :page "Clock" :at (232 160) :size (24 24))
+  (date dtRepTo :page "Clock" :at (256 156) :size (160 28))
+  (button btnRep :text "Report" :page "Clock" :at (424 156) :size (96 28) :on-click tm-clock-report)
+  (textbox txtClockRep :multiline true :readonly true :mono true :page "Clock" :at (20 196) :size (992 460) :anchor "tlbr")
+  (textbox txtLog :placeholder "coffee 2   ·   walk 30   ·   rice 550 kcal | lunch" :page "Tracker" :at (20 48) :size (480 28) :on-change tm-log-preview)
+  (button btnLog :text "Log" :page "Tracker" :at (508 48) :size (80 28) :on-click tm-log)
+  (button btnCoffee :text "☕ coffee" :page "Tracker" :at (20 84) :size (100 28) :on-click tm-log-coffee)
+  (button btnWater :text "💧 water" :page "Tracker" :at (128 84) :size (100 28) :on-click tm-log-water)
+  (button btnWalk :text "🚶 walk 30" :page "Tracker" :at (236 84) :size (100 28) :on-click tm-log-walk)
+  (label lblLogStatus :page "Tracker" :at (344 88) :size (244 20))
+  (label lblToday :text "Today" :page "Tracker" :at (20 124) :size (568 24))
+  (grid grdLog :columns ("at" "item" "qty" "unit" "kind" "note") :sortable true :page "Tracker" :at (20 148) :size (568 508) :anchor "tlb")
+  (label lblWeek :text "The last 7 days" :page "Tracker" :at (604 48) :size (408 24) :anchor "tlr")
+  (textbox txtTrack :multiline true :readonly true :mono true :page "Tracker" :at (604 76) :size (408 480) :anchor "tlbr")
+  (label lblStreakOf :text "Streak of" :page "Tracker" :at (604 572) :size (72 24) :anchor "lb")
+  (dropdown cboStreak :items ("drink" "exercise" "food" "sleep" "smoke" "weed" "body" "mood") :value "exercise" :page "Tracker" :at (676 568) :size (140 28) :anchor "lb" :on-change tm-streak)
+  (label lblStreak :page "Tracker" :at (824 572) :size (188 24) :anchor "lrb")
+  (label lblDays :text "Next" :page "Review" :at (20 52) :size (40 24))
+  (dropdown cboDays :items ("1" "3" "7" "14" "30") :value "7" :page "Review" :at (60 48) :size (72 28) :on-change tm-review)
+  (label lblDays2 :text "days" :page "Review" :at (140 52) :size (40 24))
+  (button btnReview :text "Refresh" :page "Review" :at (188 48) :size (96 28) :on-click tm-review)
+  (button btnToday :text "Today's note (⌘D)" :page "Review" :at (604 48) :size (196 28) :anchor "tr" :on-click tm-open-today)
+  (button btnWeekNote :text "Weekly review (⌘⌥V)" :page "Review" :at (808 48) :size (204 28) :anchor "tr" :on-click tm-open-week)
+  (textbox txtReview :multiline true :readonly true :mono true :page "Review" :at (20 88) :size (992 568) :anchor "tlbr")
+  (timer tmrTick :interval 60000 :at (1000 12) :size (24 24) :on-tick tm-tick))
+
+;; The item in the editor, by id — nil while it holds a new one.
+(def tm-id nil)
+;; The item a first click on Delete asked about; a second click on it deletes.
+(def tm-armed nil)
+
+(defn tm-blank? (s) (or (nil? s) (= (str-trim s) "")))
+(defn tm-or (s d) (cond (tm-blank? s) d true s))
+(defn tm-plural (n word) (str n " " word (cond (= n 1) "" true "s")))
+;; (categories) answers in text, one per line; these are the names.
+(defn tm-cat-names ()
+  (filter (fn (l) (and (!= l "") (not (str-starts-with l "("))))
+          (map (fn (l) (str-trim (first (str-split l " [")))) (str-split (categories) "\n"))))
+
+;; Is the PIM loaded? Its functions are defined by the keybindings' (on-load …).
+(defn tm-pim? () (try (do (pim-live-ids) true) (catch e false)))
+(defn tm-need-pim ()
+  (ui-message "This needs the PIM: right-click the workspace in the tree → Install the PIM keys…"))
+
+(defn tm-load (f)
+  (ui-set "grdKeys" :rows tm-keys)
+  (ui-set "dtRepFrom" :value (pim-or-monday))
+  (ui-set "dtRepTo" :value *date*)
+  (tm-check f)
+  (tm-cats f)
+  (tm-refresh f)
+  (tm-new f))
+
+(defn tm-refresh-all (f)
+  (tm-check f) (tm-cats f) (tm-refresh f) (tm-scan f) (tm-inbox f) (tm-clock f) (tm-tracker f) (tm-review f))
+
+;; A page opened: fill it in then, so the window opens fast.
+(defn tm-page (f)
+  (let (p (ui-get f "tabMain"))
+    (cond (= p "Start here") (tm-check f)
+          (= p "Agenda") (tm-refresh f)
+          (= p "In notes") (tm-scan f)
+          (= p "Capture") (tm-inbox f)
+          (= p "Clock") (tm-clock f)
+          (= p "Tracker") (tm-tracker f)
+          (= p "Review") (tm-review f)
+          true nil)))
+
+;; Once a minute: what the clock says, and the list in front.
+(defn tm-tick (f) (tm-page f))
+
+;; ── Start here ──
+
+(defn pim-or-monday ()
+  (cond (tm-pim?) (pim-monday *date*) true (date-add *date* -6 :days)))
+
+(defn tm-check (f)
+  (let (pim (tm-pim?)
+        db (database-info)
+        ns (notes)
+        unlinked (length (tm-unlinked false)))
+    (ui-set "txtCheck" :value
+      (str (cond pim "✓ the PIM is loaded — its keys and this window work"
+                 true "✗ the PIM isn't loaded — right-click the workspace in the tree → Install the PIM keys…")
+           "\n" (cond (dict-get db :error) (str "✗ the database: " (dict-get db :error)) true (str "✓ the database: " (dict-get db :path)))
+           "\n\n" (tm-plural (length ns) "note")
+           "\n" (tm-plural (item-count) "agenda item")
+           (cond pim (str "\n  " (length (records (show pim-overdue))) " overdue · "
+                          (length (records (items-on *date*))) " today · "
+                          (length (records (show pim-inbox))) " in the inbox")
+                 true "")
+           "\n" (tm-plural unlinked "task") " typed in notes, not in the agenda (In notes)"
+           (cond pim (str "\n\n" (dict-get (tm-clock-text) :text)
+                          "\nagenda files: " (cond (empty? pim-agenda-files) "none" true (str-join ", " pim-agenda-files)))
+                 true "")))))
+
+(defn tm-open-tryme (f) (ui-editor (ed-open "TRY ME.md")))
+(defn tm-open-keys (f) (ui-editor (ed-cmd "open-keys")))
+(defn tm-open-today (f)
+  (if (tm-pim?) (ui-editor (ed-new (str *date* ".md") (pim-daily-template *date*))) (ui-editor (ed-new (str *date* ".md")))))
+(defn tm-open-week (f)
+  (if (tm-pim?)
+    (ui-editor (ed-new (str "reviews/" (pim-monday *date*) " week.md") (pim-weekly-template (pim-monday *date*))))
+    (tm-need-pim)))
+
+(def tm-keys (list
+  (dict :key "⌘D" :does "Today's note, from the template (created if missing)" :caret "anywhere")
+  (dict :key "⌘⌥T" :does "Cycle a line: text → agenda task → done → plain" :caret "on the line")
+  (dict :key "⌘⌥⌫" :does "Delete the task from the agenda and the line" :caret "on a task")
+  (dict :key "⌘⌥P" :does "Priority !!! → !! → ! → none" :caret "on a task")
+  (dict :key "⌘⌥A" :does "Re-read the line into its item; links a hand-typed - [ ]" :caret "on a task")
+  (dict :key "⌘⌥E" :does "Ask When? and set the date" :caret "on a linked task")
+  (dict :key "⌘⌥G" :does "Ask Category and file the item" :caret "on a linked task")
+  (dict :key "⌘⌥S" :does "Every note in step with the agenda now" :caret "anywhere")
+  (dict :key "⌘⌥N" :does "Capture window: task, inbox or log" :caret "anywhere")
+  (dict :key "⌘⌥F" :does "Refile the line under a heading of another note" :caret "on the line")
+  (dict :key "⌘⌥W" :does "Insert the next 7 days as a block" :caret "where you want it")
+  (dict :key "⌘⌥U" :does "Recompute every block in the note" :caret "in the note")
+  (dict :key "⌘⌥I" :does "Clock in on the task or heading" :caret "on a task or heading")
+  (dict :key "⌘⌥O" :does "Clock out" :caret "anywhere")
+  (dict :key "⌘⌥K" :does "What's running" :caret "anywhere")
+  (dict :key "⌘⌥L" :does "Log the line in the tracker (coffee 1, run 30 min)" :caret "on the line")
+  (dict :key "⌘⌥C" :does "Log a coffee" :caret "anywhere")
+  (dict :key "⌘⌥R" :does "Insert today's log as a block" :caret "where you want it")
+  (dict :key "⌘⌥X" :does "Move the - [x] lines to ## Archive" :caret "in the note")
+  (dict :key "⌘⌥V" :does "This week's review, filled in" :caret "anywhere")
+  (dict :key "⌘P" :does "Quick open" :caret "anywhere")
+  (dict :key "⌘⇧F" :does "Search every note" :caret "anywhere")
+  (dict :key "⌘E" :does "Preview" :caret "in a note")
+  (dict :key "⌘J" :does "The REPL" :caret "anywhere")
+  (dict :key "⌘⇧K" :does "The keybindings file — the shortcut table" :caret "anywhere")))
+
+;; ── Agenda ──
+
+(defn tm-cats (f)
+  (let (cats (cons "" (tm-cat-names)))
+    (ui-set "cboCat" :items cats)
+    (ui-set "cboFilterCat" :items cats)))
+
+(defn tm-query (show search)
+  (cond
+    (not (tm-blank? search)) (records (items :search (str-trim search)))
+    (= show "today") (records (items-on *date*))
+    (= show "next 7 days") (records (items-between *date* (date-add *date* 6 :days)))
+    (= show "overdue") (records (items :when-before *date*))
+    (= show "someday (no date)") (filter (fn (r) (= (field-get r :when) "")) (records (items)))
+    (= show "inbox") (filter (fn (r) (str-contains (field-get r :categories) "inbox")) (records (items)))
+    (= show "all") (records (items))
+    true (append (records (items :when-before *date*))
+                 (records (items-between *date* (date-add *date* 6 :days))))))
+
+(defn tm-refresh (f)
+  (let (cat (or (ui-get f "cboFilterCat") "")
+        rows (tm-query (ui-get f "cboShow") (ui-get f "txtSearch"))
+        shown (cond (= cat "") rows
+                    true (filter (fn (r) (some? (fn (c) (or (= c cat) (str-starts-with c (str cat "/"))))
+                                                (map str-trim (str-split (field-get r :categories) ","))))
+                                 rows)))
+    (ui-set "grdItems" :rows shown)
+    (ui-set "lblCount" :text (tm-plural (length shown) "item"))))
+
+(defn tm-preview (f)
+  (let (text (ui-get f "txtQuick"))
+    (ui-set "lblParsed" :text
+      (cond (tm-blank? text) ""
+            true (let (p (smart-parse text))
+                   (str "→ " (dict-get p :text)
+                        "   when " (or (dict-get p :when) "—")
+                        "   priority " (or (dict-get p :priority) "—")
+                        (cond (empty? (or (dict-get p :who) (list))) "" true (str "   who " (str-join ", " (dict-get p :who))))))))))
+
+;; Quick add the PIM's way when it's there (#tags, " | notes", rules), else the agenda's own add.
+(defn tm-quick (f)
+  (let (text (ui-get f "txtQuick"))
+    (if (tm-blank? text)
+      (ui-message "Type something to add")
+      (let (d (cond (tm-pim?) (pim-add (str-trim text) (list)) true (item->dict (add (str-trim text)))))
+        (ui-set "txtQuick" :value "")
+        (ui-set "lblParsed" :text "")
+        (ui-set "lblStatus" :text (str "Added #" (dict-get d :id) " " (dict-get d :text)))
+        (tm-cats f)
+        (tm-refresh f)))))
+
+;; A row picked: the whole item — notes and recurrence, which the grid doesn't carry — into the editor.
+(defn tm-pick (f)
+  (let (row (ui-get f "grdItems"))
+    (when row (tm-edit (dict-get row "id")))))
+
+(defn tm-edit (id)
+  (let (it (item->dict (item-get id))
+        rec (tm-recurrence id))
+    (set! tm-id id)
+    (set! tm-armed nil)
+    (ui-set "lblEdit" :text (str "Item #" id))
+    (ui-set "txtText" :value (dict-get it :text))
+    (ui-set "dtWhen" :value (or (dict-get it :when) ""))
+    (ui-set "optPri" :value (let (p (str (or (dict-get it :priority) ""))) (if (= p "") "none" p)))
+    (ui-set "cboCat" :value (or (first (dict-get it :categories)) ""))
+    (ui-set "cboRecur" :value (cond (tm-blank? rec) "no" true rec))
+    (ui-set "txtNotes" :value (dict-get it :notes))
+    (ui-set "lblStatus" :text "")))
+
+;; item->dict leaves the recurrence out; the agenda's rows carry it.
+(defn tm-recurrence (id)
+  (let (r (filter (fn (r) (= (record-id r) id)) (records (items))))
+    (cond (empty? r) "" true (or (field-get (first r) :recurrence) ""))))
+
+(defn tm-new (f)
+  (set! tm-id nil)
+  (set! tm-armed nil)
+  (ui-set "lblEdit" :text "New item")
+  (for-each c '("txtText" "dtWhen" "cboCat" "txtNotes") (ui-set c :value ""))
+  (ui-set "optPri" :value "none")
+  (ui-set "cboRecur" :value "no"))
+
+(defn tm-save (f)
+  (let (text (str-trim (or (ui-get f "txtText") "")))
+    (if (= text "")
+      (ui-message "What is it? Type the text first")
+      (let (pri (ui-get f "optPri")
+            cat (or (ui-get f "cboCat") "")
+            rec (ui-get f "cboRecur")
+            id (if tm-id tm-id (dict-get (item->dict (add-item text)) :id))
+            was (dict-get (item->dict (item-get id)) :categories))
+        (item-set id :text text :notes (or (ui-get f "txtNotes") "") :when (or (ui-get f "dtWhen") "")
+                     :priority (if (or (nil? pri) (= pri "none")) "" pri)
+                     :recurrence (if (or (nil? rec) (= rec "no")) "" rec))
+        (for-each c was (when (not (= c cat)) (unassign id c)))
+        (when (not (= cat "")) (assign id cat))
+        (set! tm-id id)
+        (ui-set "lblEdit" :text (str "Item #" id))
+        (ui-set "lblStatus" :text (str "Saved #" id " " text " — its line in a note follows within a minute (or Sweep)"))
+        (tm-refresh f)))))
+
+(defn tm-current (f)
+  (let (row (ui-get f "grdItems")) (or tm-id (and row (dict-get row "id")))))
+
+;; Done: gone from the list — or, for a repeating item, rolled on to its next date. The PIM logs it
+;; in the done table the way ⌘⌥T does, so the review counts it.
+(defn tm-done (f)
+  (let (id (tm-current f))
+    (if (nil? id)
+      (ui-message "Pick an item first")
+      (let (text (dict-get (item->dict (item-get id)) :text))
+        (when (tm-pim?) (pim-log-done text id ""))
+        (item-done id)
+        (ui-set "lblStatus" :text (str "Done ✓ " text))
+        (tm-new f)
+        (tm-refresh f)))))
+
+;; Delete: gone for good — a repeating item too. Two clicks, since a form has no confirm dialog.
+;; With the PIM, recorded as dropped, so a sweep takes its line out of the notes rather than ticking it.
+(defn tm-delete (f)
+  (let (id (tm-current f))
+    (cond
+      (nil? id) (ui-message "Pick an item first")
+      (not (= tm-armed id)) (do (set! tm-armed id)
+                                (ui-set "lblStatus" :text (str "Delete #" id "? Click Delete again")))
+      true (do (when (tm-pim?) (insert dropped (dict :item id :at *now*)))
+               (delete _items id)
+               (tm-new f)
+               (ui-set "lblStatus" :text (str "Deleted #" id))
+               (tm-refresh f)))))
+
+;; ── In notes ──
+
+;; Every open "- [ ] …" line with no {#id}, outside ``` fences: (dict :task :note :line :raw).
+(defn tm-note-tasks (path)
+  (let (lines (str-split (or (read-note path) "") "\n"))
+    (loop (ls lines n 1 fenced false out (list))
+      (cond (empty? ls) out
+            true (let (l (first ls)
+                       fence (str-matches l "^\\s*(```|~~~)")
+                       task? (and (not fenced) (not fence) (str-matches l "^\\s*- \\[ \\] ")
+                                  (not (str-matches l "\\{#[0-9]+\\}"))
+                                  (!= (str-trim (substr (str-trim l) 6)) "")))
+                   (recur (tail ls) (inc n) (cond fence (not fenced) true fenced)
+                          (cond task? (append out (list (dict :task (str-trim (substr (str-trim l) 6)) :note path :line n :raw l)))
+                                true out)))))))
+
+(defn tm-unlinked (skip-tryme)
+  (reduce (fn (acc p) (append acc (tm-note-tasks p))) (list)
+          (filter (fn (p) (not (and skip-tryme (= p "TRY ME.md")))) (notes))))
+
+(defn tm-scan (f)
+  (let (rows (tm-unlinked (ui-get f "chkSkipTryMe")))
+    (ui-set "grdNoteTasks" :rows rows)
+    (ui-set "lblNoteCount" :text
+      (cond (empty? rows) "Every task in the notes is in the agenda"
+            true (str (tm-plural (length rows) "task") " in "
+                      (tm-plural (length (reduce (fn (a r) (cond (some? (fn (x) (= x (dict-get r :note))) a) a true (append a (list (dict-get r :note))))) (list) rows)) "note"))))))
+
+;; Link the picked line: into the agenda (the PIM's parse when it's there), " {#id}" on the line,
+;; and the note rewritten only if it still says what was read — else Refresh and try again.
+(defn tm-link (f)
+  (let (row (ui-get f "grdNoteTasks"))
+    (if (nil? row)
+      (ui-message "Pick a task first")
+      (let (path (dict-get row "note")
+            n (dict-get row "line")
+            raw (dict-get row "raw")
+            old (or (read-note path) "")
+            lines (str-split old "\n"))
+        (if (not (= (nth lines (- n 1)) raw))
+          (do (ui-set "lblLinkStatus" :text "That line changed — refreshed, try again") (tm-scan f))
+          (let (linked (cond (tm-pim?) (pim-link-new raw)
+                             true (str raw " {#" (dict-get (item->dict (add (dict-get row "task"))) :id) "}"))
+                new (str-join "\n" (append (take (- n 1) lines) (cons linked (drop n lines)))))
+            (ui-editor (ed-write path new old))
+            (ui-set "lblLinkStatus" :text (str "In the agenda: " (dict-get row "task")))
+            (ui-set "grdNoteTasks" :rows (filter (fn (r) (not (and (= (dict-get r :note) path) (= (dict-get r :line) n))))
+                                                 (tm-unlinked (ui-get f "chkSkipTryMe"))))
+            (tm-refresh f)))))))
+
+(defn tm-open-task (f)
+  (let (row (ui-get f "grdNoteTasks"))
+    (if (nil? row)
+      (ui-message "Pick a task first")
+      (ui-editor (ed-open (dict-get row "note")) (ed-goto-line (dict-get row "line"))))))
+
+(defn tm-sweep (f)
+  (if (tm-pim?)
+    (do (ui-editor (pim-sweep-now)) (tm-refresh f))
+    (tm-need-pim)))
+
+;; ── Capture ──
+
+(defn tm-capture (f)
+  (let (text (ui-get f "txtCap"))
+    (cond (tm-blank? text) (ui-message "Type something to capture")
+          (not (tm-pim?)) (tm-need-pim)
+          true (let (r (pim-capture* (ui-get f "optKind") text))
+                 (ui-set "lblCapStatus" :text (first r))
+                 (ui-editor (second r))
+                 (ui-set "txtCap" :value "")
+                 (ui-focus "txtCap")
+                 (tm-inbox f)))))
+
+(defn tm-inbox (f)
+  (when (tm-pim?) (ui-set "grdInbox" :rows (show pim-inbox))))
+
+(defn tm-inbox-edit (f)
+  (let (row (ui-get f "grdInbox"))
+    (when row
+      (tm-edit (dict-get row "id"))
+      (ui-set "tabMain" :value "Agenda"))))
+
+;; ── Clock ──
+
+(defn tm-clock-text ()
+  (let (r (pim-running))
+    (dict :text (cond (empty? r) "⏱ no clock running"
+                      true (str "⏱ " (field-get (first r) :task) " — " (pim-mins (first r)) " min")))))
+
+(defn tm-clock (f)
+  (if (tm-pim?)
+    (do (ui-set "lblClockNow" :text (dict-get (tm-clock-text) :text))
+        (ui-set "cboClockItem" :items
+          (cons "" (map (fn (r) (str (field-get r :text) " {#" (record-id r) "}")) (records (items)))))
+        (tm-clock-report f))
+    (ui-set "lblClockNow" :text "The clock is the PIM's — install the PIM keys first")))
+
+;; As ⌘⌥I does it, without a caret: a picked item records its time on the item too.
+(defn tm-clock-in (f)
+  (let (picked (or (ui-get f "cboClockItem") "")
+        typed (str-trim (or (ui-get f "txtClockTask") ""))
+        line (cond (!= typed "") (str "- " typed) (!= picked "") (str "- [ ] " picked) true ""))
+    (cond (not (tm-pim?)) (tm-need-pim)
+          (= line "") (ui-message "Pick an item or type what you're doing")
+          true (let (stopped (pim-stop-clocks) task (pim-task-at line))
+                 (insert clock (dict :task task :item (pim-item-at line) :file "" :day *date*
+                                     :start (now) :stop 0 :mins 0))
+                 (ui-set "txtClockTask" :value "")
+                 (ui-message (str "⏱ " task (cond (empty? stopped) "" true (str "  (stopped " (first stopped) ")"))))
+                 (tm-clock f)))))
+
+(defn tm-clock-out (f)
+  (if (tm-pim?)
+    (let (stopped (pim-stop-clocks))
+      (ui-message (cond (empty? stopped) "No clock running" true (str "Stopped " (first stopped))))
+      (tm-clock f))
+    (tm-need-pim)))
+
+(defn tm-clock-report (f)
+  (when (tm-pim?)
+    (ui-set "txtClockRep" :value
+      (pim-clock-report (tm-or (ui-get f "dtRepFrom") (pim-monday *date*)) (tm-or (ui-get f "dtRepTo") *date*)))))
+
+;; ── Tracker ──
+
+(defn tm-log-preview (f)
+  (let (s (ui-get f "txtLog"))
+    (ui-set "lblLogStatus" :text
+      (cond (or (tm-blank? s) (not (tm-pim?))) ""
+            true (let (p (pim-parse-log s))
+                   (str "→ " (first p) " " (nth p 1) " " (tm-or (nth p 2) (pim-unit-of (pim-kind-of (first p))))
+                        " · " (pim-kind-of (first p))))))))
+
+(defn tm-log-text (f s)
+  (if (tm-pim?)
+    (do (ui-set "lblLogStatus" :text (str "Logged " (pim-track s)))
+        (tm-tracker f))
+    (tm-need-pim)))
+
+(defn tm-log (f)
+  (let (s (ui-get f "txtLog"))
+    (if (tm-blank? s) (ui-message "What to log? coffee 2, walk 30…")
+      (do (tm-log-text f s) (ui-set "txtLog" :value "")))))
+(defn tm-log-coffee (f) (tm-log-text f "coffee 1"))
+(defn tm-log-water (f) (tm-log-text f "water 1"))
+(defn tm-log-walk (f) (tm-log-text f "walk 30"))
+
+(defn tm-tracker (f)
+  (when (tm-pim?)
+    (ui-set "grdLog" :rows
+      (map (fn (r) (dict :at (substr (field-get r :at) 11 16) :item (field-get r :item) :qty (field-get r :qty)
+                         :unit (field-get r :unit) :kind (field-get r :kind) :note (field-get r :note)))
+           (records (query log :where "day = ?" :params (list *date*) :order "at"))))
+    (ui-set "txtTrack" :value
+      (str-join "\n"
+        (map (fn (i) (let (d (date-add *date* (- 0 i) :days))
+                       (str d "  " (date-format d "EEE") "   " (pim-track-report d d))))
+             (range 0 7 1))))
+    (tm-streak f)))
+
+(defn tm-streak (f)
+  (when (tm-pim?)
+    (let (k (ui-get f "cboStreak"))
+      (ui-set "lblStreak" :text (tm-plural (pim-streak k) "day")))))
+
+;; ── Review ──
+
+(defn tm-review (f)
+  (if (tm-pim?)
+    (let (n (->number (or (ui-get f "cboDays") "7"))
+          mon (pim-monday *date*))
+      (ui-set "txtReview" :value
+        (str "## Agenda — overdue and the next " (tm-plural n "day") "\n\n" (pim-agenda n)
+             "\n\n## Someday (no date)\n\n" (pim-someday)
+             "\n\n## Inbox\n\n" (pim-inbox)
+             "\n\n## Done this week (since " mon ")\n\n" (pim-done-report mon *date*)
+             "\n\n## Time this week\n\n" (pim-clock-report mon *date*)
+             "\n\n## Tracker this week\n\n" (pim-track-report mon *date*))))
+    (ui-set "txtReview" :value "The review is built from the PIM's tables — install the PIM keys first.")))
+
+(defn tm-close (f) (ui-close))
+(defn tm-about (f)
+  (ui-message "Try the PIM — TRY ME.md as a window. ⤢ or a double-click on the title fills the app."))

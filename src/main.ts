@@ -52,9 +52,12 @@ import { aboutModal } from "./ui/about";
 import { installPim, replacePastedPim } from "./core/pim-install";
 import PIM_CONFIG from "../docs/pim/pim.eelisp?raw";
 import PIM_CAPTURE from "../docs/pim/Capture.eeform?raw";
+import PIM_TRYME from "../docs/pim/TRYME.eeform?raw";
 import DEFAULT_KEYS from "./keybindings/default.eelisp?raw";
 import { KEYBINDINGS_PATH } from "./ui/keybindings";
 
+/** Where Install the PIM keys… (and the sample notes) put the PIM's window; ⤢ on the agenda opens it. */
+const PIM_TRYME_PATH = "pim/TRYME.eeform";
 const parentDir = (p: string): string => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
 const joinPath = (dir: string, name: string): string => (dir ? `${dir}/${name}` : name);
 /** Each platform has its own name for the thing that shows you a file. */
@@ -155,9 +158,13 @@ function main(): void {
   calBtn.className = "side-btn";
   calBtn.textContent = "📅";
   calBtn.title = "Calendar";
+  const bigBtn = document.createElement("button");
+  bigBtn.className = "side-btn";
+  bigBtn.textContent = "⤢";
+  bigBtn.title = "The agenda, big — the PIM's window (pim/TRYME), maximized";
   const agendaBtns = document.createElement("span");
   agendaBtns.className = "side-head-btns";
-  agendaBtns.append(setupBtn, calBtn);
+  agendaBtns.append(setupBtn, calBtn, bigBtn);
   agendaSec.head.appendChild(agendaBtns);
 
   // theme (persisted) — applied to <html> before the editor is created
@@ -673,10 +680,11 @@ function main(): void {
    * `(ui-open "Orders")` from a form, `(ed-form "Orders")` from a keybinding or the REPL, ⧉ on a
    * running tab: run that form in a floating window.
    */
-  async function runForm(path: string, opener?: FormIdentity): Promise<void> {
+  async function runForm(path: string, opener?: FormIdentity, opts: { maximized?: boolean } = {}): Promise<void> {
     const p = isFormPath(path) ? path : path + FORM_EXT;
     const open = windows.get(p);
     if (open) {
+      if (opts.maximized) open.win.toggleMaximized(true);
       open.win.raise();
       open.runner.focus();
       return;
@@ -690,8 +698,10 @@ function main(): void {
       ...formExtras(p),
       onClose: () => closeWindow(p),
       windowed: true,
+      onMaximize: () => win.toggleMaximized(),
     });
     const win = createFormWindow(runner.el, runner.handle, p);
+    if (opts.maximized) win.toggleMaximized(true);
     windows.set(p, { runner, win });
     formHost.track(id, runner);
     await runner.start(r.spec);
@@ -883,6 +893,13 @@ function main(): void {
   calBtn.addEventListener("click", () => calendar.open());
   const agendaSetup = createAgendaSetup(engine, () => void agenda.refresh());
   setupBtn.addEventListener("click", () => agendaSetup.open());
+  // ⤢: the PIM's window if this workspace has it, else the example agenda form — maximized either way.
+  bigBtn.addEventListener("click", async () => {
+    for (const p of [PIM_TRYME_PATH, "examples/Agenda.eeform"]) {
+      if ((await ws.read(p).then(() => true, () => false))) return void runForm(p, undefined, { maximized: true });
+    }
+    toast("No agenda window here yet — right-click the workspace → Install the PIM keys… adds pim/TRYME");
+  });
 
   const openFile = async (path: string): Promise<void> => {
     const existing = tabs.findIndex((t) => t.path === path);
@@ -1539,6 +1556,16 @@ function main(): void {
         await ws.create("pim/Capture.eeform", false).catch(() => {});
         await ws.write("pim/Capture.eeform", PIM_CAPTURE);
       }
+      // The PIM's window follows EEditor's version, like the keys between the markers; a copy that
+      // differs (edited, or from an older install) is kept in .eeditor/ first.
+      const was = await ws.read(PIM_TRYME_PATH).catch(() => null);
+      if (was === null) await ws.create(PIM_TRYME_PATH, false).catch(() => {});
+      else if (was !== PIM_TRYME) {
+        const old = `.eeditor/TRYME.before-${todayISO()}.eeform`;
+        await ws.create(old, false).catch(() => {});
+        await ws.write(old, was);
+      }
+      if (was !== PIM_TRYME) await ws.write(PIM_TRYME_PATH, PIM_TRYME);
     } catch (e) {
       toast(`Could not install the PIM: ${String(e)}`);
       return;
