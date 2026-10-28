@@ -161,7 +161,7 @@ the bottom of the window. Tick the boxes here as you go — this note is only a 
 
 The keys only work in a build of EEditor that has the PIM, with this folder open as the workspace.
 
-- [ ] The window's file tree shows **dashboard.md**, **inbox.md**, **bills.md**, **projects/** and today's note. If not, use **folder…** above the tree and pick this folder.
+- [ ] The window's file tree shows **dashboard.md**, **inbox.md**, **bills.md**, **projects/** and today's note. If not, use **⋯ → Open another folder…** above the tree and pick this folder.
 - [ ] ⌘J opens the REPL. Type \`(notes)\` and press Enter: you get a list of the notes here. *Undefined symbol: notes* means the app was built before the PIM — rebuild it (below).
 - [ ] ⌘⌥K anywhere in a note: the toast says **No clock running**. That proves the PIM's keys are live.
 - [ ] Open **.eeditor/keybindings.eelisp** with ⌘⇧K. This file *is* the shortcut table: the app's own keys at the top, the PIM library below, this sample's two settings at the end.
@@ -303,7 +303,7 @@ This sample makes \`projects/\` an agenda file (the last lines of the config).
 | The dates look wrong | The sample was made on another day. Make it again (below). |
 
 ${opts.by === "app"
-    ? "**Start over:** make a new, empty folder, open it with **folder…**, and say yes to the sample notes."
+    ? "**Start over:** make a new, empty folder, open it with **⋯ → Open another folder…**, and say yes to the sample notes."
     : "**Start over:** `npm run pim:sample -- ~/pim-demo` from the repo. It deletes that folder first —\nanything you wrote there goes too."}
 `);
 

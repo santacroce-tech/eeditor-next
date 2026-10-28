@@ -5,7 +5,7 @@
 //   npm run pim:sample                 → ./pim-sample
 //   npm run pim:sample -- ~/pim-demo   → there
 //
-// Then open that folder as the workspace (folder… in the app). It starts from scratch each time:
+// Then open that folder as the workspace (⋯ → Open another folder… in the app). It starts from scratch each time:
 // the folder is deleted first.
 
 import { spawn } from "node:child_process";
@@ -55,4 +55,4 @@ child.stdin.end();
 await new Promise((res) => child.on("exit", res));
 console.log(`PIM sample: ${out}
   ${items.result} agenda items (overdue, today, repeating, inbox, undated…), notes, history, and the app's examples
-  Open that folder as the workspace (folder… in EEditor) and start with "TRY ME.md".`);
+  Open that folder as the workspace (⋯ → Open another folder… in EEditor) and start with "TRY ME.md".`);

@@ -332,10 +332,10 @@ export function showContextMenu(x: number, y: number, items: MenuItem[]): void {
   const onKey = (e: KeyboardEvent): void => {
     if (e.key === "Escape") dismiss();
   };
-  // defer so the opening click doesn't immediately dismiss it
+  // Escape works at once; the mouse waits a tick so the opening click doesn't dismiss it
+  document.addEventListener("keydown", onKey, true);
   setTimeout(() => {
     document.addEventListener("mousedown", onDown, true);
-    document.addEventListener("keydown", onKey, true);
     window.addEventListener("scroll", dismiss, true);
   }, 0);
 }
