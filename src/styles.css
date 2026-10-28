@@ -134,6 +134,19 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-s
 .markdown-body table { border-collapse: collapse; }
 .markdown-body th, .markdown-body td { border: 1px solid var(--border); padding: 4px 10px; }
 .markdown-body img { max-width: 100%; }
+/* task lines (ui/markdown.ts decorateTasks): no bullet beside the box, the markers set apart */
+.markdown-body li.task { list-style: none; margin-left: -1.2em; }
+.markdown-body li.task > input, .markdown-body li.task > p > input { margin: 0 .45em 0 0; vertical-align: -1px; }
+.markdown-body li.task-done { color: var(--muted); }
+.markdown-body .task-pri { display: inline-block; min-width: 1.6em; margin-right: .4em; padding: 0 4px; border-radius: 3px;
+  font: 700 .78em/1.5 var(--mono); text-align: center; color: var(--bg); background: var(--muted); }
+.markdown-body .task-pri-3 { background: var(--err); }
+.markdown-body .task-pri-2 { background: var(--kw); }
+.markdown-body .task-pri-1 { background: var(--accent); }
+.markdown-body .task-id { margin-left: .4em; font: .78em var(--mono); color: var(--muted); }
+.markdown-body .task-stamp { margin-left: .4em; font-size: .85em; color: var(--ok); }
+.markdown-body .task-cat { display: inline-block; margin-left: .4em; padding: 0 6px; border: 1px solid var(--border);
+  border-radius: 9px; font-size: .8em; line-height: 1.5; background: var(--bg-2); color: var(--fg); }
 /* a ```mermaid block, drawn */
 .markdown-body .mermaid-diagram { margin: 0 0 1em; text-align: center; overflow-x: auto; }
 .markdown-body .mermaid-diagram svg { max-width: 100%; height: auto; }
@@ -167,6 +180,7 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-s
 /* ── header button group ── */
 .head-right { display: flex; align-items: center; gap: 6px; }
 .user-btns { display: contents; }
+.user-btns .head-btn { white-space: nowrap; }
 
 /* ── calendar ── */
 .cal-panel { width: 380px; background: var(--bg-2); border: 1px solid var(--border);
@@ -1119,6 +1133,15 @@ body.runtime #app { min-height: 100vh; display: flex; flex-direction: column; }
 :root[data-theme="vb6"] .search-loc, :root[data-theme="vb6"] .markdown-body a, :root[data-theme="vb6"] .wikilink { color: #0000ff; }
 :root[data-theme="vb6"] .markdown-body pre, :root[data-theme="vb6"] .markdown-body code { background: #fff; }
 :root[data-theme="vb6"] .markdown-body pre { border: 1px solid #808080; }
+:root[data-theme="vb6"] .markdown-body { font-family: Tahoma, Verdana, sans-serif; } /* MS Sans Serif has no bold */
+:root[data-theme="vb6"] .markdown-body .task-pri, :root[data-theme="vb6"] .markdown-body .task-cat { border-radius: 0; }
+:root[data-theme="vb6"] .markdown-body .task-pri { color: #fff; }
+:root[data-theme="vb6"] .markdown-body .task-pri-3 { background: #800000; }
+:root[data-theme="vb6"] .markdown-body .task-pri-2 { background: #808000; }
+:root[data-theme="vb6"] .markdown-body .task-pri-1 { background: #000080; }
+:root[data-theme="vb6"] .markdown-body .task-cat { background: #c0c0c0; border-color: #808080; color: #000; }
+:root[data-theme="vb6"] .markdown-body .task-stamp { color: #008000; }
+:root[data-theme="vb6"] .markdown-body th { background: #c0c0c0; }
 :root[data-theme="vb6"] .markdown-body h1, :root[data-theme="vb6"] .markdown-body h2, :root[data-theme="vb6"] .markdown-body h3 {
   font-family: var(--vb-ui); color: #000080;
 }

@@ -1,9 +1,11 @@
-// Markdown → HTML for the preview and for PDF export, plus the two things marked can't do alone:
+// Markdown → HTML for the preview and for PDF export, plus the three things marked can't do alone:
 //
 //   • images stored in the workspace — the webview can't load a workspace path, so an image's
 //     bytes are read through the workspace client and handed to the <img> as a blob or data URL;
 //   • ```mermaid blocks, drawn as SVG. Mermaid is large, so it's loaded the first time a note
-//     actually has a diagram.
+//     actually has a diagram;
+//   • task lines read as tasks: `- [ ] !! dentist {#4}  _health_` shows its priority as a badge,
+//     the agenda id small and grey, the categories as chips — not as the punctuation they're typed in.
 //
 // Parsing is synchronous and leaves the result inert (see parseMarkdown); renderMedia then fills in
 // the images and diagrams, which is the slow, asynchronous part.
@@ -23,6 +25,7 @@ const PENDING_SRC = "data-md-src";
 export function parseMarkdown(src: string): DocumentFragment {
   const tpl = document.createElement("template");
   tpl.innerHTML = marked.parse(src) as string;
+  decorateTasks(tpl.content);
   for (const img of tpl.content.querySelectorAll("img")) {
     const s = img.getAttribute("src") ?? "";
     if (isExternalSrc(s)) continue;
@@ -30,6 +33,58 @@ export function parseMarkdown(src: string): DocumentFragment {
     img.removeAttribute("src");
   }
   return tpl.content;
+}
+
+/** What a task line carries besides its words (see docs/pim/pim.eelisp): `{#12}`, `✓ 2026-09-30`. */
+const TASK_MARK = /\s*(?:\{#(\d+)\}|✓ (\d{4}-\d\d-\d\d))/g;
+const PRIORITY = /^\s*(!{1,3})(?=\s)/;
+
+function span(cls: string, text: string): HTMLSpanElement {
+  const el = document.createElement("span");
+  el.className = cls;
+  el.textContent = text;
+  return el;
+}
+
+/** Each `- [ ]` / `- [x]` item marked as a task, its priority, id, done stamp and categories set apart. */
+function decorateTasks(root: DocumentFragment): void {
+  for (const box of root.querySelectorAll<HTMLInputElement>('li > input[type="checkbox"]:first-child, li > p:first-child > input[type="checkbox"]:first-child')) {
+    const li = box.closest("li")!;
+    li.classList.add("task");
+    if (box.checked) li.classList.add("task-done");
+    const line = box.parentElement!; // the li, or a loose list's <p>
+    const first = box.nextSibling;
+    if (first?.nodeType === Node.TEXT_NODE) {
+      const m = PRIORITY.exec(first.textContent ?? "");
+      if (m) {
+        first.textContent = (first.textContent ?? "").slice(m[0].length);
+        line.insertBefore(span(`task-pri task-pri-${m[1].length}`, m[1]), first);
+      }
+    }
+    for (const node of Array.from(line.childNodes)) {
+      if (node.nodeType !== Node.TEXT_NODE) continue;
+      const text = node.textContent ?? "";
+      TASK_MARK.lastIndex = 0;
+      if (!TASK_MARK.test(text)) continue;
+      const parts: Node[] = [];
+      let at = 0;
+      TASK_MARK.lastIndex = 0;
+      for (let m; (m = TASK_MARK.exec(text)); at = m.index + m[0].length) {
+        parts.push(document.createTextNode(text.slice(at, m.index)));
+        parts.push(m[1] !== undefined ? span("task-id", `#${m[1]}`) : span("task-stamp", `✓ ${m[2]}`));
+      }
+      parts.push(document.createTextNode(text.slice(at)));
+      node.replaceWith(...parts);
+    }
+    // `_work/admin, money_` ending a linked line: the agenda's categories, one chip each. An italic
+    // word anywhere else — or on a line with no {#id} — stays italic.
+    const last = line.lastElementChild;
+    const ends = last !== null && (last.nextSibling === null || last.nextSibling.textContent?.trim() === "");
+    if (last?.tagName === "EM" && ends && line.querySelector(".task-id")) {
+      const chips = (last.textContent ?? "").split(/,\s*/).filter((c) => c !== "").map((c) => span("task-cat", c));
+      last.replaceWith(...chips);
+    }
+  }
 }
 
 export interface MediaOptions {
