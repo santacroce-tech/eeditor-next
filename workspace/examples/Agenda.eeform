@@ -9,7 +9,7 @@
 ;;
 ;; It is the same agenda the Agenda panel and the REPL see: (items), (add …), (show …).
 
-(form "Agenda" :size (760 568) :on-load ag-load :menu (("Agenda" ("Refresh" ag-refresh) ("New item" ag-new) ("-") ("Close" ag-close)) ("Rules" ("Apply rules now" ag-apply)) ("Help" ("About" ag-about)))
+(form "Agenda" :size (760 568) :on-load ag-load :menu (("Agenda" ("Refresh" ag-refresh) ("New item" ag-new) ("Delete item" ag-delete) ("-") ("Close" ag-close)) ("Rules" ("Apply rules now" ag-apply)) ("Help" ("About" ag-about)))
   (tabs tabMain :pages ("Items" "Quick add" "Categories & rules" "Views") :at (8 8) :size (744 552))
   (label lblShow :text "Show" :page "Items" :at (20 48) :size (44 24))
   (dropdown cboShow :items ("today" "next 7 days" "overdue" "all") :value "next 7 days" :page "Items" :at (64 44) :size (132 28) :on-change ag-refresh)
@@ -25,9 +25,10 @@
   (label lblCat :text "Category" :page "Items" :at (596 152) :size (140 24))
   (dropdown cboCat :items ("") :page "Items" :at (596 176) :size (140 28))
   (textbox txtNotes :multiline true :placeholder "notes…" :page "Items" :at (480 284) :size (256 180))
-  (button btnSave :text "Save" :submit true :page "Items" :at (480 474) :size (80 30) :on-click ag-save)
-  (button btnDone :text "Done ✓" :page "Items" :at (568 474) :size (80 30) :on-click ag-done)
-  (button btnNew :text "New" :page "Items" :at (656 474) :size (80 30) :on-click ag-new)
+  (button btnSave :text "Save" :submit true :page "Items" :at (480 474) :size (58 30) :on-click ag-save)
+  (button btnDone :text "Done ✓" :page "Items" :at (546 474) :size (58 30) :on-click ag-done)
+  (button btnDelete :text "Delete" :page "Items" :at (612 474) :size (58 30) :on-click ag-delete)
+  (button btnNew :text "New" :page "Items" :at (678 474) :size (58 30) :on-click ag-new)
   (label lblStatus :page "Items" :at (480 516) :size (256 24))
   (label lblQuick :text "Type it the way you'd say it: today, tomorrow, in 3 days, 2026-10-01 · urgent or !! · @someone" :page "Quick add" :at (24 52) :size (708 24))
   (textbox txtQuick :placeholder "call Bob tomorrow !! @bob" :page "Quick add" :at (24 84) :size (600 30) :on-change ag-preview)
@@ -56,6 +57,8 @@
 
 ;; The item in the editor, by id — nil while it holds a new one.
 (def ag-id nil)
+;; The item a first click on Delete asked about; a second click on it deletes.
+(def ag-armed nil)
 
 (defn ag-today () (date-format (today) "yyyy-MM-dd"))
 (defn ag-blank? (s) (or (nil? s) (= (str-trim s) "")))
@@ -92,6 +95,7 @@
     (when row
       (let (it (item->dict (item-get (dict-get row "id"))))
         (set! ag-id (dict-get it "id"))
+        (set! ag-armed nil)
         (ui-set "lblEdit" :text (str "Item #" ag-id))
         (ui-set "txtText" :value (dict-get it "text"))
         (ui-set "dtWhen" :value (or (dict-get it "when") ""))
@@ -102,6 +106,7 @@
 
 (defn ag-new (f)
   (set! ag-id nil)
+  (set! ag-armed nil)
   (ui-set "lblEdit" :text "New item")
   (for-each c '("txtText" "dtWhen" "cboCat" "txtNotes") (ui-set c :value ""))
   (ui-set "optPri" :value "none")
@@ -135,6 +140,23 @@
         (ui-set "lblStatus" :text "Done ✓")
         (ag-new f)
         (ag-refresh f)))))
+
+;; Delete: gone for good — a recurring item too, with no next date. There is no item-delete, so
+;; it is the table's own soft delete on _items, which is what item-done does first. Two clicks,
+;; since a form has no confirm dialog.
+(defn ag-delete (f)
+  (let (row (ui-get f "grdItems")
+        id (or ag-id (and row (dict-get row "id"))))
+    (cond
+      (nil? id) (ui-message "Pick an item first")
+      (not (= ag-armed id)) (do
+                              (set! ag-armed id)
+                              (ui-set "lblStatus" :text (str "Delete #" id "? Click Delete again")))
+      true (do
+             (delete _items id)
+             (ag-new f)
+             (ui-set "lblStatus" :text (str "Deleted #" id))
+             (ag-refresh f)))))
 
 ;; ── Quick add ──
 
