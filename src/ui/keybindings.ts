@@ -6,7 +6,7 @@
 // Dispatch runs on the document in the *capture* phase, so a bound key wins over CodeMirror's own
 // bindings — and unbinding a key in the config hands it straight back to CodeMirror.
 
-import { parseKeybindings, eventKeyId, lispString, clockDefs, EMPTY_BODY, type Binding, type StartHook } from "../core/keybindings";
+import { parseKeybindings, eventKeyId, lispString, clockDefs, EMPTY_BODY, type Binding, type Button, type StartHook } from "../core/keybindings";
 import type { EngineClient } from "../engine/client";
 import type { WorkspaceClient } from "../engine/workspace";
 import type { JsonValue } from "../engine/types";
@@ -38,6 +38,10 @@ export interface Keybindings {
   applyResult(v: JsonValue): boolean;
   /** Run the config's `(on-tick …)` forms now — what the minute timer does. For tests and the REPL. */
   tick(): Promise<void>;
+  /** The config's `(button …)` forms, in order. */
+  buttons(): Button[];
+  /** Click a button: its key's binding as it is now, or its own body. */
+  press(button: Button): Promise<void>;
 }
 
 export interface KeybindingsOptions {
@@ -72,6 +76,8 @@ export interface KeybindingsOptions {
   appendFile?: (path: string, text: string, heading?: string) => Promise<void>;
   /** `(ed-notify title [body])`: tell the person, even when EEditor isn't in front. */
   notify?: (title: string, body: string) => void;
+  /** The `(button …)` forms changed — at launch and on every reload — so the header redraws them. */
+  onButtons?: (buttons: Button[]) => void;
 }
 
 /** Editor commands the engine may hand back (the `ed-*` constructors in prelude.eelisp). */
@@ -115,6 +121,7 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
   let map = new Map<string, Binding>();
   let start: StartHook | undefined;
   let ticks: StartHook[] = [];
+  let buttons: Button[] = [];
   let preludeLoaded = false;
 
   // ── config ──
@@ -136,6 +143,8 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
     map = new Map(bindings.map((b) => [b.id, b]));
     start = parsed.start;
     ticks = parsed.tick;
+    buttons = parsed.buttons;
+    opts.onButtons?.(buttons);
     for (const e of errors) opts.note(`; keybindings: ${e}`);
     if (errors.length > 0) toast(`keybindings: ${errors.length} problem(s) — see the REPL`);
     // (on-load …) is a library: what it defines is what the bindings call, so it runs before any
@@ -376,6 +385,14 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
     if (apply(env.result)) (opts.focus ?? (() => editor.view.focus()))();
   }
 
+  async function press(button: Button): Promise<void> {
+    if (button.key === undefined) return run(button);
+    const binding = map.get(button.key);
+    if (binding) return run(binding);
+    opts.note(`; button "${button.label}" (line ${button.line}): nothing is bound to ${button.spec}`);
+    toast(`"${button.label}": nothing is bound to ${button.spec}`);
+  }
+
   // ── dispatch ──
 
   document.addEventListener(
@@ -451,5 +468,7 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
       return true;
     },
     tick,
+    buttons: () => [...buttons],
+    press,
   };
 }

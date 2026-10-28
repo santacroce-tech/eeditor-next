@@ -49,6 +49,10 @@
 ;; (on-tick body…) runs once a minute, on the minute, with the same context as a key, and its
 ;; commands are carried out — (ed-notify …) for a reminder, say. Keep it quick.
 ;;
+;; (button "label" "Key") puts a button in the editor's header, beside the theme button, that does
+;; what that key does: (button "↻ update" "Mod-Alt-u"). Or give it a body, as a bind takes:
+;; (button "today" (ed-cmd "daily-note")). Buttons appear in the order they're written.
+;;
 ;; There may be several on-load and on-tick forms; each runs, in order.
 ;;
 ;; Context, defined fresh before every run:
