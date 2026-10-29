@@ -126,7 +126,8 @@
         <h3>Find anything</h3>
         <p>
           Fuzzy quick-open on <kbd>⌘P</kbd>, full-text search across the workspace on
-          <kbd>⌘⇧F</kbd>, and a <code>#hashtag</code> index that doubles as a filter.
+          <kbd>⌘⇧F</kbd>, and a <code>#hashtag</code> index — nested tags, each tag's notes, and a
+          block of links to them in any note.
         </p>
       </div>
 
@@ -143,8 +144,11 @@
         <span class="ico">◷</span>
         <h3>An organizer, not a to-do list</h3>
         <p>
-          Items with dates, priorities and notes; hierarchical categories; recurrence; a calendar
-          you can drag things around in; and rules that file new items for you.
+          Items with dates, priorities and notes; hierarchical categories, counted in the sidebar;
+          recurrence; a calendar you can drag things around in; a kanban board of your categories;
+          and rules that file new items for you. Tasks typed in a note <em>are</em> agenda items,
+          and any list can live in a note, kept fresh with a key.
+          <a href="manual.html#agenda">How the agenda works →</a>
         </p>
       </div>
 
@@ -173,8 +177,8 @@
         <h3>Forms you draw, tables you keep</h3>
         <p>
           A form designer in the Visual Basic tradition: drop buttons, boxes and grids on a
-          canvas, attach EELisp to their events, run it over your tables — in a tab, or in a
-          window beside your notes. And <code>browse</code> still renders a real table.
+          canvas, attach EELisp to their events, run it over your tables — in a tab, in a
+          window beside your notes, or in the sidebar. Grids, tabs, a kanban board, a live sheet. And <code>browse</code> still renders a real table.
         </p>
         <p>
           Export one as a single HTML file that runs in any browser, offline —
@@ -219,6 +223,8 @@
       <p>
         The caret, the selection, the whole buffer, the date and the time are all bound as
         variables before your code runs. Anything the standard library defines is callable too.
+        The same file lays out the buttons above the editor, and puts forms of your own in the
+        sidebar — <code>(panel "agenda" "my-agenda.eeform")</code>.
         <a href="manual.html#keybindings">The full binding reference is in the manual.</a>
       </p>
     </div>

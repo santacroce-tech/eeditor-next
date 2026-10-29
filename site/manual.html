@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>EEditor manual</title>
-<meta name="description" content="The complete EEditor manual: workspace, editor, search, wiki links, the agenda, the EELisp REPL, and the keybinding language.">
+<meta name="description" content="The complete EEditor manual: workspace, editor, search, wiki links, the agenda and its board, forms, the EELisp REPL, and the keybinding language.">
 <link rel="icon" type="image/png" href="assets/favicon.png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <link rel="stylesheet" href="assets/style.css">
@@ -68,9 +68,17 @@
       your keybindings.
     </p>
     <p>
-      On first launch EEditor picks a default folder and opens it. To use a different one, press
-      <strong>open…</strong> at the top of the file tree and choose any directory — a git
+      On first launch EEditor picks a default folder and opens it. To use a different one, choose
+      <strong>⋯ → Open another folder…</strong> above the file tree and pick any directory — a git
       repository, a synced folder, an external disk. The choice survives restarts.
+    </p>
+    <h3>Several windows</h3>
+    <p>
+      Each window is one workspace. <strong>File → New Window…</strong> (<kbd>⌃⌘N</kbd>) or
+      <strong>⋯ → Open a folder in a new window…</strong> opens another folder beside the first, with
+      its own notes, agenda, database and keybindings — one for work and one for testing, say. Opening a
+      folder that already has a window brings that window forward. The windows open at the next launch
+      are the ones open now; closing one closes just that one, and quitting saves them all.
     </p>
     <p>
       Because the workspace is just a folder, everything you already do with folders keeps working:
@@ -79,9 +87,10 @@
     </p>
     <div class="note">
       <p>
-        <strong>What EEditor stores outside your notes:</strong> the agenda database (items,
-        categories, rules) and any tables you create in EELisp live in an SQLite file in the
-        application's own data directory — not in your workspace. Your notes are never inside it.
+        <strong>What EEditor stores beside your notes:</strong> the agenda database (items,
+        categories, rules) and any tables you create in EELisp live in one SQLite file,
+        <code>.eeditor/eeditor.db</code> in the workspace, next to your keybindings. Your notes are
+        never inside it — they stay Markdown files you can read without EEditor.
       </p>
     </div>
   </div></div>
@@ -249,6 +258,23 @@ sequenceDiagram
       in the sidebar, with a count. Clicking a tag opens full-text search filtered to it, which is
       the fastest way to see everything you marked <code>#idea</code> or <code>#invoice</code>.
     </p>
+    <p>
+      With the PIM installed (see <a href="#agenda">the agenda</a>) the tags section is a form,
+      <code>pim/Tags.eeform</code>: a box to narrow the list, every tag with how many notes have it —
+      <code>#work/l2l</code> nested under <code>work</code>, whose count takes in its children's — and
+      the notes with the tag you pick. Click one to open it. It refreshes when a note is saved.
+    </p>
+    <h3>Links to a tag's notes, in a note</h3>
+    <p>
+      <kbd>⌘⌥B</kbd> asks for a tag and writes a block at the caret with a <code>[[link]]</code> to
+      every note that has it — the note itself left out. <strong>⇩ links into the note</strong> in the
+      tags panel does the same for the tag picked. <kbd>⌘⌥U</kbd> brings it up to date after you tag
+      another note.
+    </p>
+<pre><code>&lt;!-- eel: (pim-tagged <span class="st">"work"</span>) --&gt;
+- [[2026-10-28]]
+- [[site]] · projects
+&lt;!-- /eel --&gt;</code></pre>
   </div></div>
 </section>
 
@@ -319,6 +345,15 @@ sequenceDiagram
       The box at the top of the agenda panel takes plain language and parses it —
       <em>call Bob tomorrow !!</em> becomes an item due tomorrow at high priority. Dates, priorities
       and people are recognised as you write them.
+    </p>
+
+    <h3>Tasks typed in notes</h3>
+    <p>
+      A <code>- [ ] …</code> line typed in a note is only text until it is linked to an item — it
+      gets a <code>{#12}</code> at its end when it is. Under its items the agenda panel lists the
+      lines that aren't yet, in a folding group, <em>in notes, not in the agenda · N</em>, by note.
+      Click one to open its note at that line; <strong>＋</strong> makes it an item and links the
+      line. Lines inside <code>```</code> fences are examples and are left out.
     </p>
 
     <h3>Editing an item</h3>
@@ -393,6 +428,64 @@ sequenceDiagram
       <em>No clock running</em> says they're live. The
       <a href="https://github.com/santacroce-tech/eeditor-next/blob/main/docs/PIM.md">PIM guide</a> has
       every key and function.
+    </p>
+
+    <h3>The sidebar's agenda, as a form</h3>
+    <p>
+      The PIM draws the agenda section as a form, <code>pim/Side.eeform</code>, in place of the
+      built-in list: a quick-add box (the PIM's own reading of the line — <code>#tags</code> become
+      categories, text after <code>|</code> its notes), <em>N overdue · N today · N open</em>, every
+      category with how many open items it holds — children indented under their parent, the parent's
+      count taking theirs in — and the items by date, overdue first. Pick a category to list only its
+      items. <strong>✓ done</strong> finishes the one picked; <strong>⤢ agenda</strong> opens the
+      big window. The <em>in notes</em> group stays under it.
+    </p>
+    <p>
+      It is an ordinary form, put there by one line in your keybindings —
+      <code>(panel "agenda" "pim/Side.eeform")</code>, see <a href="#panels">panels</a>. Open it in
+      the designer to change what it shows, point the line at a form of your own, or take it out for
+      the built-in list.
+    </p>
+
+    <h3>The agenda, big</h3>
+    <p>
+      <strong>⤢</strong> above the sidebar's agenda opens <code>pim/Agenda.eeform</code> filling the
+      window — the PIM as one interface, a tab each: <em>Start here</em> (is it all live, every key),
+      <em>Agenda</em> (quick add, filters, an editor for one item), <em>Board</em>, <em>In
+      notes</em>, <em>Capture</em>, <em>Clock</em>, <em>Tracker</em> and <em>Review</em>. ⤢ in its
+      title bar, or a double-click on the title, gives the room back.
+    </p>
+
+    <h3>A board</h3>
+    <p>
+      The <em>Board</em> tab is a kanban of your categories. Pick one under <em>Columns</em> and its
+      children are the columns — <code>work/l2l</code>, <code>work/admin</code>, then
+      <code>work</code> itself for what is filed under it alone — or the top-level categories, with
+      <em>no category</em> last. An item shows once, in the first column that holds it. Drag a card to
+      another column, or press <kbd>⌥←</kbd> / <kbd>⌥→</kbd> on the one picked, and the item is
+      refiled: out of the categories that put it in the column it left, under the new one.
+      Double-click a card to edit it.
+    </p>
+
+    <h3>Lists in a note</h3>
+    <p>
+      Any of the agenda's lists can live in a note, as a block that <kbd>⌘⌥U</kbd> recomputes: the
+      expression goes in the opening line, its result between the two. The preview draws it and the
+      PDF prints it.
+    </p>
+<pre><code>&lt;!-- eel: (pim-category <span class="st">"work"</span>) --&gt;
+&lt;!-- /eel --&gt;</code></pre>
+    <div class="table-wrap"><table>
+      <tr><th>Block</th><th>Shows</th></tr>
+      <tr><td><code>(pim-agenda 7)</code></td><td>overdue, then the next seven days, as task lines — <kbd>⌘⌥W</kbd> inserts it</td></tr>
+      <tr><td><code>(pim-category "work")</code></td><td>the items in a category and its children</td></tr>
+      <tr><td><code>(pim-someday)</code> · <code>(pim-inbox)</code></td><td>the undated items · what capture put in the inbox</td></tr>
+      <tr><td><code>(pim-board "work")</code></td><td>the board as a table, a column per child category — <strong>⇩ Into the note</strong> on the Board tab inserts it</td></tr>
+      <tr><td><code>(pim-tagged "work")</code></td><td>a link to each note with the tag — <kbd>⌘⌥B</kbd> inserts it</td></tr>
+    </table></div>
+    <p>
+      The task lines a block writes are the items themselves, <code>{#12}</code> and all:
+      <kbd>⌘⌥T</kbd> on one there finishes it in the agenda.
     </p>
   </div></div>
 </section>
@@ -739,6 +832,7 @@ sequenceDiagram
       <tr><td><code>radio</code></td><td>the chosen one of <code>:items</code></td><td></td></tr>
       <tr><td><code>dropdown</code> · <code>listbox</code></td><td>the chosen one of <code>:items</code></td><td>a listbox also fires <code>on-dblclick</code></td></tr>
       <tr><td><code>grid</code></td><td>the selected row, a dict</td><td><code>:columns</code>; <code>:rows</code> from a query; <code>:sortable</code> headers; a <code>:filter</code> box; <code>:page-size</code> pages; <code>:editable</code> cells, with <code>on-edit</code> handed the row as edited</td></tr>
+      <tr><td><code>board</code></td><td>the card picked, a dict</td><td>a kanban: <code>:rows</code> as cards in a column per value of their <code>:lane-by</code> field; <code>:lanes</code> orders the columns; <code>:card</code> and <code>:sub</code> name what a card shows. A drag to another column, or <kbd>⌥←</kbd>/<kbd>⌥→</kbd>, fires <code>on-move</code> with <code>$from</code> and <code>$to</code></td></tr>
       <tr><td><code>date</code></td><td><code>:value</code>, <code>yyyy-mm-dd</code></td><td><code>:min</code>, <code>:max</code></td></tr>
       <tr><td><code>image</code></td><td><code>:src</code></td><td>a path beside the form, like a note's <code>assets/x.png</code></td></tr>
       <tr><td><code>tabs</code></td><td>the open one of <code>:pages</code></td><td>see <em>pages</em> below</td></tr>
@@ -746,8 +840,8 @@ sequenceDiagram
       <tr><td><code>timer</code></td><td></td><td>invisible; fires <code>on-tick</code> every <code>:interval</code> ms while enabled</td></tr>
     </table></div>
     <p>
-      Every control has a name, <code>:at</code>, <code>:size</code>, <code>:enabled</code> and
-      <code>:visible</code>. Events are properties naming a function: <code>:on-click</code> for a
+      Every control has a name, <code>:at</code>, <code>:size</code>, <code>:enabled</code>,
+      <code>:visible</code> and <code>:anchor</code> (see <em>Maximizing</em> below). Events are properties naming a function: <code>:on-click</code> for a
       button, <code>:on-change</code> for anything with a value, <code>:on-load</code> for the form.
       The order of the controls in the file is the Tab order when it runs; the properties panel has
       <em>earlier</em> and <em>later</em> buttons to move one.
@@ -781,6 +875,38 @@ sequenceDiagram
       on a running tab. The window floats over the app, drags by its title bar, and comes back where
       you left it. <code>(ui-open …)</code> from another form opens one the same way.
     </p>
+    <h3>Maximizing, and controls that stretch</h3>
+    <p>
+      <strong>⤢</strong> in a window's title bar — or a double-click on the title — fills the app
+      with it, and EEditor remembers that per form. The form is still drawn at its
+      <code>:size</code>; <code>:anchor</code> says which sides of the form a control keeps its
+      distance to when there is more room. Anchored left <em>and</em> right it grows wider, right
+      only it moves with the right edge, and the same for top and bottom. Unset is
+      <code>"tl"</code>: it stays where it was drawn. So a grid is <code>"tlbr"</code>, the buttons
+      under it <code>"lb"</code>, an editor down the right <code>"tr"</code>.
+    </p>
+<pre><code>(grid grdItems :columns (<span class="st">"text"</span> <span class="st">"when"</span>) :at (20 136) :size (660 496) :anchor <span class="st">"tlbr"</span>)
+(button btnSave :text <span class="st">"Save"</span> :at (700 612) :size (72 30) :anchor <span class="st">"rb"</span>)</code></pre>
+    <h3 id="panels">A form in the sidebar</h3>
+    <p>
+      A <code>(panel …)</code> line in your keybindings draws a form in the sidebar.
+      <code>"agenda"</code> puts it in the agenda section, in place of the built-in list;
+      <code>"tags"</code> in the tags section, in place of the cloud; any other name makes a section
+      of its own.
+    </p>
+<pre><code>(panel <span class="st">"agenda"</span> <span class="st">"pim/Side.eeform"</span>)
+(panel <span class="st">"tags"</span> <span class="st">"pim/Tags.eeform"</span>)
+(panel <span class="st">"Habits"</span> <span class="st">"habits.eeform"</span>)   <span class="cm">; a section of its own</span></code></pre>
+    <p>
+      There it has no title bar and is as wide as the section — anchor its controls
+      <code>"tlr"</code> to stretch with it. Its <code>:on-refresh</code> handler runs whenever the
+      agenda may have changed (a key, the REPL, another form) and when a note is saved, which is how it
+      stays current; it doesn't redraw while you are typing in it. Saving the form's file runs the new
+      version there, and taking the line out brings back what the section had.
+    </p>
+<pre><code>(form <span class="st">"Count"</span> :size (224 48) :on-load fill :on-refresh fill
+  (label lblCount :at (8 8) :size (208 24) :anchor <span class="st">"tlr"</span>))
+(defn fill (f) (ui-set <span class="st">"lblCount"</span> :text (str (item-count) <span class="st">" items"</span>)))</code></pre>
 
     <h3>Menus, pages, and a sheet in a form</h3>
     <p>
@@ -1136,6 +1262,29 @@ zzalinhar — function
       </small>
     </p>
 
+    <h3>The header's buttons</h3>
+    <p>
+      The buttons above the editor are the file's <code>(button …)</code> lines, left to right in the
+      order they are written. A button can press a key, run a body as a binding does, or run one of
+      the app's commands — and one that runs a command may leave its label out: EEditor labels it,
+      hides it where it can't work, and shows it pressed while it is on. Delete a line and the button
+      goes; move it and it moves.
+    </p>
+<pre><code>(button <span class="st">"↻ update"</span> <span class="st">"Mod-Alt-u"</span>)        <span class="cm">; does what ⌘⌥U does</span>
+(button <span class="st">"today"</span> (ed-cmd <span class="st">"daily-note"</span>))  <span class="cm">; a body, as a bind takes</span>
+(button (ed-cmd <span class="st">"toggle-theme"</span>))         <span class="cm">; labelled by the app</span>
+(button (ed-cmd <span class="st">"insert-image"</span>))
+(button (ed-cmd <span class="st">"toggle-preview"</span>))
+(button (ed-cmd <span class="st">"export-pdf"</span>))
+(button (ed-cmd <span class="st">"open-keys"</span>))
+(button (ed-cmd <span class="st">"toggle-repl"</span>))</code></pre>
+    <p>
+      A file with none of those six command buttons — one written before they were buttons — gets
+      them anyway, after its own. Write one of them and the header is yours.
+      <code>(panel …)</code> lines draw forms in the sidebar: see <a href="#panels">a form in the
+      sidebar</a>.
+    </p>
+
     <h3>Choosing what opens at launch</h3>
     <p>
       <code>(on-start …)</code> runs the same kind of commands once, after the workspace loads. With
@@ -1171,7 +1320,7 @@ zzalinhar — function
       <tr><td><code>toggle-repl</code> / <code>focus-repl</code></td><td>show/hide the REPL, or jump into it</td></tr>
       <tr><td><code>focus-editor</code></td><td>put the caret back in the document</td></tr>
       <tr><td><code>toggle-preview</code></td><td>editor ⇄ rendered Markdown</td></tr>
-      <tr><td><code>toggle-theme</code></td><td>light ⇄ dark</td></tr>
+      <tr><td><code>toggle-theme</code></td><td>dark → light → VB6 → dark</td></tr>
       <tr><td><code>export-pdf</code></td><td>print the current note to PDF</td></tr>
       <tr><td><code>insert-image</code></td><td>pick images; each is copied into <code>assets/</code> beside the note and linked</td></tr>
       <tr><td><code>snippets</code></td><td>load the standard EELisp bundle</td></tr>
@@ -1179,6 +1328,7 @@ zzalinhar — function
       <tr><td><code>agenda-setup</code></td><td>categories and rules panel</td></tr>
       <tr><td><code>agenda-refresh</code></td><td>re-read the agenda panel — after a script changed items behind its back</td></tr>
       <tr><td><code>close-tab</code> / <code>next-tab</code> / <code>prev-tab</code></td><td>tab management</td></tr>
+      <tr><td><code>new-window</code></td><td>open another folder in a window of its own</td></tr>
     </table></div>
 
     <h3>Worked examples</h3>
@@ -1249,8 +1399,15 @@ zzalinhar — function
       <tr><td><kbd>⌘⇧↵</kbd></td><td>Run the selection as EELisp, or the <code>eelisp</code> block at the caret</td></tr>
       <tr><td><kbd>⌘↵</kbd></td><td>Evaluate in the REPL</td></tr>
       <tr><td><kbd>⌘</kbd>-click</td><td>Follow a wiki link from the editor</td></tr>
+      <tr><td><kbd>⌃⌘N</kbd></td><td>New window, on another folder (the File menu's)</td></tr>
     </table></div>
-    <p>Every one of these is a line in your keybindings file, and every one can be changed.</p>
+    <p>
+      Every one of these but the last is a line in your keybindings file, and every one can be
+      changed. The PIM adds its own <kbd>⌘⌥</kbd> keys — <kbd>⌘⌥T</kbd> a task, <kbd>⌘⌥U</kbd>
+      update the blocks, <kbd>⌘⌥B</kbd> links to a tag's notes and the rest; the
+      <a href="https://github.com/santacroce-tech/eeditor-next/blob/main/docs/PIM.md">PIM guide</a>
+      lists them all.
+    </p>
   </div></div>
 </section>
 

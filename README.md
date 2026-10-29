@@ -100,11 +100,11 @@ src/
   ui/
     editor.ts    CodeMirror 6 editor; switchable theme (one-dark / solarized-light); ⌘⇧⏎ runs the selection or the ```eelisp block
     sidebar.ts   workspace file tree (click to open) + flat file list for quick-open
-    agenda.ts    agenda panel — `(items)` table + smart-`(add …)` quick-add
+    agenda.ts    agenda panel — `(items)` table + smart-`(add …)` quick-add, the notes' unlinked `- [ ]` lines; or a `(panel "agenda" …)` form
     calendar.ts  📅 month grid (calendar.ts) with agenda-item dots (items-between/on) → click a day
     quickopen.ts ⌘/Ctrl+P fuzzy file palette (over fuzzy.ts)
     search.ts    ⌘/Ctrl+Shift+F full-text search modal (over search.ts) → open at line
-    tagspanel.ts workspace tag cloud (over tags.ts)
+    tagspanel.ts workspace tag cloud (over tags.ts); or a `(panel "tags" …)` form
     repl.ts      REPL: scrollback + `run(src)` (reused by in-editor block execution); hide/show (λ, ⌘J)
     results.ts   RenderModel → DOM (table + form widgets)
     keybindings.ts  runs a binding: built-in command, or lisp on the engine → editor commands
@@ -135,13 +135,15 @@ after any REPL, snippet or keybinding evaluation the sheet on screen reloads if 
 ### Forms are EELisp on a canvas
 
 A `.eeform` opens in a **form designer** in the Visual Basic tradition: a toolbox (label, text box,
-button, check box, radio group, dropdown, list box, grid, date, image, timer, tabs, a live sheet), a canvas to drop them on with
+button, check box, radio group, dropdown, list box, grid, a kanban board, date, image, timer, tabs, a live sheet), a canvas to drop them on with
 marquee selection, alignment and copy/paste, a properties panel, and *design · code · run* at the top. The file is EELisp text — one `(form …)` holding the layout, which
 the designer writes, followed by your `(deftable …)` and the handlers its events name. Double-click
 a button and its `(defn btnSave-click (f) …)` is written for you; a handler reads the form as a
 dict — `(ui-get f "txtName")` — and queues changes — `(ui-set "grdAll" :rows (query contacts))`.
 *Run* evaluates the file and shows real controls over the workspace's database; `(ed-form "Contacts")`
-from a shortcut or the REPL opens it in a floating window beside your notes. `workspace/Contacts.eeform`
+from a shortcut or the REPL opens it in a floating window beside your notes (⤢ maximizes it; `:anchor`
+controls stretch), and a `(panel "agenda" "pim/Side.eeform")` line in the keybindings draws one in the
+sidebar. `workspace/Contacts.eeform`
 is the worked example; `docs/FORMS.md` has the plan and the reference.
 
 ### Keyboard shortcuts are a lisp file
