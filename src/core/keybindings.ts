@@ -8,6 +8,7 @@
 //   (on-load (defn my-helper (x) …))       ; at launch and on every reload — a library
 //   (on-tick (my-reminders))               ; once a minute
 //   (button "↻ update" "Mod-Alt-u")         ; a button in the editor's header that presses ⌘⌥U
+//   (panel "agenda" "pim/Side.eeform")      ; a form drawn in the sidebar — here, as the agenda
 //
 // We only parse far enough to pull out the key and the *source text* of the body — the body itself
 // is EELisp and is evaluated by the engine when the key fires. Wrapping it in `(list …)` means a
@@ -48,6 +49,18 @@ export interface Button extends Body {
   line: number;
 }
 
+/**
+ * `(panel "agenda" "pim/Side.eeform")`: a form drawn in the sidebar. "agenda" puts it in the agenda
+ * section, in place of the built-in list; any other name is a section of its own, under the agenda.
+ */
+export interface Panel {
+  /** The section: "agenda", or the title of a new one. */
+  name: string;
+  /** The form, from the workspace's top — `.eeform` implied. */
+  path: string;
+  line: number;
+}
+
 /** What `(on-start …)` runs when the workspace has finished loading. */
 export interface StartHook extends Body {
   line: number;
@@ -66,6 +79,8 @@ export interface ParsedConfig {
   tick: StartHook[];
   /** Every `(button …)`, in the order they're written — the order they appear in. */
   buttons: Button[];
+  /** Every `(panel …)`, in order — one per section, the last one written for a name winning. */
+  panels: Panel[];
   errors: string[];
 }
 
@@ -252,16 +267,18 @@ function parseForm(
   | { start: StartHook }
   | { hook: Hook; body: StartHook }
   | { button: Button }
+  | { panel: Panel }
   | { error: string } {
   const inner = form.text.slice(1, -1);
-  const head = /^\s*(bind|button|on-start|on-load|on-tick)(?=[\s)]|$)/.exec(inner);
+  const head = /^\s*(bind|button|panel|on-start|on-load|on-tick)(?=[\s)]|$)/.exec(inner);
   if (!head) {
     const what = form.text.slice(0, 40).replace(/\s+/g, " ");
     return {
-      error: `line ${form.line}: expected (bind "Key" …), (button "Label" …), (on-start …), (on-load …) or (on-tick …), got ${what}…`,
+      error: `line ${form.line}: expected (bind "Key" …), (button "Label" …), (panel "agenda" "Form"), (on-start …), (on-load …) or (on-tick …), got ${what}…`,
     };
   }
   if (head[1] === "button") return parseButton(inner, head[0].length, form.line, mac);
+  if (head[1] === "panel") return parsePanel(inner, head[0].length, form.line);
   if (head[1] !== "bind") {
     const body = { ...compileBody(inner.slice(head[0].length).trim()), line: form.line };
     return head[1] === "on-start" ? { start: body } : { hook: head[1] as Hook, body };
@@ -309,6 +326,23 @@ function parseButton(inner: string, from: number, line: number, mac: boolean): {
   return { button: { ...compileBody(body), label: label.value, command: commandOf(body), spec: label.value, line } };
 }
 
+/** `(panel "name" "form")` — two strings, nothing else: the form is drawn, not run as a body. */
+function parsePanel(inner: string, from: number, line: number): { panel: Panel } | { error: string } {
+  const strings: string[] = [];
+  let i = from;
+  for (;;) {
+    while (i < inner.length && /\s/.test(inner[i])) i++;
+    if (i >= inner.length) break;
+    const s = inner[i] === '"' ? readString(inner, i) : null;
+    if (!s) return { error: `line ${line}: a panel is (panel "agenda" "pim/Side.eeform") — two quoted strings` };
+    strings.push(s.value);
+    i = s.end;
+  }
+  const [name, path] = strings.map((x) => x.trim());
+  if (strings.length !== 2 || !name || !path) return { error: `line ${line}: a panel is (panel "agenda" "pim/Side.eeform") — a section and a form` };
+  return { panel: { name, path: /\.eeform$/i.test(path) ? path : path + ".eeform", line } };
+}
+
 /** The app commands the header has always had a button for. */
 export const HEADER_COMMANDS = ["toggle-theme", "insert-image", "toggle-preview", "export-pdf", "open-keys", "toggle-repl"];
 
@@ -333,15 +367,20 @@ export function parseKeybindings(src: string, mac: boolean = isMacPlatform()): P
   const load: StartHook[] = [];
   const tick: StartHook[] = [];
   const buttons: Button[] = [];
+  const panels = new Map<string, Panel>();
   for (const form of forms) {
     const r = parseForm(form, mac);
     if ("error" in r) errors.push(r.error);
     else if ("button" in r) buttons.push(r.button);
+    else if ("panel" in r) {
+      panels.delete(r.panel.name.toLowerCase()); // the last one for a section wins, in its place
+      panels.set(r.panel.name.toLowerCase(), r.panel);
+    }
     else if ("start" in r) start = r.start;
     else if ("hook" in r) (r.hook === "on-load" ? load : tick).push(r.body);
     else byId.set(r.binding.id, r.binding);
   }
-  return { bindings: [...byId.values()], start, load, tick, buttons, errors };
+  return { bindings: [...byId.values()], start, load, tick, buttons, panels: [...panels.values()], errors };
 }
 
 // ── emitting lisp ──────────────────────────────────────────────────────────

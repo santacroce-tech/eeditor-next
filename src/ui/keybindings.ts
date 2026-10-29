@@ -6,7 +6,7 @@
 // Dispatch runs on the document in the *capture* phase, so a bound key wins over CodeMirror's own
 // bindings — and unbinding a key in the config hands it straight back to CodeMirror.
 
-import { parseKeybindings, headerButtons, eventKeyId, lispString, clockDefs, EMPTY_BODY, type Binding, type Button, type StartHook } from "../core/keybindings";
+import { parseKeybindings, headerButtons, eventKeyId, lispString, clockDefs, EMPTY_BODY, type Binding, type Button, type Panel, type StartHook } from "../core/keybindings";
 import type { EngineClient } from "../engine/client";
 import type { WorkspaceClient } from "../engine/workspace";
 import type { JsonValue } from "../engine/types";
@@ -80,6 +80,11 @@ export interface KeybindingsOptions {
   notify?: (title: string, body: string) => void;
   /** The `(button …)` forms changed — at launch and on every reload — so the header redraws them. */
   onButtons?: (buttons: Button[]) => void;
+  /**
+   * The `(panel …)` forms, after every reload — once the `(on-load …)` library has run, since a
+   * panel's handlers call it. The sidebar draws them.
+   */
+  onPanels?: (panels: Panel[]) => void;
 }
 
 /** Editor commands the engine may hand back (the `ed-*` constructors in prelude.eelisp). */
@@ -160,6 +165,7 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
         toast(`on-load (line ${hook.line}): ${env.error}`);
       }
     }
+    opts.onPanels?.(parsed.panels);
     lastTickError = "";
     schedule();
   }

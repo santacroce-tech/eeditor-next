@@ -278,6 +278,14 @@ describe(":main and :on-public on a form", () => {
     expect(again.spec).toEqual(r.spec);
   });
 
+  it("reads and writes :on-refresh, the handler a sidebar panel reruns", () => {
+    const r = readFormSpec(`(form "Side" :size (224 400) :on-load fill :on-refresh fill)`);
+    if ("error" in r) throw new Error(r.error);
+    expect(r.spec.onRefresh).toBe("fill");
+    expect(r.spec.extra).toEqual([]);
+    expect(printFormSpec(r.spec)).toBe(`(form "Side" :size (224 400) :on-load fill :on-refresh fill)`);
+  });
+
   it("leaves :main out when it isn't one, and reads an unknown frame mode as screens", () => {
     const r = readFormSpec(`(form "F" :size (100 100) :main false (frame f :mode "cards" :at (0 0) :size (10 10)))`);
     if ("error" in r) throw new Error(r.error);

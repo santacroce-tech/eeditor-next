@@ -63,6 +63,18 @@ report), *Tracker* and *Review*. Install the PIM keys… puts it there (a copy t
 `.eeditor/Agenda.before-<date>.eeform` first, and an older install's `pim/TRYME.eeform` is moved there
 too); without it, ⤢ opens `examples/Agenda.eeform`.
 
+**The sidebar's agenda is a form.** The PIM's `(panel "agenda" "pim/Side.eeform")` line draws
+`pim/Side.eeform` in the agenda section in place of the built-in list: a quick-add box (the PIM's
+parse, filed under the category picked), *N overdue · N today · N open*, every category with how many
+open items it holds (its children's too, indented under it — pick one to list only those), and the
+items by date, overdue first; ✓ finishes the one picked, ⤢ (or a double-click) opens the Agenda
+window. It is an ordinary form: open it in the designer to move things, add a control, change what
+the list shows — it's drawn as wide as the sidebar (controls anchored left and right stretch) and its
+`:on-refresh` handler runs whenever the agenda may have changed, as the built-in list reloads. Point
+the line at a form of your own, or take it out for the built-in list. Any other name is a sidebar
+section of its own, under the agenda: `(panel "Habits" "habits.eeform")`. Install the PIM keys…
+writes `pim/Side.eeform` (a copy that differs is kept as `.eeditor/Side.before-<date>.eeform`).
+
 **Typed a `- [ ]` by hand?** It is only text until it's linked, so it isn't an agenda item yet. The
 panel lists those lines under its items, in a folding group — *in notes, not in the agenda · N* —
 by note. Click one to open its note at that line; **＋** makes it an item and links the line, the

@@ -2,6 +2,8 @@
 // (text / when / priority) with Save (item-set) and Done (item-done). Backed by the engine.
 // Under the items, a folding group lists the "- [ ] …" lines in notes that aren't agenda items yet
 // (no "{#12}"): click one to open the note at it, ＋ to make it an item and link the line.
+// A `(panel "agenda" …)` form in the keybindings takes the quick-add's and the list's place; the
+// notes' group stays, under it.
 
 import type { EngineClient } from "../engine/client";
 import type { Envelope, JsonValue } from "../engine/types";
@@ -10,6 +12,8 @@ import { type NoteTask, unlinkedTasks, replaceTaskLine, linkLine } from "../core
 
 export interface AgendaPanel {
   refresh(): Promise<void>;
+  /** Draw this (a running form's element) in place of the quick-add and the list; null brings them back. */
+  setPanel(el: HTMLElement | null): void;
 }
 
 /** Where the panel finds the notes' own tasks, and how it opens and rewrites a note. */
@@ -301,14 +305,28 @@ export function createAgendaPanel(parent: HTMLElement, engine: EngineClient, not
     return group;
   }
 
+  let panel: HTMLElement | null = null;
+
   async function refresh(): Promise<void> {
-    const [env, tasks] = await Promise.all([engine.evalSrc("(items)"), scanNotes()]);
-    const items = parseItems(env);
+    const own = panel === null; // a panel draws the items itself
+    const [env, tasks] = await Promise.all([own ? engine.evalSrc("(items)") : null, scanNotes()]);
     list.innerHTML = "";
-    if (items.length === 0) list.appendChild(el("div", "ag-empty", "(no items)"));
-    for (const it of items) list.appendChild(renderItem(it));
+    if (env) {
+      const items = parseItems(env);
+      if (items.length === 0) list.appendChild(el("div", "ag-empty", "(no items)"));
+      for (const it of items) list.appendChild(renderItem(it));
+    }
     const group = renderNotes(tasks);
     if (group) list.appendChild(group);
+  }
+
+  function setPanel(next: HTMLElement | null): void {
+    if (next === panel) return;
+    panel?.remove();
+    panel = next;
+    if (panel) root.insertBefore(panel, list);
+    root.classList.toggle("with-panel", panel !== null);
+    void refresh();
   }
 
   input.addEventListener("keydown", (e) => {
@@ -319,5 +337,5 @@ export function createAgendaPanel(parent: HTMLElement, engine: EngineClient, not
     void engine.evalSrc(`(add ${JSON.stringify(text)})`).then(() => refresh());
   });
 
-  return { refresh };
+  return { refresh, setPanel };
 }

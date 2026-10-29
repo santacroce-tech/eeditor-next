@@ -449,6 +449,27 @@ const editorChange = (saved.result as unknown[][]).find((c) => c[0] === "editor"
 await apply(editorChange?.[1]);
 check("…and hands EEditor the line to file (ui-editor)", /- \d\d:\d\d {2}stretch 10 min\n/.test(await note(daily)), await note(daily));
 
+// ── the sidebar's panel: pim/Side.eeform ──
+await engine.ev(`(set! ui-loading "pim/Side.eeform")`);
+const side = await engine.ev(await readFile(path.join(root, "docs/pim/Side.eeform"), "utf8"));
+await engine.ev(`(set! ui-loading "")`);
+check("Side.eeform loads", side.ok, side.error);
+const sideId = `"$form" "side1" "$main" "side1" "$key" "pim/Side.eeform" "$app" "Agenda panel"`;
+const sideRun = async (handler: string, fields = "") => {
+  const r = await engine.ev(`${clockDefs()}\n(ui-run ${handler} {${sideId} ${fields}})`);
+  return { ok: r.ok, text: JSON.stringify(r.result), error: r.error };
+};
+await ev(`(pim-add "fix the gate tomorrow #home/garden" (list))`);
+const filled = await sideRun("sp-fill");
+check("its :on-refresh lists the categories with their counts", filled.ok && /"all · \d+"/.test(filled.text) &&
+  filled.text.includes('"home · ') && filled.text.includes('"\u2003garden · 1"'), filled.error ?? filled.text);
+const picked = await sideRun("sp-pick", `"lstCats" "\u2003garden · 1"`);
+check("…picking one lists only its items", picked.ok && picked.text.includes("fix the gate") &&
+  !picked.text.includes("book the flights"), picked.error ?? picked.text);
+const sideAdd = await sideRun("sp-add", `"txtAdd" "prune the roses !!"`);
+check("…and its box adds under the category picked", sideAdd.ok && sideAdd.text.includes("!! prune the roses") &&
+  (await ev(`(length (filter (fn (r) (= (field-get r :categories) "home/garden")) (records (items))))`)) === 2, sideAdd.error ?? sideAdd.text);
+
 // ── every note at once ──
 doc.file = "today.md";
 setDoc("# Today\n- [ ] nothing linked here", 1);
