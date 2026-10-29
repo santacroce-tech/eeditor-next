@@ -105,7 +105,13 @@ are matched across the form, so give two tabs controls different page names.
 text must match) — with the first offender marked, focused and named ("Age must be at most 150");
 then the button's `:on-validate` handler, a function of the form that returns a message to refuse
 or nil to go ahead; then `:on-click`. Every control has a name, `:at (x y)`, `:size (w h)`,
-`:enabled`, `:visible`; the value-bearing ones take `:required`. The order of the controls in the
+`:enabled`, `:visible`, `:anchor`; the value-bearing ones take `:required`. **Maximize and
+anchors**: a form in a window has ⤢ in its title bar (a double-click on the title does the same) —
+the window fills the app, and is remembered so per form. The form is still laid out at its `:size`;
+`:anchor "tlbr"` says which sides of the form a control keeps its distance to when there is more
+room: anchored left *and* right it grows wider, right only it moves with the right edge (the same for
+top and bottom). Unset is `"tl"` — it stays where it was drawn. So a grid is `"tlbr"`, the buttons
+under it `"lb"`, an editor panel down the right `"tr"`. A form never lays out smaller than drawn. The order of the controls in the
 file is the Tab order when the form runs (the *Order* buttons in the properties move a control).
 **Events**: `:on-click` (button), `:on-change` (anything with a value — a
 textbox when editing ends, a checkbox, a radio group, a dropdown, a date, a listbox or grid when the
@@ -267,6 +273,7 @@ tree, open from disk with the network off, reload).
 | `Tables.eeform` | Any table: pick it from `(tables)`, a WHERE / order / limit that shows the `(query …)` it ran, cells edited in place, new row, delete, pack. The table is named by an expression — `(query (str name))`. |
 | `Orders.eeform` | Master–detail: customers, the picked one's orders (`:where "customer = ?"`), a worked-out amount column and a total. |
 | `Office.eeform` | The others as one app: a `:main` form with a screens frame, their menus merged into its bar, and the last screen remembered in a `:persist` public variable. |
+| `docs/pim/TRYME.eeform` | The PIM as one window (installed as `pim/TRYME.eeform`; ⤢ on the sidebar's agenda opens it maximized): seven tabs — setup check and every key, the agenda big, the notes' unlinked tasks, capture, the clock, the tracker, the review. Anchors throughout, so it uses a maximized window. |
 | `Agenda.eeform` | The agenda PIM through most of the controls: tabs, menu, datagrid, date, radio, dropdowns, checkbox, timer. Items by due date, an editor for one (`item->dict` reads it), quick add with a `smart-parse` preview, categories, rules, saved views. |
 
 `defcategory`, `defrule` and `defview` take their arguments unevaluated, so the Agenda form writes

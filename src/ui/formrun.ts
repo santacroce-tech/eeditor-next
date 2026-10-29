@@ -1,7 +1,7 @@
 // A form, running: real controls at the positions the designer gave them. An event reads the whole
 // form into a dict, hands it to the handler, and applies the changes the handler queued.
 
-import { frameMode, humanName, onOpenPage, openPages, type Control, type FormSpec, type FrameMode, type StateValue } from "../core/form";
+import { anchoredBox, frameMode, humanName, onOpenPage, openPages, type Control, type FormSpec, type FrameMode, type StateValue } from "../core/form";
 import { rowsOf, stateValue, type Row, type UiChange } from "../engine/form";
 import type { JsonValue } from "../engine/types";
 import { bytesToB64 } from "../spectrum/screen";
@@ -90,6 +90,8 @@ export interface FormRunnerOptions {
   onPopOut?: () => void;
   /** Drawn to fit a floating window rather than to fill a tab. */
   windowed?: boolean;
+  /** Offered a ⤢ button: fill the app with the window, or give the room back. */
+  onMaximize?: () => void;
   /** Evaluate a screen control's `:frame` expression; its value. Without it a screen stays dark. */
   frame?: (src: string) => Promise<JsonValue>;
   /** Open a screen control in a native window of its own (⧉), over the same engine. Left out where there's none. */
@@ -167,6 +169,12 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
     out.addEventListener("click", () => opts.onPopOut?.());
     buttons.append(out);
   }
+  if (opts.onMaximize) {
+    const max = el("button", "formrun-popout formrun-max", "⤢");
+    max.title = "Maximize — or give the room back (double-click the title bar does it too)";
+    max.addEventListener("click", () => opts.onMaximize?.());
+    buttons.append(max);
+  }
   const stop = el("button", "formrun-stop", opts.windowed ? "✕" : "■ stop");
   stop.title = opts.windowed ? "Close the form" : "Stop the form and go back to the designer";
   stop.addEventListener("click", () => void closeIfAllowed());
@@ -174,6 +182,22 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
   const menuBar = el("div", "formrun-menubar");
   const canvas = el("div", "formrun-canvas");
   window_.append(title, menuBar, canvas);
+
+  // Given more room than the form was drawn for (a maximized window), the anchored controls
+  // stretch or move into it. At the drawn size this puts everything where `place` did.
+  function relayout(): void {
+    const dw = canvas.clientWidth - current.w;
+    const dh = canvas.clientHeight - current.h;
+    for (const l of live.values()) {
+      const b = anchoredBox(l.spec, dw, dh);
+      l.box.style.left = `${b.x}px`;
+      l.box.style.top = `${b.y}px`;
+      l.box.style.width = `${b.w}px`;
+      l.box.style.height = `${b.h}px`;
+    }
+  }
+  const resized = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => relayout());
+  resized?.observe(canvas);
 
   /** A menu as drawn: the form's own items name handlers; the Window menu's run code of the runner's. */
   type LiveItem = { label: string; handler?: string; run?: () => void };
@@ -1120,6 +1144,7 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
         canvas.append(l.box);
       }
       showPages();
+      relayout();
       await fire(spec.onLoad);
     },
     state,
@@ -1128,6 +1153,7 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
       first?.focus();
     },
     destroy: () => {
+      resized?.disconnect();
       dropFrames();
       stopTimers();
       for (const s of sheets) void s.commit();

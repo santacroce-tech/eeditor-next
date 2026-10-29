@@ -274,8 +274,34 @@ const REQUIRED: PropDef = { key: "required", kind: "bool", label: "Required", de
 const VISIBLE: PropDef = { key: "visible", kind: "bool", label: "Visible", default: true };
 /** `:page "Notes"` — the control belongs to that page of a `tabs` control, and shows only while it is the one open. */
 const PAGE: PropDef = { key: "page", kind: "text", label: "Page", default: "" };
+/**
+ * `:anchor "tlbr"` — the sides of the form the control keeps its distance to when the form is
+ * bigger than its `:size` (a maximized window). Anchored left and right it grows wider; right only,
+ * it moves with the right edge. Unset is "tl": it stays where it was drawn.
+ */
+const ANCHOR: PropDef = { key: "anchor", kind: "text", label: "Anchor (t l b r)", default: "" };
 /** Every control has these, after its own. */
-export const COMMON_PROPS: PropDef[] = [ENABLED, VISIBLE, PAGE];
+export const COMMON_PROPS: PropDef[] = [ENABLED, VISIBLE, PAGE, ANCHOR];
+
+/**
+ * Where a control goes on a form `dw` wider and `dh` taller than it was drawn — by its `:anchor`.
+ * The form never lays out smaller than drawn, so negative growth counts as none.
+ */
+export function anchoredBox(c: Pick<Control, "x" | "y" | "w" | "h" | "props">, dw: number, dh: number): { x: number; y: number; w: number; h: number } {
+  const a = typeof c.props.anchor === "string" && c.props.anchor.trim() ? c.props.anchor.toLowerCase() : "tl";
+  const gx = Math.max(0, dw);
+  const gy = Math.max(0, dh);
+  const l = a.includes("l") || !a.includes("r");
+  const r = a.includes("r");
+  const t = a.includes("t") || !a.includes("b");
+  const b = a.includes("b");
+  return {
+    x: c.x + (r && !l ? gx : 0),
+    y: c.y + (b && !t ? gy : 0),
+    w: c.w + (l && r ? gx : 0),
+    h: c.h + (t && b ? gy : 0),
+  };
+}
 
 export const CONTROLS: Record<ControlType, ControlDef> = {
   label: {

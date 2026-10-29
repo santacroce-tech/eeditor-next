@@ -55,6 +55,13 @@ The agenda panel re-reads the items after every keybinding, form event and REPL 
 app change in `src/main.ts`, beside the sheet refresh that was already there). You never press
 refresh. The one exception: it doesn't redraw while you're typing in it.
 
+**The agenda, big.** ⤢ above the sidebar's agenda opens `pim/TRYME.eeform` filling the window —
+everything this guide and `TRY ME.md` walk through, as an interface: *Start here* (is the PIM live,
+every key), *Agenda* (quick add with the PIM's parse, filters, an editor for one item), *In notes*
+(the unlinked `- [ ]` lines, to link or open), *Capture*, *Clock* (in on an item or anything, out, the
+report), *Tracker* and *Review*. Install the PIM keys… puts it there (a copy that differs is kept as
+`.eeditor/TRYME.before-<date>.eeform` first); without it, ⤢ opens `examples/Agenda.eeform`.
+
 **Typed a `- [ ]` by hand?** It is only text until it's linked, so it isn't an agenda item yet. The
 panel lists those lines under its items, in a folding group — *in notes, not in the agenda · N* —
 by note. Click one to open its note at that line; **＋** makes it an item and links the line, the
@@ -81,7 +88,7 @@ again on the day you try it (it starts from scratch each time). It needs the eng
 **One command:** right-click the workspace in the file tree and choose **Install the PIM keys…**
 (or run the `install-pim` command — `(ed-cmd "install-pim")` at the REPL, or bind it to a key). It
 adds the PIM to the end of the folder's keybindings between two marker lines, copies the capture
-window to `pim/Capture.eeform`, and reloads: ⌘⌥K says *No clock running* straight away. Your own
+window to `pim/Capture.eeform` and the PIM's big window to `pim/TRYME.eeform`, and reloads: ⌘⌥K says *No clock running* straight away. Your own
 keys stay as they were; if your file already says what opens at launch, the PIM's `(on-start …)` is
 left out. Run it again after an update to EEditor and it replaces what's between the markers —
 nothing else. (The sample notes put the PIM in with the same markers.)

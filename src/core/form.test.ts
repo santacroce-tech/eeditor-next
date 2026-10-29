@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  anchoredBox,
   defnRange,
   emptyForm,
   formState,
@@ -283,5 +284,24 @@ describe(":main and :on-public on a form", () => {
     expect(r.spec.main).toBeUndefined();
     expect(printFormSpec(r.spec)).not.toContain(":main");
     expect(frameMode(r.spec.controls[0].props.mode)).toBe("screens");
+  });
+});
+
+describe("anchors", () => {
+  const at = (anchor?: string) => ({ x: 10, y: 20, w: 100, h: 50, props: (anchor === undefined ? {} : { anchor }) as Record<string, string> });
+
+  it("stays put with no anchor, or tl", () => {
+    expect(anchoredBox(at(), 200, 100)).toEqual({ x: 10, y: 20, w: 100, h: 50 });
+    expect(anchoredBox(at("tl"), 200, 100)).toEqual({ x: 10, y: 20, w: 100, h: 50 });
+  });
+
+  it("grows between opposite sides and moves with a lone right or bottom", () => {
+    expect(anchoredBox(at("tlbr"), 200, 100)).toEqual({ x: 10, y: 20, w: 300, h: 150 });
+    expect(anchoredBox(at("tr"), 200, 100)).toEqual({ x: 210, y: 20, w: 100, h: 50 });
+    expect(anchoredBox(at("lrb"), 200, 100)).toEqual({ x: 10, y: 120, w: 300, h: 50 });
+  });
+
+  it("never shrinks below the drawn layout", () => {
+    expect(anchoredBox(at("tlbr"), -50, -50)).toEqual({ x: 10, y: 20, w: 100, h: 50 });
   });
 });
