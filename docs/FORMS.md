@@ -128,10 +128,11 @@ or the main form holding it closing: a message refuses and is shown, nil lets it
 form's frames are asked before the form itself), `:on-refresh` (the form, drawn in the sidebar — see below).
 
 **A form in the sidebar**: `(panel "agenda" "pim/Side.eeform")` in `.eeditor/keybindings.eelisp`
-draws a form in the sidebar's agenda section, in place of the built-in list; any other name, `(panel
-"Habits" "habits.eeform")`, is a section of its own. It runs there with no title bar, as wide as the
+draws a form in the sidebar's agenda section, in place of the built-in list; `"tags"` puts one in the
+tags section in place of the cloud; any other name, `(panel "Habits" "habits.eeform")`, is a section
+of its own. It runs there with no title bar, as wide as the
 section (anchor controls `"tlr"` to stretch with it) and at least its `:size` tall, and its
-`:on-refresh` handler runs whenever the agenda may have changed — after a key, the REPL, another
+`:on-refresh` handler runs when a note is saved and whenever the agenda may have changed — after a key, the REPL, another
 form's event — which is how it stays current; evals it makes itself don't ask for another. Saving the
 form's file runs the new version there. `(ui-close)` takes it out until the keybindings are reloaded.
 

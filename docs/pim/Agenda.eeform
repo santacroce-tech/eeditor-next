@@ -194,6 +194,7 @@
   (dict :key "⌘⌥A" :does "Re-read the line into its item; links a hand-typed - [ ]" :caret "on a task")
   (dict :key "⌘⌥E" :does "Ask When? and set the date" :caret "on a linked task")
   (dict :key "⌘⌥G" :does "Ask Category and file the item" :caret "on a linked task")
+  (dict :key "⌘⌥B" :does "Ask a tag, insert links to its notes as a block" :caret "where you want it")
   (dict :key "⌘⌥S" :does "Every note in step with the agenda now" :caret "anywhere")
   (dict :key "⌘⌥N" :does "Capture window: task, inbox or log" :caret "anywhere")
   (dict :key "⌘⌥F" :does "Refile the line under a heading of another note" :caret "on the line")

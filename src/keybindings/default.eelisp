@@ -55,8 +55,9 @@
 ;; the theme, preview and PDF buttons too: see "the header" below.
 ;;
 ;; (panel "agenda" "pim/Side.eeform") draws a form in the sidebar's agenda section instead of the
-;; built-in list; (panel "Habits" "habits.eeform") adds a section of its own. Its :on-refresh runs
-;; whenever the agenda may have changed. The PIM's keys install one.
+;; built-in list; (panel "tags" …) does the same for the tags section, and (panel "Habits"
+;; "habits.eeform") adds a section of its own. Its :on-refresh runs whenever a note is saved or the
+;; agenda may have changed. The PIM's keys install both.
 ;;
 ;; There may be several on-load and on-tick forms; each runs, in order.
 ;;

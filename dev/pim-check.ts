@@ -557,6 +557,43 @@ check("ed-write leaves a note that changed since it was read", (await note("some
 check("(notes) lists every note, hidden folders left out", JSON.stringify(await ev("(notes)")).includes("projects/site.md") &&
   !JSON.stringify(await ev("(notes)")).includes(".eeditor"), await ev("(notes)"));
 
+// ── tags in notes ──
+await writeNote("tg/alpha.md", "# Alpha #not-a-tag\n- [ ] ring the client #tgw/l2l {#999}\n(#tgh, see x#nope and #12\n```\n#fenced\n```\n");
+await writeNote("tg/beta.md", "Notes on #tgw and #tgw/pool.\n");
+check("a note's tags: not headings, fences, mid-word or {#12}; \"/\" kept",
+  JSON.stringify(await ev(`(pim-note-tags (read-note "tg/alpha.md"))`)) === '["tgw/l2l","tgh"]', await ev(`(pim-note-tags (read-note "tg/alpha.md"))`));
+const tagNames = (await ev(`(pim-tag-names)`)) as string[];
+check("every tag, nested ones' parents too, children right after their parent", ["tgw", "tgw/l2l", "tgw/pool", "tgh"].every((t) => tagNames.includes(t)) &&
+  tagNames.indexOf("tgw/pool") === tagNames.indexOf("tgw") + 2 && tagNames.indexOf("tgh") > tagNames.indexOf("tgw/pool"), tagNames);
+check("a tag takes in its children's notes", JSON.stringify(await ev(`(pim-tagged-paths "tgw")`)) === '["tg/alpha.md","tg/beta.md"]');
+await ev(`(def *file* "tg/beta.md")`); // as ⌘⌥U in that note has it
+check("(pim-tagged …) links them, leaving out the note it's in", (await ev(`(pim-tagged "tgw")`)) === "- [[alpha]] · tg", await ev(`(pim-tagged "tgw")`));
+check("…and says when there are none", (await ev(`(pim-tagged "nothing")`)) === "_no notes tagged #nothing_");
+setDoc("# Index\n", 2);
+doc.file = "tg/index.md";
+await press("Mod-Alt-b");
+check("⌘⌥B asks which tag, offering them", doc.prompts.at(-1)?.[0] === "Notes tagged" && ((doc.prompts.at(-1)?.[3] ?? []) as string[]).includes("tgw/pool"));
+await answer("#tgw/pool");
+check("…and puts the block at the caret", doc.text.includes('<!-- eel: (pim-tagged "tgw/pool") -->\n- [[beta]] · tg\n<!-- /eel -->'), doc.text);
+
+await engine.ev(`(set! ui-loading "pim/Tags.eeform")`);
+const tagsForm = await engine.ev(await readFile(path.join(root, "docs/pim/Tags.eeform"), "utf8"));
+await engine.ev(`(set! ui-loading "")`);
+check("Tags.eeform loads", tagsForm.ok, tagsForm.error);
+const tgId = `"$form" "tg1" "$main" "tg1" "$key" "pim/Tags.eeform" "$app" "Tags panel"`;
+const tgRun = async (handler: string, fields = "") => {
+  const r = await engine.ev(`${clockDefs()}\n(ui-run ${handler} {${tgId} ${fields}})`);
+  return { ok: r.ok, text: JSON.stringify(r.result), error: r.error };
+};
+const tgFilled = await tgRun("tg-fill", `"txtFind" "tg"`);
+check("its :on-refresh lists the tags with their notes' counts, nested under their parent", tgFilled.ok &&
+  tgFilled.text.includes('"#tgw · 2"') && tgFilled.text.includes('" #pool · 1"'), tgFilled.error ?? tgFilled.text);
+const tgPicked = await tgRun("tg-pick", `"lstTags" "#tgw · 2"`);
+check("…picking one lists its notes", tgPicked.ok && tgPicked.text.includes('"tg/alpha.md"') && tgPicked.text.includes('"#tgw · 2 notes"'), tgPicked.error ?? tgPicked.text);
+const tgOpen = await tgRun("tg-open", `"grdNotes" {"note" "beta" "path" "tg/beta.md"}`);
+check("…a click opens it", tgOpen.ok && tgOpen.text.includes('["open","tg/beta.md"]'), tgOpen.error ?? tgOpen.text);
+doc.file = "today.md";
+
 // ── refile ──
 setDoc("# Today\n- [ ] call the bank\n- keep", 2);
 await press("Mod-Alt-f");

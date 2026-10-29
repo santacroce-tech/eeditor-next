@@ -81,6 +81,15 @@ by note. Click one to open its note at that line; **＋** makes it an item and l
 same as ⌘⌥A on it (with the PIM loaded it is the PIM's own parse: tags, notes, rules). Lines in
 ``` fences are examples and aren't listed.
 
+**The tags section is a form too.** `(panel "tags" "pim/Tags.eeform")` puts `pim/Tags.eeform` in
+place of the tag cloud: a box to narrow the tags, every `#tag` with how many notes have it — the PIM
+reads `#work/l2l` as `work/l2l`, under `work`, whose count takes in its children's notes, as a
+category's does — and the notes with the tag picked; click one to open it. **⇩ links into the note**
+(or ⌘⌥B, which asks for the tag) puts a block in the note in front — `<!-- eel: (pim-tagged "work") -->`
+— with a `[[link]]` to each of them, the note itself left out; ⌘⌥U keeps it current, like the task
+lists. Tags count where the cloud's do: not in headings or ``` fences, not mid-word, not `{#12}`. It
+refreshes when a note is saved.
+
 **A board.** The Agenda window's *Board* tab is a kanban of your categories: pick one in
 *Columns* and its children are the columns — `work/l2l`, `work/admin`, then `work` itself for what is
 filed under it alone — or the top-level categories, with *no category* last. An item shows once, in
@@ -172,6 +181,7 @@ to what the file says.
 | `org-journal` / datetree | Daily note from a template (agenda block, Log, Notes) | ⌘D |
 | Weekly review | `reviews/<monday> week.md`: done, time, tracker, next 7 days, undated, prompts | ⌘⌥V |
 | Tags `:work:` | `#work` in text (tags panel); in ⌘⌥A each `#tag` also becomes an agenda category; ⌘⌥G picks one from a list | ⌘⌥G |
+| `org-tags-view` | The tags panel lists a tag's notes; `(pim-tagged "work")` is a block of links to them | ⌘⌥B |
 | Links `[[…]]`, backlinks | Same syntax, ⌘-click, backlinks bar | — |
 | `org-babel` | ```` ```eelisp ```` blocks, ⌘⇧Enter runs the one at the caret | ⌘⇧Enter |
 | Tables + formulas | Sheets (`.eesheet`) with EELisp formulas; `browse` for a table widget | — |
@@ -257,6 +267,8 @@ The library's building blocks, all callable in blocks, the REPL and your own bin
 | `(pim-someday)` | agenda items with no date |
 | `(pim-inbox)` | what capture put in the inbox (the `pim-inbox` view) |
 | `(pim-category c)` | the items in a category and its children |
+| `(pim-tagged t)` | a `[[link]]` to each note with `#t` (or a child, `#t/x`), the note it is in left out — ⌘⌥B inserts it |
+| `(pim-note-tags text)` / `(pim-tag-names)` / `(pim-tagged-paths t)` | a note's tags; every tag in the notes (parents of nested ones too); the notes with one |
 | `(pim-board c)` | a markdown table, a column per child of `c` (and `c` itself) with its items — `""` for the top-level categories |
 | `(pim-board-lanes c)` / `(pim-board-rows c)` | a board's columns, and its cards as dicts (`:id :text :when :lane`) — what the Board tab draws |
 | `(pim-board-move id c from to)` | a card moved: the item out of the categories that put it in `from`, filed under `to` |

@@ -1,0 +1,68 @@
+;; Tags.eeform — the tags section of the sidebar, as a form. The PIM's keys put it there with
+;;
+;;   (panel "tags" "pim/Tags.eeform")
+;;
+;; in .eeditor/keybindings.eelisp; take that line out and the built-in tag cloud comes back. Like
+;; pim/Side.eeform it's drawn as wide as the sidebar, and :on-refresh runs when a note is saved or
+;; the agenda may have changed.
+;;
+;;   the box   narrows the tags to those containing what you type
+;;   the tags  each with how many notes have it — #work/l2l under work, which counts its children's
+;;   the notes the ones with the tag picked: click one to open it
+;;   ⇩ links   a block in the note in front listing them — (pim-tagged "work") — ⌘⌥U keeps it fresh
+
+(form "Tags panel" :size (224 288) :on-load tg-fill :on-refresh tg-fill
+  (textbox txtFind :placeholder "filter tags…" :at (8 8) :size (208 28) :anchor "tlr" :on-change tg-draw)
+  (listbox lstTags :items () :at (8 40) :size (208 96) :anchor "tlr" :on-change tg-pick)
+  (label lblNotes :at (8 140) :size (208 20) :anchor "tlr")
+  (grid grdNotes :columns ("note") :at (8 160) :size (208 88) :anchor "tlbr" :on-change tg-open)
+  (button btnLinks :text "⇩ links into the note" :at (8 252) :size (208 28) :anchor "lbr" :on-click tg-links))
+
+;; The tag picked ("" for none), and what the last refresh read — so picking and filtering don't
+;; read every note again.
+(local tg-tag "")
+(local tg-index (list))
+(local tg-labels {})
+
+(defn tg-pim? () (try (do pim-tag-index true) (catch e false)))
+;; em spaces: a list's row would fold ordinary ones away
+(defn tg-indent (n) (cond (<= n 0) "" true (str " " (tg-indent (- n 1)))))
+(defn tg-label (index t)
+  (let (parts (str-split t "/"))
+    (str (tg-indent (- (length parts) 1)) "#" (last parts) " · " (length (pim-tagged-paths-in index t)))))
+
+(defn tg-fill (f)
+  (cond (not (tg-pim?)) (ui-set "lblNotes" :text "Needs the PIM: Install the PIM keys…")
+        true (do (var! "tg-index" (pim-tag-index)) (tg-draw f))))
+
+(defn tg-draw (f)
+  (let (index (var "tg-index")
+        find  (str-lower (str-trim (or (ui-get f "txtFind") "")))
+        names (filter (fn (t) (or (= find "") (str-contains (str-lower t) find))) (pim-tag-names-in index))
+        labels (map (fn (t) (tg-label index t)) names))
+    (var! "tg-labels" (reduce (fn (d i) (dict-set d (nth labels i) (nth names i))) {} (range 0 (length names) 1)))
+    (ui-set "lstTags" :items labels)
+    (ui-set "lstTags" :value (first (filter (fn (l) (= (dict-get (var "tg-labels") l) (var "tg-tag"))) labels)))
+    (tg-notes)))
+
+(defn tg-notes ()
+  (let (t (var "tg-tag") paths (cond (= t "") (list) true (pim-tagged-paths-in (var "tg-index") t)))
+    (ui-set "lblNotes" :text
+      (cond (= t "") (str (length (var "tg-index")) " notes have tags — pick one")
+            true (str "#" t " · " (length paths) (cond (= (length paths) 1) " note" true " notes"))))
+    (ui-set "grdNotes" :rows
+      (map (fn (p) {:note (str-replace (last (str-split p "/")) ".md" "") :path p}) paths))))
+
+(defn tg-pick (f)
+  (var! "tg-tag" (or (dict-get (var "tg-labels") (ui-get f "lstTags")) ""))
+  (tg-notes))
+
+(defn tg-open (f)
+  (let (row (ui-get f "grdNotes"))
+    (when row (ui-editor (ed-open (dict-get row "path"))))))
+
+(defn tg-links (f)
+  (let (t (var "tg-tag"))
+    (cond (= t "") (ui-message "Pick a tag first")
+          true (do (ui-editor (ed-insert (str (pim-block (str "(pim-tagged \"" t "\")")) "\n")))
+                   (ui-message (str "Links to the notes tagged #" t " — ⌘⌥U keeps them fresh"))))))
