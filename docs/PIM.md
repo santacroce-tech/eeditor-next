@@ -93,7 +93,7 @@ keys stay as they were; if your file already says what opens at launch, the PIM'
 left out. Run it again after an update to EEditor and it replaces what's between the markers —
 nothing else. (The sample notes put the PIM in with the same markers.)
 
-It also puts three buttons in the editor's header, beside the theme button — **↻ update** (⌘⌥U),
+It also puts three buttons in the editor's header — **↻ update** (⌘⌥U),
 **✓ task** (⌘⌥T) and **⌫ delete** (⌘⌥⌫). They are the `(button …)` lines at the end of the file:
 `(button "label" "Mod-Alt-u")` clicks a key, and any body a `bind` takes works too. Change them
 there — but outside the markers, or the next install puts the PIM's back.

@@ -6,7 +6,7 @@
 // Dispatch runs on the document in the *capture* phase, so a bound key wins over CodeMirror's own
 // bindings — and unbinding a key in the config hands it straight back to CodeMirror.
 
-import { parseKeybindings, eventKeyId, lispString, clockDefs, EMPTY_BODY, type Binding, type Button, type StartHook } from "../core/keybindings";
+import { parseKeybindings, headerButtons, eventKeyId, lispString, clockDefs, EMPTY_BODY, type Binding, type Button, type StartHook } from "../core/keybindings";
 import type { EngineClient } from "../engine/client";
 import type { WorkspaceClient } from "../engine/workspace";
 import type { JsonValue } from "../engine/types";
@@ -17,6 +17,8 @@ import DEFAULT_CONFIG from "../keybindings/default.eelisp?raw";
 
 /** Where the user's config lives (dot-prefixed → hidden from the file tree). */
 export const KEYBINDINGS_PATH = ".eeditor/keybindings.eelisp";
+/** The bundled header, for a config that has none of its own (see `headerButtons`). */
+const DEFAULT_BUTTONS = parseKeybindings(DEFAULT_CONFIG).buttons;
 
 export type CommandTable = Record<string, () => void | Promise<void>>;
 
@@ -143,7 +145,7 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
     map = new Map(bindings.map((b) => [b.id, b]));
     start = parsed.start;
     ticks = parsed.tick;
-    buttons = parsed.buttons;
+    buttons = headerButtons(parsed.buttons, src === DEFAULT_CONFIG ? [] : DEFAULT_BUTTONS);
     opts.onButtons?.(buttons);
     for (const e of errors) opts.note(`; keybindings: ${e}`);
     if (errors.length > 0) toast(`keybindings: ${errors.length} problem(s) — see the REPL`);

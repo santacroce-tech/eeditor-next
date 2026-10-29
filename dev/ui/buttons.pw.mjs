@@ -51,7 +51,8 @@ async function openNote(page) {
 test("a button clicks its key, at the caret; one with a body runs it", async ({ page }) => {
   await openNote(page);
   const buttons = page.locator(".user-btns .head-btn");
-  await expect(buttons).toHaveText(["number it", "hi", "nothing"]);
+  // a config with none of the header's own buttons gets them after its own
+  await expect(buttons).toHaveText(["number it", "hi", "nothing", "☀ light", "image…", "preview", "PDF", "⌘", "λ ›"]);
   await expect(buttons.first()).toHaveAttribute("title", /number it — (⌃⌥L|Ctrl\+Alt\+L)/);
 
   await page.locator(".cm-line", { hasText: "plain bullet" }).click();
@@ -71,6 +72,28 @@ test("reloading the config redraws the buttons", async ({ page }) => {
   await page.locator(".cm-content").click();
   await page.keyboard.press("Control+Alt+r");
   await expect(page.locator(".user-btns .head-btn").first()).toHaveText("renamed");
+});
+
+test("writing a header button takes the header over: order, labels, and what's left out", async ({ page }) => {
+  await writeFile(
+    CONFIG,
+    `(button "📝" (ed-cmd "toggle-preview"))\n(button "hi" (ed-message "hello from a button"))\n(button (ed-cmd "toggle-theme"))\n`,
+  );
+  await openNote(page);
+  const buttons = page.locator(".user-btns .head-btn");
+  await expect(buttons).toHaveText(["📝", "hi", "☀ light"]); // no PDF, no ⌘, no λ
+  // a labelled command button keeps its label, and still behaves like the command's own
+  await buttons.first().click();
+  await expect(page.locator(".preview-host")).toBeVisible();
+  await expect(buttons.first()).toHaveText("📝");
+  await expect(buttons.first()).toHaveAttribute("aria-pressed", "true");
+  // an unlabelled one is labelled by the app, and follows the state
+  await buttons.nth(2).click();
+  await expect(buttons.nth(2)).toHaveText("▦ VB6");
+  await buttons.nth(2).click();
+  await buttons.nth(2).click(); // back to dark for the specs after this one
+  await expect(buttons.nth(2)).toHaveText("☀ light");
+  await writeFile(CONFIG, config("number it"));
 });
 
 test("the preview shows task lines as tasks", async ({ page }) => {

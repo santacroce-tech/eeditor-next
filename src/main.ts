@@ -177,34 +177,43 @@ function main(): void {
   const nameEl = document.createElement("span");
   const headRight = document.createElement("span");
   headRight.className = "head-right";
-  const themeBtn = document.createElement("button");
-  themeBtn.className = "head-btn";
-  // The (button …) forms of the keybindings file, beside the theme button — filled in by keys.reload().
+  // The header's buttons are the keybindings file's (button …) forms, in its order — filled in by
+  // keys.reload(). One that runs an app command, (ed-cmd "export-pdf"), is drawn by `headerLooks`:
+  // its own label when the file gives none, hidden where the command can't work, pressed while on.
   const userBtns = document.createElement("span");
   userBtns.className = "user-btns";
-  const previewBtn = document.createElement("button");
-  previewBtn.className = "head-btn";
-  previewBtn.textContent = "preview";
-  const pdfBtn = document.createElement("button");
-  pdfBtn.className = "head-btn";
-  pdfBtn.textContent = "PDF";
-  pdfBtn.title = "Export to PDF";
-  const imageBtn = document.createElement("button");
-  imageBtn.className = "head-btn";
-  imageBtn.textContent = "image…";
-  imageBtn.title = "Add an image — it is copied into assets/ beside this note and linked (you can also paste or drop one)";
-  const keysBtn = document.createElement("button");
-  keysBtn.className = "head-btn";
-  keysBtn.textContent = "⌘";
-  keysBtn.title = "Edit the keyboard shortcuts (.eeditor/keybindings.eelisp)";
+  /** How a button running one of these app commands is drawn. Filled in once what it reads exists. */
+  interface HeaderLook {
+    label(): string;
+    title(): string;
+    /** Where the command can't work — a PDF of a form, an image in a sheet — the button goes. */
+    shown?(): boolean;
+    /** A toggle that is on: the preview showing, the REPL open. */
+    pressed?(): boolean;
+    cls?: string;
+  }
+  let headerLooks: Record<string, HeaderLook> | undefined;
+  /** What the editor pane shows now (showSurface keeps it), for the buttons that depend on it. */
+  let surface = { sheet: false, map: false, form: false };
+  /** The drawn buttons with the command each runs, so a change of state only relabels them. */
+  let drawnButtons: { el: HTMLButtonElement; command?: string; label: string }[] = [];
+  function refreshHeader(): void {
+    if (!headerLooks) return;
+    for (const b of drawnButtons) {
+      const look = b.command ? headerLooks[b.command] : undefined;
+      if (!look) continue;
+      if (!b.label) b.el.textContent = look.label();
+      b.el.title = look.title();
+      b.el.style.display = look.shown && !look.shown() ? "none" : "";
+      if (look.pressed) b.el.setAttribute("aria-pressed", String(look.pressed()));
+    }
+  }
   // Only shown for a ↗ tab — the way back from "I opened it in place" to "keep it as a note".
   const copyInBtn = document.createElement("button");
   copyInBtn.className = "head-btn";
   copyInBtn.textContent = "copy in";
   copyInBtn.title = "Copy this outside file into your workspace";
   copyInBtn.style.display = "none";
-  const replBtn = document.createElement("button");
-  replBtn.className = "head-btn repl-toggle";
   // A form tab: the designer, the same file as text, or the form running. Shown for .eeform only.
   type FormMode = "design" | "code" | "run";
   const formModes = document.createElement("span");
@@ -252,7 +261,7 @@ function main(): void {
     mapModeButtons.set(mode, b);
     mapModes.append(b);
   }
-  headRight.append(copyInBtn, userBtns, themeBtn, imageBtn, formModes, mapModes, previewBtn, pdfBtn, keysBtn, replBtn);
+  headRight.append(copyInBtn, formModes, mapModes, userBtns);
   editorPane.head.append(nameEl, headRight);
 
   const tabBar = document.createElement("div");
@@ -307,9 +316,7 @@ function main(): void {
     replVisible = v;
     shell.dataset.repl = v ? "on" : "off";
     localStorage.setItem("repl.visible", v ? "1" : "0");
-    replBtn.textContent = v ? "λ ›" : "‹ λ";
-    replBtn.title = v ? "Hide the EELisp panel" : "Show the EELisp panel";
-    replBtn.setAttribute("aria-pressed", String(v));
+    refreshHeader();
   }
   function toggleRepl(): void {
     if (narrow()) {
@@ -325,7 +332,6 @@ function main(): void {
     else if (!replVisible) setReplVisible(true);
   }
   setReplVisible(replVisible);
-  replBtn.addEventListener("click", toggleRepl);
   replHideBtn.addEventListener("click", () => (narrow() ? setMobileView("editor") : setReplVisible(false)));
 
   // ── state ── (currentPath/dirty mirror the active tab)
@@ -374,8 +380,7 @@ function main(): void {
     nameEl.textContent = name + (dirty ? " •" : "");
     nameEl.title = ext ? `${ext.path} — outside the workspace, saved in place` : currentPath;
     copyInBtn.style.display = ext ? "" : "none";
-    // Images live in the workspace beside the note, so a sheet or a ↗ file has nowhere to put one.
-    imageBtn.style.display = images.canInsert() ? "" : "none";
+    refreshHeader();
   };
   function setEditorDoc(content: string): void {
     suppressChange = true;
@@ -466,8 +471,8 @@ function main(): void {
     mapHost.style.display = map ? "" : "none";
     editorHost.style.display = sheet || map || (mode && mode !== "code") || (!mode && previewing) ? "none" : "";
     previewHost.style.display = !sheet && !map && !mode && previewing ? "" : "none";
-    previewBtn.style.display = sheet || map || mode ? "none" : "";
-    pdfBtn.style.display = mode ? "none" : "";
+    surface = { sheet: !!sheet, map, form: !!mode };
+    refreshHeader();
     formModes.style.display = mode ? "" : "none";
     for (const [m, b] of modeButtons) b.classList.toggle("active", m === mode);
     mapModes.style.display = mapMode ? "" : "none";
@@ -860,23 +865,17 @@ function main(): void {
     else toast(`No note matching "${name}"`);
   };
 
-  // theme button — walks dark → light → vb6 → dark; the label shows the theme you'd switch TO
+  // the theme walks dark → light → vb6 → dark; its button shows the theme you'd switch TO
   const THEME_LABEL: Record<ThemeName, string> = { dark: "☾ dark", light: "☀ light", vb6: "▦ VB6" };
   const nextTheme = (): ThemeName => THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
-  const labelThemeBtn = (): void => {
-    themeBtn.textContent = THEME_LABEL[nextTheme()];
-    themeBtn.title = `Theme: ${theme} — click for ${nextTheme()}`;
-  };
   const applyTheme = (t: ThemeName): void => {
     theme = t;
     document.documentElement.setAttribute("data-theme", t);
     editor.setTheme(t);
     localStorage.setItem("theme", t);
-    labelThemeBtn();
+    refreshHeader();
     if (previewing && !tabs[activeIdx]?.sheet) renderPreview(); // diagrams follow the theme
   };
-  labelThemeBtn();
-  themeBtn.addEventListener("click", () => applyTheme(nextTheme()));
 
   // The panel also lists the notes' "- [ ]" lines that aren't items yet; it reads a note as it is
   // in its tab, and links a line through writeNote, so an open tab takes it as an edit.
@@ -1735,9 +1734,8 @@ function main(): void {
     else clearPreviewMedia();
     previewHost.style.display = previewing ? "" : "none";
     editorHost.style.display = previewing ? "none" : "";
-    previewBtn.textContent = previewing ? "edit" : "preview";
+    refreshHeader();
   }
-  previewBtn.addEventListener("click", togglePreview);
   /** A sheet prints as a table of what it shows, each cell keeping its formatting. */
   async function exportSheetPdf(path: string): Promise<void> {
     try {
@@ -1780,7 +1778,6 @@ function main(): void {
     const title = currentPath ? basename(currentPath).replace(/\.[^./]+$/, "") : "untitled";
     exportPdf(title, body.innerHTML, (m) => toast(m));
   }
-  pdfBtn.addEventListener("click", () => void exportCurrentPdf());
 
   // ── images in notes: pasted, dropped or picked → assets/ beside the note, linked from it ──
   /** Put Markdown into the note: at `at`, or in place of the selection. */
@@ -1798,7 +1795,6 @@ function main(): void {
     else view.focus();
   }
   const images = createImages({ ws, note: workspaceNote, insert: insertIntoNote, toast });
-  imageBtn.addEventListener("click", () => void images.pick());
   /** Where in the note a drop at (x, y) lands — undefined (the caret) unless it is over the text. */
   const dropOffset = (x: number, y: number): number | undefined => {
     if (previewing) return undefined;
@@ -2112,6 +2108,29 @@ function main(): void {
   });
   // Picking a file asks the same question as dropping one, instead of silently importing.
 
+  headerLooks = {
+    "toggle-theme": { label: () => THEME_LABEL[nextTheme()], title: () => `Theme: ${theme} — click for ${nextTheme()}` },
+    "toggle-preview": {
+      label: () => (previewing ? "edit" : "preview"),
+      title: () => (previewing ? "Back to the text" : "Preview the note (⌘E)"),
+      shown: () => !surface.sheet && !surface.map && !surface.form,
+      pressed: () => previewing,
+    },
+    "export-pdf": { label: () => "PDF", title: () => "Export to PDF", shown: () => !surface.form },
+    // Images live in the workspace beside the note, so a sheet or a ↗ file has nowhere to put one.
+    "insert-image": {
+      label: () => "image…",
+      title: () => "Add an image — it is copied into assets/ beside this note and linked (you can also paste or drop one)",
+      shown: () => images.canInsert(),
+    },
+    "open-keys": { label: () => "⌘", title: () => "Edit the keyboard shortcuts and these buttons (.eeditor/keybindings.eelisp)" },
+    "toggle-repl": {
+      label: () => (replVisible ? "λ ›" : "‹ λ"),
+      title: () => (replVisible ? "Hide the EELisp panel" : "Show the EELisp panel"),
+      pressed: () => replVisible,
+      cls: "repl-toggle",
+    },
+  };
   const keys = createKeybindings({
     ws,
     engine: watched,
@@ -2129,21 +2148,24 @@ function main(): void {
     appendFile: appendNote,
     notify: (title, body) => void notifyUser(title, body),
     onButtons: (list) => {
-      userBtns.replaceChildren(
-        ...list.map((b) => {
-          const btn = document.createElement("button");
-          btn.className = "head-btn";
-          btn.textContent = b.label;
-          btn.title = b.key === undefined ? b.label : `${b.label} — ${keyLabel(b.spec, isMacPlatform())}`;
-          // keep the caret where it was: the binding reads *cursor* / *line-text* off the editor
-          btn.addEventListener("mousedown", (e) => e.preventDefault());
-          btn.addEventListener("click", () => void keys.press(b));
-          return btn;
-        }),
-      );
+      drawnButtons = list.map((b) => {
+        const btn = document.createElement("button");
+        const look = b.command ? headerLooks?.[b.command] : undefined;
+        btn.className = "head-btn" + (look?.cls ? ` ${look.cls}` : "");
+        if (b.command) btn.dataset.command = b.command;
+        btn.textContent = b.label || b.command || "";
+        btn.title = b.key === undefined ? b.label : `${b.label} — ${keyLabel(b.spec, isMacPlatform())}`;
+        // keep the caret where it was: the binding reads *cursor* / *line-text* off the editor
+        btn.addEventListener("mousedown", (e) => e.preventDefault());
+        // an app command runs here and now; anything else is a binding, run on the engine
+        const run = b.command ? commands[b.command] : undefined;
+        btn.addEventListener("click", () => void (run ? run() : keys.press(b)));
+        return { el: btn, command: b.command, label: b.label };
+      });
+      userBtns.replaceChildren(...drawnButtons.map((d) => d.el));
+      refreshHeader();
     },
   });
-  keysBtn.addEventListener("click", () => void keys.openConfig());
 
   const sheetFns = createSheetFunctions({ engine, ws, note: (t) => repl.note(t) });
   /** After the workspace's functions changed. Sheets run nothing until edited, so ↻ picks them up. */
