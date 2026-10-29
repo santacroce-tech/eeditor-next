@@ -255,6 +255,70 @@
   (defn pim-category (c)
     (pim-lines (filter (fn (r) (pim-in? c r)) (records (items))) (str "_nothing in " c "_")))
 
+  ;; ── tags: the #tags written in notes ───────────────────────────────────────
+  ;; A note's tags are its #words, as the sidebar's tags panel reads them — not in ``` fences or
+  ;; headings, not mid-word (x#y), not {#12} — and with "/" kept, so #work/l2l is work/l2l. Like a
+  ;; category, "work" takes in work/l2l. The tags panel (pim/Tags.eeform), (pim-tagged …) and ⌘⌥B
+  ;; read them.
+  (defn pim-trim-tag (t)
+    (cond (or (str-ends-with t "-") (str-ends-with t "/")) (pim-trim-tag (substr t 0 (- (str-len t) 1))) true t))
+  (defn pim-word-tag (w)
+    (let (m (str-matches w "^[^A-Za-z0-9#]*#([A-Za-z_][A-Za-z0-9_/-]*)"))
+      (cond (= m false) nil true (pim-trim-tag (last m)))))
+  (defn pim-distinct (xs)
+    (reduce (fn (out x) (cond (some? (fn (y) (= y x)) out) out true (append out (list x)))) (list) xs))
+  (defn pim-note-tags (text)
+    (loop (ls (str-split text "\n") fence false out (list))
+      (cond (empty? ls) (pim-distinct out)
+            true (let (t (str-trim (first ls)))
+                   (cond (or (str-starts-with t "```") (str-starts-with t "~~~")) (recur (tail ls) (not fence) out)
+                         (or fence (not (str-contains t "#")) (str-matches t "^#{1,6} ")) (recur (tail ls) fence out)
+                         true (recur (tail ls) fence
+                                     (append out (filter (fn (x) (not (nil? x))) (map pim-word-tag (pim-words t))))))))))
+  ;; Every note with its tags: ((path (tag …)) …), the notes with none left out.
+  (defn pim-tag-index ()
+    (filter (fn (e) (not (empty? (second e))))
+            (map (fn (p) (list p (pim-note-tags (or (read-note p) "")))) (notes))))
+  (defn pim-tag-in? (tag tags) (some? (fn (x) (or (= x tag) (str-starts-with x (str tag "/")))) tags))
+  ;; Every tag, and the parents of the nested ones (work for work/l2l), as a tree: each one's
+  ;; children right after it.
+  (defn pim-tag-child? (parent n)
+    (cond (= parent "") (not (str-contains n "/"))
+          true (and (str-starts-with n (str parent "/")) (not (str-contains (substr n (+ (str-len parent) 1)) "/")))))
+  (defn pim-tag-tree (names parent)
+    (reduce (fn (out n) (append out (cons n (pim-tag-tree names n)))) (list)
+            (filter (fn (n) (pim-tag-child? parent n)) names)))
+  (defn pim-tag-names-in (index)
+    (let (all (pim-distinct (reduce (fn (out e) (append out (second e))) (list) index)))
+      (pim-tag-tree
+        (pim-distinct
+          (reduce (fn (out t)
+                    (let (parts (str-split t "/"))
+                      (append out (map (fn (n) (str-join "/" (take (+ n 1) parts))) (range 0 (length parts) 1)))))
+                  (list) all))
+        "")))
+  (defn pim-tag-names () (pim-tag-names-in (pim-tag-index)))
+  ;; The notes tagged `tag` (or one of its children), as paths.
+  (defn pim-tagged-paths-in (index tag) (map first (filter (fn (e) (pim-tag-in? tag (second e))) index)))
+  (defn pim-tagged-paths (tag) (pim-tagged-paths-in (pim-tag-index) tag))
+  ;; A note as a [[wiki-link]] — by its name, which is how a link finds it — and its folder after.
+  (defn pim-note-link (p)
+    (let (parts (str-split p "/") name (str-replace (last parts) ".md" ""))
+      (str "[[" name "]]" (cond (= (length parts) 1) "" true (str " · " (str-join "/" (take (- (length parts) 1) parts)))))))
+  ;; The block: a link to each note tagged `tag` — <!-- eel: (pim-tagged "work") --> — that ⌘⌥U keeps
+  ;; fresh. The note it is in is left out (*file*, when there is one).
+  (defn pim-tagged (tag)
+    (let (here (try *file* (catch e ""))
+          paths (filter (fn (p) (!= p here)) (pim-tagged-paths tag)))
+      (cond (empty? paths) (str "_no notes tagged #" tag "_")
+            true (str-join "\n" (map (fn (p) (str "- " (pim-note-link p))) paths)))))
+  ;; ⌘⌥B's answer: the block for that tag, at the caret.
+  (defn pim-insert-tagged (answer)
+    (let (t (str-trim (str-replace (str-trim answer) "#" "")))
+      (cond (= t "") (ed-message "Which tag?")
+            (not (str-matches t "^[A-Za-z_][A-Za-z0-9_/-]*$")) (ed-message (str "\"" t "\" can't be a tag"))
+            true (pim-insert-block (str "(pim-tagged \"" t "\")")))))
+
   ;; ── boards: a category's children as columns ───────────────────────────────
   ;; The Agenda window's Board tab, and (pim-board "work") in a note. The lanes inside a category
   ;; are its children, then itself for what's filed under it alone; inside "" they are the
@@ -691,6 +755,8 @@
 (bind "Mod-Alt-e" (ed-prompt "When?" pim-set-when))
 ;; ⌘⌥G — file the caret's task under a category
 (bind "Mod-Alt-g" (ed-prompt "Category" pim-set-category "" (pim-category-names)))
+;; ⌘⌥B — links to the notes with a #tag, as a block ⌘⌥U keeps fresh
+(bind "Mod-Alt-b" (ed-prompt "Notes tagged" pim-insert-tagged "" (pim-tag-names)))
 
 ;; ── buttons ──────────────────────────────────────────────────────────────────
 ;; In the editor's header, where the file's other (button …) lines put them. A key does what that
@@ -705,3 +771,6 @@
 ;; line out for the built-in list. Any other name is a sidebar section of its own:
 ;; (panel "Habits" "habits.eeform").
 (panel "agenda" "pim/Side.eeform")
+;; The tags section is pim/Tags.eeform: every #tag with how many notes have it (nested ones under
+;; their parent), the notes of the one picked — click to open — and ⇩ to put their links in a note.
+(panel "tags" "pim/Tags.eeform")

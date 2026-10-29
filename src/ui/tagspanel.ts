@@ -1,5 +1,6 @@
 // Tags panel — a workspace tag cloud from the unit-tested `tags.ts` extractor. Reads each file's
 // content and aggregates #hashtag counts. Clicking a tag runs a search callback.
+// A `(panel "tags" …)` form in the keybindings takes the cloud's place.
 
 import type { WorkspaceClient } from "../engine/workspace";
 import type { FileEntry } from "../core/fuzzy";
@@ -7,6 +8,8 @@ import { tagCounts } from "../core/tags";
 
 export interface TagsPanel {
   refresh(): Promise<void>;
+  /** Draw this (a running form's element) in place of the cloud; null brings it back. */
+  setPanel(el: HTMLElement | null): void;
 }
 
 export function createTagsPanel(
@@ -19,7 +22,18 @@ export function createTagsPanel(
   root.className = "tags-panel";
   parent.appendChild(root);
 
+  let panel: HTMLElement | null = null;
+  function setPanel(next: HTMLElement | null): void {
+    if (next === panel) return;
+    panel?.remove();
+    panel = next;
+    if (panel) parent.appendChild(panel);
+    root.style.display = panel ? "none" : "";
+    parent.parentElement?.classList.toggle("with-panel", panel !== null);
+  }
+
   async function refresh(): Promise<void> {
+    if (panel) return; // the form reads the tags itself
     const files = getFiles();
     const contents = await Promise.all(
       files.map((f) => ws.read(f.path).then((content) => ({ content })).catch(() => ({ content: "" }))),
@@ -46,5 +60,5 @@ export function createTagsPanel(
     }
   }
 
-  return { refresh };
+  return { refresh, setPanel };
 }

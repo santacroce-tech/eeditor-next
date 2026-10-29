@@ -13,6 +13,7 @@ import CONFIG from "../../docs/pim/pim.eelisp?raw";
 import CAPTURE from "../../docs/pim/Capture.eeform?raw";
 import AGENDA from "../../docs/pim/Agenda.eeform?raw";
 import SIDE from "../../docs/pim/Side.eeform?raw";
+import TAGS from "../../docs/pim/Tags.eeform?raw";
 import PRELUDE from "../keybindings/prelude.eelisp?raw";
 import DEFAULTS from "../keybindings/default.eelisp?raw";
 import { clockDefs, lispString, parseKeybindings } from "../core/keybindings";
@@ -38,7 +39,7 @@ const ymd = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.
 /** Every file the sample writes, so a caller can make sure none of them is there already. */
 export function pimSamplePaths(now: Date = new Date()): string[] {
   return [`${ymd(now)}.md`, "inbox.md", "bills.md", "dashboard.md", "projects/site.md", "projects/home.md",
-    "TRY ME.md", "pim/Capture.eeform", "pim/Agenda.eeform", "pim/Side.eeform", ".eeditor/keybindings.eelisp"];
+    "TRY ME.md", "pim/Capture.eeform", "pim/Agenda.eeform", "pim/Side.eeform", "pim/Tags.eeform", ".eeditor/keybindings.eelisp"];
 }
 
 /** Fill the agenda and write the notes. Returns how many agenda items there are now. */
@@ -187,6 +188,7 @@ The keys only work in a build of EEditor that has the PIM, with this folder open
 | ⌘⌥A | Re-read the line into its agenda item (date, priority, tags, notes); links a hand-typed \`- [ ]\` | on a task |
 | ⌘⌥E | Ask *When?* and set the date (\`tomorrow\`, \`in 3 days\`, \`2026-12-01\`, \`none\`) | on a linked task |
 | ⌘⌥G | Ask *Category* and file the item under it | on a linked task |
+| ⌘⌥B | Ask for a tag and insert links to the notes that have it, as a block | where you want it |
 | ⌘⌥S | Bring every note in step with the agenda now (the minute tick does it too) | anywhere |
 | ⌘⌥N | Capture window: a task, an inbox item or a log line | anywhere |
 | ⌘⌥F | Refile the line under a heading of another note | on the line |
@@ -262,6 +264,7 @@ This sample makes \`projects/\` an agenda file (the last lines of the config).
 
 - [ ] In **dashboard.md**, ⌘⌥U: every block between \`<!-- eel: … -->\` and \`<!-- /eel -->\` is recomputed. What you did above shows up: fewer items in *Inbox*, today's done tasks in *This week*.
 - [ ] In any note, on an empty line, ⌘⌥W: the next 7 days as a block. ⌘⌥U refreshes it later.
+- [ ] The **tags** section is a form too (**pim/Tags.eeform**): click *#work* — the notes that have it are listed; click one to open it. In a note, on an empty line, ⌘⌥B and type \`work\`: a block of \`[[links]]\` to those notes. ⌘⌥U refreshes it after you tag another note.
 - [ ] Write your own: a line \`<!-- eel: (str "Items: " (item-count)) -->\` and a line \`<!-- /eel -->\` under it, then ⌘⌥U.
 
 ## 11 · Clocking time
@@ -325,6 +328,7 @@ ${pimBlock(CONFIG)}
   await write("pim/Capture.eeform", CAPTURE);
   await write("pim/Agenda.eeform", AGENDA);
   await write("pim/Side.eeform", SIDE);
+  await write("pim/Tags.eeform", TAGS);
 
   return Number(await ev("(item-count)"));
 }

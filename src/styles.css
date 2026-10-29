@@ -39,6 +39,9 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-s
 .side-section { display: flex; flex-direction: column; min-height: 0; }
 .side-section.files-section { flex: 1 1 45%; }
 .side-section.tags-section { flex: 0 1 auto; max-height: 150px; border-top: 1px solid var(--border); }
+/* a (panel "tags" …) form needs more room than the cloud */
+.side-section.tags-section.with-panel { flex: 1 1 30%; max-height: none; }
+.side-section.tags-section.with-panel > .side-body { display: flex; flex-direction: column; }
 .side-section.agenda-section { flex: 1 1 40%; border-top: 1px solid var(--border); }
 
 .tags-panel { display: flex; flex-wrap: wrap; gap: 5px; padding: 6px 10px; }

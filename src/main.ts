@@ -54,6 +54,7 @@ import PIM_CONFIG from "../docs/pim/pim.eelisp?raw";
 import PIM_CAPTURE from "../docs/pim/Capture.eeform?raw";
 import PIM_AGENDA from "../docs/pim/Agenda.eeform?raw";
 import PIM_SIDE from "../docs/pim/Side.eeform?raw";
+import PIM_TAGS from "../docs/pim/Tags.eeform?raw";
 import DEFAULT_KEYS from "./keybindings/default.eelisp?raw";
 import { KEYBINDINGS_PATH } from "./ui/keybindings";
 
@@ -61,6 +62,8 @@ import { KEYBINDINGS_PATH } from "./ui/keybindings";
 const PIM_AGENDA_PATH = "pim/Agenda.eeform";
 /** The agenda section of the sidebar, as the PIM's (panel "agenda" …) line draws it. */
 const PIM_SIDE_PATH = "pim/Side.eeform";
+/** The tags section, as its (panel "tags" …) line draws it. */
+const PIM_TAGS_PATH = "pim/Tags.eeform";
 /** What that window was called before (installs up to 2.4.1): still opened by ⤢, moved aside by an install. */
 const PIM_TRYME_PATH = "pim/TRYME.eeform";
 const parentDir = (p: string): string => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
@@ -793,6 +796,7 @@ function main(): void {
   let agendaRefresh: ReturnType<typeof setTimeout> | undefined;
   /** Set while the sidebar's panels rerun their :on-refresh (see applyPanels). */
   let panelsRefreshing = 0;
+  let panelSave: ReturnType<typeof setTimeout> | undefined;
   const refreshAgendaSoon = (ms = 120): void => {
     clearTimeout(agendaRefresh);
     agendaRefresh = setTimeout(() => {
@@ -900,18 +904,23 @@ function main(): void {
 
   // ── panels: (panel "agenda" "pim/Side.eeform") in the keybindings draws a form in the sidebar ──
   // "agenda" goes in the agenda section, in place of the built-in list (the notes' group stays under
-  // it); any other name is a section of its own. Each runs `:on-refresh` whenever the agenda may have
-  // changed — after a key, the REPL, a form — as the built-in list reloads.
+  // it), "tags" in the tags section in place of the cloud; any other name is a section of its own.
+  // Each runs `:on-refresh` whenever the agenda may have changed — after a key, the REPL, a form —
+  // and when a note is saved.
   interface SidePanel extends Panel {
     runner: FormRunner;
-    /** The section made for it — none for the agenda's. */
+    /** The section made for it — none for a built-in one's. */
     section?: HTMLElement;
   }
+  /** The sidebar's own sections a panel can take over, by name. */
+  const builtInSection = (p: Panel): { body: HTMLElement; setPanel(el: HTMLElement | null): void } | undefined => {
+    const n = p.name.toLowerCase();
+    return n === "agenda" ? { body: agendaBody, setPanel: (el) => agenda.setPanel(el) } : n === "tags" ? { body: tagsBody, setPanel: (el) => tags.setPanel(el) } : undefined;
+  };
   let sidePanels: SidePanel[] = [];
   let wantedPanels: Panel[] = [];
-  const isAgendaPanel = (p: Panel): boolean => p.name.toLowerCase() === "agenda";
   async function refreshPanels(): Promise<void> {
-    const shown = sidePanels.filter((p) => !(p.section ?? agendaBody).contains(document.activeElement));
+    const shown = sidePanels.filter((p) => !(p.section ?? builtInSection(p)?.body)?.contains(document.activeElement));
     if (shown.length === 0) return;
     panelsRefreshing++;
     try {
@@ -922,7 +931,7 @@ function main(): void {
   }
   function dropPanel(p: SidePanel): void {
     sidePanels = sidePanels.filter((x) => x !== p);
-    if (isAgendaPanel(p)) agenda.setPanel(null);
+    builtInSection(p)?.setPanel(null);
     p.runner.destroy();
     p.section?.remove();
   }
@@ -944,7 +953,8 @@ function main(): void {
     });
     const live: SidePanel = { ...pn, runner };
     formHost.track(id, runner);
-    if (isAgendaPanel(pn)) agenda.setPanel(runner.el);
+    const own = builtInSection(pn);
+    if (own) own.setPanel(runner.el);
     else {
       const sec = section(sidebarEl, pn.name, "side-panel-section");
       sec.body.append(runner.el);
@@ -1630,9 +1640,9 @@ function main(): void {
         await ws.create("pim/Capture.eeform", false).catch(() => {});
         await ws.write("pim/Capture.eeform", PIM_CAPTURE);
       }
-      // The PIM's window and its sidebar panel follow EEditor's version, like the keys between the
+      // The PIM's window and its sidebar panels follow EEditor's version, like the keys between the
       // markers; a copy that differs (edited, or from an older install) is kept in .eeditor/ first.
-      for (const [path, text] of [[PIM_AGENDA_PATH, PIM_AGENDA], [PIM_SIDE_PATH, PIM_SIDE]]) {
+      for (const [path, text] of [[PIM_AGENDA_PATH, PIM_AGENDA], [PIM_SIDE_PATH, PIM_SIDE], [PIM_TAGS_PATH, PIM_TAGS]]) {
         const was = await ws.read(path).catch(() => null);
         if (was === text) continue;
         if (was === null) await ws.create(path, false).catch(() => {});
@@ -1735,6 +1745,9 @@ function main(): void {
         return false;
       }
       contentCache.set(tab.path, doc);
+      // the sidebar's panels may show what the note says — its #tags, say
+      clearTimeout(panelSave);
+      panelSave = setTimeout(() => void refreshPanels(), 600);
       // a task typed or linked in the note shows in (or leaves) the agenda's "in notes" group
       if (doc.includes("- [ ] ") || tab.content.includes("- [ ] ")) refreshAgendaSoon(600);
     }
