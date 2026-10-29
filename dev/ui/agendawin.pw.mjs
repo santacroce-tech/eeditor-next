@@ -1,4 +1,4 @@
-// pim/TRYME.eeform — the PIM as one window — in a real browser against a real engine, with the PIM
+// pim/Agenda.eeform — the PIM as one window — in a real browser against a real engine, with the PIM
 // loaded the way the install writes it: ⤢ on the agenda opens it maximized and the grid fills the
 // room; ⤢ again gives the room back. Each page does what its key does: quick add, edit, done; a
 // note's unlinked "- [ ]" linked; capture into the inbox; clock in and out; the tracker; the review.
@@ -19,7 +19,7 @@ test.beforeAll(async () => {
   await mkdir(`${UI_WORKSPACE}/.eeditor`, { recursive: true });
   await mkdir(`${UI_WORKSPACE}/pim`, { recursive: true });
   await writeFile(CONFIG, `${pim}\n(on-start (ed-open "welcome.md"))\n`);
-  await writeFile(`${UI_WORKSPACE}/pim/TRYME.eeform`, await readFile("docs/pim/TRYME.eeform", "utf8"));
+  await writeFile(`${UI_WORKSPACE}/pim/Agenda.eeform`, await readFile("docs/pim/Agenda.eeform", "utf8"));
   await writeFile(NOTE, "# Plans\n\n- [ ] repaint the fence tmz\n");
 });
 
@@ -29,7 +29,7 @@ test.afterAll(async () => {
   await rm(NOTE, { force: true });
 });
 
-const win = (page) => page.locator(".formwin", { hasText: "Try the PIM" });
+const win = (page) => page.locator(".formwin").filter({ has: page.locator(".formrun-name", { hasText: /^Agenda$/ }) });
 const ctl = (page, name) => win(page).locator(`.formrun-ctl[data-name="${name}"]`);
 const tab = (page, name) => win(page).locator(".formrun-tab", { hasText: name });
 const status = (page, name) => ctl(page, name).locator(".formrun-label");

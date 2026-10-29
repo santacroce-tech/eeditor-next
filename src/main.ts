@@ -52,11 +52,13 @@ import { aboutModal } from "./ui/about";
 import { installPim, replacePastedPim } from "./core/pim-install";
 import PIM_CONFIG from "../docs/pim/pim.eelisp?raw";
 import PIM_CAPTURE from "../docs/pim/Capture.eeform?raw";
-import PIM_TRYME from "../docs/pim/TRYME.eeform?raw";
+import PIM_AGENDA from "../docs/pim/Agenda.eeform?raw";
 import DEFAULT_KEYS from "./keybindings/default.eelisp?raw";
 import { KEYBINDINGS_PATH } from "./ui/keybindings";
 
 /** Where Install the PIM keys… (and the sample notes) put the PIM's window; ⤢ on the agenda opens it. */
+const PIM_AGENDA_PATH = "pim/Agenda.eeform";
+/** What that window was called before (installs up to 2.4.1): still opened by ⤢, moved aside by an install. */
 const PIM_TRYME_PATH = "pim/TRYME.eeform";
 const parentDir = (p: string): string => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
 const joinPath = (dir: string, name: string): string => (dir ? `${dir}/${name}` : name);
@@ -161,7 +163,7 @@ function main(): void {
   const bigBtn = document.createElement("button");
   bigBtn.className = "side-btn";
   bigBtn.textContent = "⤢";
-  bigBtn.title = "The agenda, big — the PIM's window (pim/TRYME), maximized";
+  bigBtn.title = "The agenda, big — the PIM's window (pim/Agenda), maximized";
   const agendaBtns = document.createElement("span");
   agendaBtns.className = "side-head-btns";
   agendaBtns.append(setupBtn, calBtn, bigBtn);
@@ -894,10 +896,10 @@ function main(): void {
   setupBtn.addEventListener("click", () => agendaSetup.open());
   // ⤢: the PIM's window if this workspace has it, else the example agenda form — maximized either way.
   bigBtn.addEventListener("click", async () => {
-    for (const p of [PIM_TRYME_PATH, "examples/Agenda.eeform"]) {
+    for (const p of [PIM_AGENDA_PATH, PIM_TRYME_PATH, "examples/Agenda.eeform"]) {
       if ((await ws.read(p).then(() => true, () => false))) return void runForm(p, undefined, { maximized: true });
     }
-    toast("No agenda window here yet — right-click the workspace → Install the PIM keys… adds pim/TRYME");
+    toast("No agenda window here yet — right-click the workspace → Install the PIM keys… adds pim/Agenda");
   });
 
   const openFile = async (path: string): Promise<void> => {
@@ -1557,14 +1559,23 @@ function main(): void {
       }
       // The PIM's window follows EEditor's version, like the keys between the markers; a copy that
       // differs (edited, or from an older install) is kept in .eeditor/ first.
-      const was = await ws.read(PIM_TRYME_PATH).catch(() => null);
-      if (was === null) await ws.create(PIM_TRYME_PATH, false).catch(() => {});
-      else if (was !== PIM_TRYME) {
-        const old = `.eeditor/TRYME.before-${todayISO()}.eeform`;
+      const was = await ws.read(PIM_AGENDA_PATH).catch(() => null);
+      if (was === null) await ws.create(PIM_AGENDA_PATH, false).catch(() => {});
+      else if (was !== PIM_AGENDA) {
+        const old = `.eeditor/Agenda.before-${todayISO()}.eeform`;
         await ws.create(old, false).catch(() => {});
         await ws.write(old, was);
       }
-      if (was !== PIM_TRYME) await ws.write(PIM_TRYME_PATH, PIM_TRYME);
+      if (was !== PIM_AGENDA) await ws.write(PIM_AGENDA_PATH, PIM_AGENDA);
+      // It used to be pim/TRYME.eeform: that copy goes beside the others in .eeditor/, so the
+      // folder doesn't keep two of the same window.
+      const tryme = await ws.read(PIM_TRYME_PATH).catch(() => null);
+      if (tryme !== null) {
+        const old = `.eeditor/TRYME.before-${todayISO()}.eeform`;
+        await ws.create(old, false).catch(() => {});
+        await ws.write(old, tryme);
+        await ws.remove(PIM_TRYME_PATH);
+      }
     } catch (e) {
       toast(`Could not install the PIM: ${String(e)}`);
       return;
