@@ -1118,6 +1118,111 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
         };
         break;
       }
+      case "board": {
+        // Lanes side by side, each a column of cards. A card belongs to the lane its :lane-by field
+        // names; moving it changes that field here at once, then :on-move hears $from and $to.
+        const wrap = el("div", "formrun-board");
+        wrap.tabIndex = -1;
+        let lanes = (p.lanes as string[]) ?? [];
+        let rows: Row[] = [];
+        let selected: Row | null = null;
+        const laneBy = String(p["lane-by"] || "lane");
+        const cardBy = String(p.card || "text");
+        const subBy = String(p.sub || "");
+        const laneOf = (r: Row) => asText(r[laneBy] as JsonValue);
+        /** The lanes as drawn: the ones given, or else the rows' own, in the order they first appear. */
+        const shownLanes = (): string[] => (lanes.length ? lanes : [...new Set(rows.map(laneOf))]);
+        let dragged: Row | null = null;
+        const move = (r: Row, to: string) => {
+          const from = laneOf(r);
+          if (from === to) return;
+          r[laneBy] = to;
+          selected = r;
+          draw();
+          void fire(c.events.move, undefined, { $from: from, $to: to });
+        };
+        const draw = () => {
+          const names = shownLanes();
+          wrap.replaceChildren(
+            ...names.map((name) => {
+              const cards = rows.filter((r) => laneOf(r) === name);
+              const lane = el("div", "formrun-lane");
+              lane.dataset.lane = name;
+              const body = el("div", "formrun-lane-body");
+              for (const r of cards) {
+                const card = el("div", "formrun-card" + (r === selected ? " selected" : ""));
+                card.tabIndex = 0;
+                card.draggable = true;
+                card.append(el("div", "formrun-card-text", asText(r[cardBy] as JsonValue)));
+                const sub = subBy ? asText(r[subBy] as JsonValue) : "";
+                if (sub) card.append(el("div", "formrun-card-sub", sub));
+                card.addEventListener("click", () => {
+                  if (selected === r) return;
+                  selected = r;
+                  draw();
+                  wrap.querySelector<HTMLElement>(".formrun-card.selected")?.focus();
+                  void fire(c.events.change);
+                });
+                card.addEventListener("dblclick", () => void fire(c.events.dblclick));
+                card.addEventListener("dragstart", (e) => {
+                  dragged = r;
+                  e.dataTransfer?.setData("text/plain", asText(r[cardBy] as JsonValue));
+                  if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+                });
+                card.addEventListener("dragend", () => (dragged = null));
+                // ⌥← / ⌥→: to the lane beside it — the board without a mouse
+                card.addEventListener("keydown", (e) => {
+                  if (!e.altKey || (e.key !== "ArrowLeft" && e.key !== "ArrowRight")) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const at = names.indexOf(name) + (e.key === "ArrowLeft" ? -1 : 1);
+                  if (at < 0 || at >= names.length) return;
+                  move(r, names[at]);
+                  wrap.querySelector<HTMLElement>(".formrun-card.selected")?.focus();
+                });
+                body.append(card);
+              }
+              lane.append(el("div", "formrun-lane-head", `${name} · ${cards.length}`), body);
+              lane.addEventListener("dragover", (e) => {
+                if (!dragged) return;
+                e.preventDefault();
+                lane.classList.add("over");
+              });
+              lane.addEventListener("dragleave", () => lane.classList.remove("over"));
+              lane.addEventListener("drop", (e) => {
+                e.preventDefault();
+                lane.classList.remove("over");
+                const r = dragged;
+                dragged = null;
+                if (r) move(r, name);
+              });
+              return lane;
+            }),
+          );
+        };
+        draw();
+        box.append(wrap);
+        out = {
+          spec: c,
+          box,
+          value: () => selected,
+          set: (k, v) => {
+            if (k === "rows") {
+              const id = selected?.id;
+              rows = rowsOf(v).rows;
+              // the same card stays picked across a refill
+              selected = id === undefined ? null : (rows.find((r) => r.id === id) ?? null);
+            } else if (k === "lanes") lanes = asItems(v);
+            else if (k === "value") {
+              const id = typeof v === "number" ? v : v && typeof v === "object" && "id" in v ? (v as { id: number }).id : null;
+              selected = rows.find((r) => r.id === id) ?? null;
+            }
+            draw();
+          },
+          focus: () => (wrap.querySelector<HTMLElement>(".formrun-card.selected") ?? wrap.querySelector<HTMLElement>(".formrun-card") ?? wrap).focus(),
+        };
+        break;
+      }
     }
     if (p.enabled === false) setEnabled(out.box, false);
     return out;

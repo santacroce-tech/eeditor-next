@@ -57,7 +57,7 @@ refresh. The one exception: it doesn't redraw while you're typing in it.
 
 **The agenda, big.** ⤢ above the sidebar's agenda opens `pim/Agenda.eeform` filling the window —
 everything this guide and `TRY ME.md` walk through, as an interface: *Start here* (is the PIM live,
-every key), *Agenda* (quick add with the PIM's parse, filters, an editor for one item), *In notes*
+every key), *Agenda* (quick add with the PIM's parse, filters, an editor for one item), *Board* (below), *In notes*
 (the unlinked `- [ ]` lines, to link or open), *Capture*, *Clock* (in on an item or anything, out, the
 report), *Tracker* and *Review*. Install the PIM keys… puts it there (a copy that differs is kept as
 `.eeditor/Agenda.before-<date>.eeform` first, and an older install's `pim/TRYME.eeform` is moved there
@@ -68,6 +68,15 @@ panel lists those lines under its items, in a folding group — *in notes, not i
 by note. Click one to open its note at that line; **＋** makes it an item and links the line, the
 same as ⌘⌥A on it (with the PIM loaded it is the PIM's own parse: tags, notes, rules). Lines in
 ``` fences are examples and aren't listed.
+
+**A board.** The Agenda window's *Board* tab is a kanban of your categories: pick one in
+*Columns* and its children are the columns — `work/l2l`, `work/admin`, then `work` itself for what is
+filed under it alone — or the top-level categories, with *no category* last. An item shows once, in
+the first column that holds it. Drag a card to another column (or ⌥← / ⌥→ on the one picked) and
+the item is refiled: out of the categories that put it in the column it left, under the new one.
+Double-click a card to edit it on the *Agenda* tab. **⇩ Into the note** puts the same board in the
+note in front, as a markdown table in a block — `<!-- eel: (pim-board "work") -->` — that ⌘⌥U keeps
+fresh, the preview draws and the PDF prints. The tab is the `board` form control, there for any form.
 
 ---
 
@@ -236,6 +245,9 @@ The library's building blocks, all callable in blocks, the REPL and your own bin
 | `(pim-someday)` | agenda items with no date |
 | `(pim-inbox)` | what capture put in the inbox (the `pim-inbox` view) |
 | `(pim-category c)` | the items in a category and its children |
+| `(pim-board c)` | a markdown table, a column per child of `c` (and `c` itself) with its items — `""` for the top-level categories |
+| `(pim-board-lanes c)` / `(pim-board-rows c)` | a board's columns, and its cards as dicts (`:id :text :when :lane`) — what the Board tab draws |
+| `(pim-board-move id c from to)` | a card moved: the item out of the categories that put it in `from`, filed under `to` |
 | `(pim-done-report from to)` | what you finished, from the `done` table |
 | `(pim-clock-report from to)` | a markdown table of time per task, with a total |
 | `(pim-track-report from to)` | tracker totals per kind: `drink 5 un · exercise 90 min · …` |

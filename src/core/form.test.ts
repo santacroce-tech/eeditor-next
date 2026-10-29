@@ -263,6 +263,20 @@ describe("the form's state for a handler", () => {
   });
 });
 
+describe("the board control", () => {
+  it("reads and writes its lanes, fields and :on-move", () => {
+    const src = `(form "K" :size (400 300)\n  (board brdTasks :lanes ("To do" "Done") :lane-by "stage" :card "title" :sub "who" :at (8 8) :size (384 284) :anchor "tlbr" :on-move moved))`;
+    const r = readFormSpec(src);
+    if ("error" in r) throw new Error(r.error);
+    const c = r.spec.controls[0];
+    expect(c.props).toEqual({ lanes: ["To do", "Done"], "lane-by": "stage", card: "title", sub: "who", anchor: "tlbr" });
+    expect(c.events).toEqual({ move: "moved" });
+    expect(c.extra).toEqual([]);
+    expect(printFormSpec(r.spec)).toBe(src);
+    expect(humanName("brdTasks")).toBe("Tasks");
+  });
+});
+
 describe(":main and :on-public on a form", () => {
   it("read and write back, and the frame control with them", () => {
     const src = `(form "Office" :size (400 300) :main true :on-public heard :on-close may-close\n  (frame frmMain :mode "tabs" :at (8 8) :size (384 284)))`;

@@ -4,6 +4,7 @@
 ;;
 ;;   Start here  is the PIM live, what's in the workspace, and every key
 ;;   Agenda      the agenda, big: quick add, filters, and an editor for one item
+;;   Board       a category's children as columns: drag a card across to file it there
 ;;   In notes    "- [ ] …" lines typed in notes that aren't agenda items yet — add them, open them
 ;;   Capture     task / inbox / log, as ⌘⌥N does it, and what's in the inbox
 ;;   Clock       clock in on an item or anything, out, and the time report
@@ -13,7 +14,7 @@
 ;; It is the same agenda, tables and notes as the sidebar, the keys and the REPL.
 
 (form "Agenda" :size (1040 680) :on-load tm-load :menu (("PIM" ("Refresh" tm-refresh-all) ("Sweep notes now" tm-sweep) ("-") ("Close" tm-close)) ("Open" ("Today's note" tm-open-today) ("This week's review" tm-open-week) ("TRY ME.md" tm-open-tryme) ("Keybindings" tm-open-keys)) ("Help" ("About" tm-about)))
-  (tabs tabMain :pages ("Start here" "Agenda" "In notes" "Capture" "Clock" "Tracker" "Review") :value "Agenda" :at (8 8) :size (1024 664) :anchor "tlbr" :on-change tm-page)
+  (tabs tabMain :pages ("Start here" "Agenda" "Board" "In notes" "Capture" "Clock" "Tracker" "Review") :value "Agenda" :at (8 8) :size (1024 664) :anchor "tlbr" :on-change tm-page)
   (label lblCheck :text "Is it all there?" :page "Start here" :at (20 48) :size (380 24))
   (textbox txtCheck :multiline true :readonly true :mono true :page "Start here" :at (20 76) :size (380 340) :anchor "tlb")
   (button btnCheck :text "Check again" :page "Start here" :at (20 428) :size (120 30) :anchor "lb" :on-click tm-check)
@@ -47,6 +48,13 @@
   (button btnDone :text "Done ✓" :page "Agenda" :at (780 612) :size (72 30) :anchor "rb" :on-click tm-done)
   (button btnDelete :text "Delete" :page "Agenda" :at (860 612) :size (72 30) :anchor "rb" :on-click tm-delete)
   (button btnNew :text "New" :page "Agenda" :at (940 612) :size (72 30) :anchor "rb" :on-click tm-new)
+  (label lblBoardIn :text "Columns" :page "Board" :at (20 48) :size (64 24))
+  (dropdown cboBoard :items ("top-level categories") :value "top-level categories" :page "Board" :at (84 44) :size (220 28) :on-change tm-board)
+  (button btnBoardRefresh :text "Refresh" :page "Board" :at (312 44) :size (88 28) :on-click tm-board)
+  (button btnBoardNote :text "⇩ Into the note" :page "Board" :at (408 44) :size (136 28) :on-click tm-board-note)
+  (label lblBoard :page "Board" :at (556 48) :size (456 24) :anchor "tlr")
+  (board brdItems :lanes () :sub "when" :page "Board" :at (20 80) :size (992 540) :anchor "tlbr" :on-dblclick tm-board-open :on-move tm-board-move)
+  (label lblBoardHelp :text "Drag a card to another column (or ⌥← / ⌥→ on the one picked) to file it there; double-click to edit it. ⇩ puts the board in the note in front, as a table ⌘⌥U keeps fresh." :page "Board" :at (20 628) :size (992 28) :anchor "lrb")
   (label lblNotesHelp :text "A typed \"- [ ] …\" is only text until it's linked ({#12}). ＋ links it, like ⌘⌥A on the line; Sweep does pim-agenda-files." :page "In notes" :at (20 44) :size (992 40) :anchor "tlr")
   (checkbox chkSkipTryMe :text "Leave out TRY ME.md (its lessons are a checklist)" :value true :page "In notes" :at (20 88) :size (420 24) :on-change tm-scan)
   (label lblNoteCount :page "In notes" :at (452 90) :size (560 20) :anchor "tlr")
@@ -126,13 +134,14 @@
   (tm-new f))
 
 (defn tm-refresh-all (f)
-  (tm-check f) (tm-cats f) (tm-refresh f) (tm-scan f) (tm-inbox f) (tm-clock f) (tm-tracker f) (tm-review f))
+  (tm-check f) (tm-cats f) (tm-refresh f) (when (tm-pim?) (tm-board f)) (tm-scan f) (tm-inbox f) (tm-clock f) (tm-tracker f) (tm-review f))
 
 ;; A page opened: fill it in then, so the window opens fast.
 (defn tm-page (f)
   (let (p (ui-get f "tabMain"))
     (cond (= p "Start here") (tm-check f)
           (= p "Agenda") (tm-refresh f)
+          (= p "Board") (tm-board f)
           (= p "In notes") (tm-scan f)
           (= p "Capture") (tm-inbox f)
           (= p "Clock") (tm-clock f)
@@ -418,6 +427,52 @@
     (when row
       (tm-edit (dict-get row "id"))
       (ui-set "tabMain" :value "Agenda"))))
+
+;; ── Board ──
+;; The columns are the children of the category picked (and itself), or the top-level categories
+;; (and "-", the items with none) — pim-board-lanes. A card dragged across is refiled there.
+
+(def tm-board-top "top-level categories")
+(defn tm-board-parent (f)
+  (let (p (or (ui-get f "cboBoard") "")) (cond (= p tm-board-top) "" true p)))
+;; What the dropdown offers: the top level, and every category that has children.
+(defn tm-board-parents ()
+  (let (names (tm-cat-names))
+    (cons tm-board-top (filter (fn (c) (some? (fn (x) (str-starts-with x (str c "/"))) names)) names))))
+
+;; The lane of the items with no category is "-" to the PIM, "no category" on the board.
+(def tm-no-cat "no category")
+(defn tm-lane-shown (l) (cond (= l "-") tm-no-cat true l))
+(defn tm-lane-key (l) (cond (= l tm-no-cat) "-" true l))
+
+(defn tm-board (f)
+  (cond (not (tm-pim?)) (tm-need-pim)
+        true (let (parent (tm-board-parent f) rows (pim-board-rows parent))
+               (ui-set "cboBoard" :items (tm-board-parents))
+               (ui-set "brdItems" :lanes (map tm-lane-shown (pim-board-lanes parent)))
+               (ui-set "brdItems" :rows (map (fn (d) (dict-set d :lane (tm-lane-shown (dict-get d :lane)))) rows))
+               (ui-set "lblBoard" :text (str (tm-plural (length rows) "card")
+                                             (cond (= parent "") "" true (str " in " parent)))))))
+
+(defn tm-board-move (f)
+  (let (card (ui-get f "brdItems") to (tm-lane-key (ui-get f "$to")))
+    (when card
+      (pim-board-move (dict-get card "id") (tm-board-parent f) (tm-lane-key (ui-get f "$from")) to)
+      (tm-board f)
+      (ui-set "lblBoard" :text (str "#" (dict-get card "id") " filed under " (cond (= to "-") "nothing" true to))))))
+
+(defn tm-board-open (f)
+  (let (card (ui-get f "brdItems"))
+    (when card
+      (tm-edit (dict-get card "id"))
+      (ui-set "tabMain" :value "Agenda"))))
+
+;; The board as a table in the note in front, at the caret: a block ⌘⌥U recomputes.
+(defn tm-board-note (f)
+  (cond (not (tm-pim?)) (tm-need-pim)
+        true (let (parent (tm-board-parent f))
+               (ui-editor (ed-insert (str (pim-block (str "(pim-board \"" parent "\")")) "\n")))
+               (ui-message "The board is in the note — ⌘⌥U there keeps it fresh"))))
 
 ;; ── Clock ──
 

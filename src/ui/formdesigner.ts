@@ -89,6 +89,7 @@ const ICONS: Record<ControlType | "select", IconPart[]> = {
   dropdown: [["rect", 1.5, 4.5, 13, 7], ["path", "M9.5 7l1.5 1.5L12.5 7"]],
   listbox: [["rect", 2.5, 2.5, 11, 11], ["path", "M5 5.5h6M5 8h6M5 10.5h6"]],
   grid: [["rect", 2, 3, 12, 10], ["path", "M2 6.5h12M2 9.5h12M6 3v10M10 3v10"]],
+  board: [["rect", 1.5, 2.5, 3.5, 11], ["rect", 6.25, 2.5, 3.5, 7], ["rect", 11, 2.5, 3.5, 9]],
   date: [["rect", 2, 3.5, 12, 10], ["path", "M2 6.5h12M5 2v3M11 2v3"], ["rect", 9, 8.5, 2.5, 2.5]],
   image: [["rect", 2, 3, 12, 10], ["circle", 5.5, 6, 1.2], ["path", "M2 11l3.5-3 2.5 2 2.5-2 3.5 3"]],
   screen: [["rect", 1.5, 2.5, 13, 9.5], ["rect", 4, 4.5, 8, 5.5], ["path", "M6 14h4"]],
@@ -272,6 +273,16 @@ export function createFormDesigner(opts: FormDesignerOptions): FormDesigner {
       case "listbox": {
         const b = el("div", "fd-p-list");
         for (const it of (p.items as string[]) ?? []) b.append(el("div", "fd-p-item" + (it === p.value ? " selected" : ""), it));
+        return b;
+      }
+      case "board": {
+        const b = el("div", "fd-p-board");
+        const lanes = (p.lanes as string[]) ?? [];
+        for (const lane of lanes.length ? lanes : ["…", "…"]) {
+          const l = el("div", "fd-p-lane");
+          l.append(el("div", "fd-p-lanehead", lane), el("div", "fd-p-card"));
+          b.append(l);
+        }
         return b;
       }
       case "grid": {

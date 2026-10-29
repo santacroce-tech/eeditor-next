@@ -255,6 +255,65 @@
   (defn pim-category (c)
     (pim-lines (filter (fn (r) (pim-in? c r)) (records (items))) (str "_nothing in " c "_")))
 
+  ;; ── boards: a category's children as columns ───────────────────────────────
+  ;; The Agenda window's Board tab, and (pim-board "work") in a note. The lanes inside a category
+  ;; are its children, then itself for what's filed under it alone; inside "" they are the
+  ;; top-level categories, then "-" for the items with none. An item sits in the first lane that
+  ;; holds it, so one in work/l2l and home shows once.
+  (defn pim-cats-of (r) (filter (fn (c) (!= c "")) (map str-trim (str-split (field-get r :categories) ","))))
+  (defn pim-board-lanes (parent)
+    (let (names (pim-category-names))
+      (cond (= parent "") (append (filter (fn (c) (not (str-contains c "/"))) names) (list "-"))
+            true (append (filter (fn (c) (and (str-starts-with c (str parent "/"))
+                                              (not (str-contains (substr c (+ (str-len parent) 1)) "/"))))
+                                 names)
+                         (list parent)))))
+  (defn pim-lane-has? (lane parent r)
+    (cond (= lane "-") (empty? (pim-cats-of r))
+          (= lane parent) (some? (fn (c) (= c parent)) (pim-cats-of r))
+          true (pim-in? lane r)))
+  (defn pim-lane-of (lanes parent r)
+    (let (hit (filter (fn (l) (pim-lane-has? l parent r)) lanes)) (cond (empty? hit) nil true (first hit))))
+  ;; The cards: one dict per item on the board — :id :text (with its !!) :when :lane.
+  (defn pim-board-rows (parent)
+    (let (lanes (pim-board-lanes parent))
+      (filter (fn (d) (not (nil? (dict-get d :lane))))
+        (map (fn (r) (dict :id (record-id r) :text (str (pim-bang-of (field-get r :priority)) (field-get r :text))
+                           :when (field-get r :when) :lane (pim-lane-of lanes parent r)))
+             (pim-by-priority (records (items)))))))
+  ;; A card moved from one lane to another: out of the categories that put it in `from`, filed under
+  ;; `to` ("-" files it under nothing). The item, as a dict.
+  (defn pim-board-move (id parent from to)
+    (let (cats (dict-get (item->dict (item-get id)) :categories))
+      (for-each c (filter (fn (c) (cond (= from "-") false
+                                        (= from parent) (= c parent)
+                                        true (or (= c from) (str-starts-with c (str from "/")))))
+                          cats)
+        (unassign id c))
+      (when (!= to "-") (pim-file-under id (list to)))
+      (item->dict (item-get id))))
+  ;; A lane's name as a column says it: its last part, "work" for the parent's own, "no category".
+  (defn pim-lane-label (lane)
+    (cond (= lane "-") "no category" true (last (str-split lane "/"))))
+  ;; The board as a markdown table, a column per lane — <!-- eel: (pim-board "work") --> in a note,
+  ;; and ⌘⌥U keeps it fresh. Lanes with nothing in them are left out.
+  (defn pim-board (parent)
+    (let (rows  (pim-board-rows parent)
+          lanes (filter (fn (l) (some? (fn (d) (= (dict-get d :lane) l)) rows)) (pim-board-lanes parent))
+          cols  (map (fn (l) (filter (fn (d) (= (dict-get d :lane) l)) rows)) lanes)
+          depth (reduce (fn (n c) (cond (> (length c) n) (length c) true n)) 0 cols)
+          cell  (fn (c i) (cond (< i (length c))
+                                  (let (d (nth c i) w (dict-get d :when))
+                                    (str (str-replace (dict-get d :text) "|" "/") (cond (= w "") "" true (str " · " w))))
+                                true "")))
+      (cond (empty? lanes) (str "_nothing on the board" (cond (= parent "") "" true (str " in " parent)) "_")
+            true (str-join "\n"
+                   (append
+                     (list (str "| " (str-join " | " (map (fn (l) (str (pim-lane-label l) " · " (length (filter (fn (d) (= (dict-get d :lane) l)) rows)))) lanes)) " |")
+                           (str "|" (str-join "|" (map (fn (l) "---") lanes)) "|"))
+                     (map (fn (i) (str "| " (str-join " | " (map (fn (c) (cell c i)) cols)) " |"))
+                          (range 0 depth 1)))))))
+
   ;; Lines whose item was finished elsewhere — the agenda panel's Done, the REPL — are ticked here;
   ;; lines whose item was deleted (⌘⌥⌫ in another note) are taken out.
   (defn pim-dropped? (id) (> (count-records dropped :where "item = ?" :params (list id)) 0))
