@@ -30,7 +30,7 @@ test("an empty folder is offered the samples, and gets every one of them, the PI
 
   // it opens on the welcome note, the agenda has the tour's items, and the PIM's keys are live
   await expect(page.locator(".etab.active .etab-label")).toHaveText("welcome.md");
-  await expect(page.getByText("renew the passport")).toBeVisible();
+  await expect(page.locator(".ag-item .ag-text", { hasText: "renew the passport" })).toBeVisible();
   await page.locator(".editor-host .cm-content").click();
   await page.keyboard.press(`${MOD}+Alt+k`);
   await expect(page.locator(".toast").filter({ hasText: "No clock running" })).toBeVisible();

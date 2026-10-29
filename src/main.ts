@@ -771,13 +771,16 @@ function main(): void {
   // The panel's own calls go straight to `engine` as well.
   let sheetRefresh: ReturnType<typeof setTimeout> | undefined;
   let agendaRefresh: ReturnType<typeof setTimeout> | undefined;
-  const watched = observeEvals(engine, () => {
-    clearTimeout(sheetRefresh);
-    sheetRefresh = setTimeout(() => void activeSheet()?.refreshIfChanged(), 120);
+  const refreshAgendaSoon = (ms = 120): void => {
     clearTimeout(agendaRefresh);
     agendaRefresh = setTimeout(() => {
       if (!agendaBody.contains(document.activeElement)) void agenda.refresh();
-    }, 120);
+    }, ms);
+  };
+  const watched = observeEvals(engine, () => {
+    clearTimeout(sheetRefresh);
+    sheetRefresh = setTimeout(() => void activeSheet()?.refreshIfChanged(), 120);
+    refreshAgendaSoon();
   });
   // The REPL carries out editor commands too: (ed-form "Contacts") runs a form, (ed-insert …) types.
   const repl = createRepl(replPane.body, watched, { onResult: (v) => keys.applyResult(v) });
@@ -865,7 +868,17 @@ function main(): void {
   labelThemeBtn();
   themeBtn.addEventListener("click", () => applyTheme(nextTheme()));
 
-  const agenda = createAgendaPanel(agendaBody, engine);
+  // The panel also lists the notes' "- [ ]" lines that aren't items yet; it reads a note as it is
+  // in its tab, and links a line through writeNote, so an open tab takes it as an edit.
+  const agenda = createAgendaPanel(agendaBody, engine, {
+    files: () => textFiles().map((f) => f.path),
+    read: async (p) => {
+      const text = (await noteText(p)) ?? "";
+      return isExportedPage(text) ? "" : text;
+    },
+    open: (p, line) => void openFile(p).then(() => editor.gotoLine(line)),
+    write: (p, content, expected) => writeNote(p, content, expected),
+  });
   const calendar = createCalendar(engine);
   calBtn.addEventListener("click", () => calendar.open());
   const agendaSetup = createAgendaSetup(engine, () => void agenda.refresh());
@@ -1608,6 +1621,8 @@ function main(): void {
         return false;
       }
       contentCache.set(tab.path, doc);
+      // a task typed or linked in the note shows in (or leaves) the agenda's "in notes" group
+      if (doc.includes("- [ ] ") || tab.content.includes("- [ ] ")) refreshAgendaSoon(600);
     }
     tab.content = doc;
     // Typing while the write was in flight leaves the tab dirty — don't claim it is saved.

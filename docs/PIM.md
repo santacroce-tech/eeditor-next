@@ -55,6 +55,12 @@ The agenda panel re-reads the items after every keybinding, form event and REPL 
 app change in `src/main.ts`, beside the sheet refresh that was already there). You never press
 refresh. The one exception: it doesn't redraw while you're typing in it.
 
+**Typed a `- [ ]` by hand?** It is only text until it's linked, so it isn't an agenda item yet. The
+panel lists those lines under its items, in a folding group — *in notes, not in the agenda · N* —
+by note. Click one to open its note at that line; **＋** makes it an item and links the line, the
+same as ⌘⌥A on it (with the PIM loaded it is the PIM's own parse: tags, notes, rules). Lines in
+``` fences are examples and aren't listed.
+
 ---
 
 ## Try it first
