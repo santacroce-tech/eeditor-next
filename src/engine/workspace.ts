@@ -48,6 +48,10 @@ export interface WorkspaceClient {
   pickWorkspace(): Promise<string | null>;
   /** iOS: re-open the folder picked last session (updates the workspace), or null. */
   restoreWorkspace(): Promise<string | null>;
+  /** Whether another window can be opened on another folder — the desktop app only. */
+  canOpenWindows(): boolean;
+  /** Ask for a folder and open it in a new window (or bring forward the one already on it). False if cancelled. */
+  newWindow(): Promise<boolean>;
   /**
    * Native file picker (works on iOS too — browse Files/Downloads/iCloud) → the chosen absolute
    * path, or null if cancelled/unsupported. The caller decides what to do with it; picking a file
@@ -94,6 +98,8 @@ export interface WorkspaceClient {
    * (see the `app-exiting` event); this is the frontend saying "done, you may go".
    */
   exitApp(): Promise<void>;
+  /** This window is flushed and may close: just it — or the app, when it's the last window. */
+  closeWindow(): Promise<void>;
 }
 
 /** The bridge answers a failure with {ok:false,error} — that message is the useful part. */
@@ -144,6 +150,12 @@ class HttpWorkspace implements WorkspaceClient {
   }
   async restoreWorkspace(): Promise<string | null> {
     return null;
+  }
+  canOpenWindows(): boolean {
+    return false; // the dev bridge serves one folder
+  }
+  async newWindow(): Promise<boolean> {
+    return false;
   }
   async pickFile(): Promise<string | null> {
     return null; // no native file picker in the browser — the UI falls back to <input type=file>
@@ -206,6 +218,9 @@ class HttpWorkspace implements WorkspaceClient {
   async exitApp(): Promise<void> {
     /* a browser tab closes itself */
   }
+  async closeWindow(): Promise<void> {
+    /* likewise */
+  }
 }
 
 class TauriWorkspace implements WorkspaceClient {
@@ -240,6 +255,13 @@ class TauriWorkspace implements WorkspaceClient {
   async restoreWorkspace(): Promise<string | null> {
     const { invoke } = await import("@tauri-apps/api/core");
     return (await invoke<string | null>("restore_workspace")) ?? null;
+  }
+  canOpenWindows(): boolean {
+    return !/iPad|iPhone|iPod/.test(navigator.userAgent);
+  }
+  async newWindow(): Promise<boolean> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return invoke<boolean>("new_window");
   }
   async pickFile(): Promise<string | null> {
     const { open } = await import("@tauri-apps/plugin-dialog");
@@ -315,6 +337,10 @@ class TauriWorkspace implements WorkspaceClient {
   async exitApp(): Promise<void> {
     const { invoke } = await import("@tauri-apps/api/core");
     await invoke("finish_exit");
+  }
+  async closeWindow(): Promise<void> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("close_window");
   }
 }
 

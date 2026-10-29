@@ -1611,6 +1611,7 @@ function main(): void {
     menuUnder(moreBtn, [
       { label: "Open a file…", action: () => void openWith.pickAndOpen() },
       { label: "Open another folder…", action: openFolder },
+      ...(ws.canOpenWindows() ? [{ label: "Open a folder in a new window…  ⌃⌘N", action: () => void ws.newWindow() }] : []),
       ...locationItems(""),
       ...workspaceItems(),
     ]),
@@ -1990,6 +1991,7 @@ function main(): void {
     snippets: () => snippets.open(),
     calendar: () => calendar.open(),
     "agenda-setup": () => agendaSetup.open(),
+    "new-window": () => void ws.newWindow(),
     "agenda-refresh": () => void agenda.refresh(),
     "open-file": () => void openWith.pickAndOpen(),
     "copy-into-workspace": () => void copyActiveIntoWorkspace(),
@@ -2161,6 +2163,13 @@ function main(): void {
     await saveAllDirty();
     await ws.exitApp().catch(() => {});
   }
+  /** One window closing, with others open: flush, then just this one goes (the last one quits). */
+  async function saveAndClose(): Promise<void> {
+    if (quitting) return;
+    quitting = true;
+    await saveAllDirty();
+    await ws.closeWindow().catch(() => {});
+  }
   if (inTauri()) {
     void (async () => {
       const [{ getCurrentWindow }, { listen }] = await Promise.all([
@@ -2169,8 +2178,8 @@ function main(): void {
       ]);
       // Closing the window (the red button, ⌘W).
       await getCurrentWindow().onCloseRequested((e) => {
-        e.preventDefault(); // saving is async — quit once it's done
-        void saveAndQuit();
+        e.preventDefault(); // saving is async — close once it's done
+        void saveAndClose();
       });
       // Quitting outright (⌘Q, the Dock menu): the backend holds the exit until we say go.
       await listen("app-exiting", () => void saveAndQuit());
