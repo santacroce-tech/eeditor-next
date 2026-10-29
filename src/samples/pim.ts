@@ -12,6 +12,7 @@
 import CONFIG from "../../docs/pim/pim.eelisp?raw";
 import CAPTURE from "../../docs/pim/Capture.eeform?raw";
 import AGENDA from "../../docs/pim/Agenda.eeform?raw";
+import SIDE from "../../docs/pim/Side.eeform?raw";
 import PRELUDE from "../keybindings/prelude.eelisp?raw";
 import DEFAULTS from "../keybindings/default.eelisp?raw";
 import { clockDefs, lispString, parseKeybindings } from "../core/keybindings";
@@ -37,7 +38,7 @@ const ymd = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.
 /** Every file the sample writes, so a caller can make sure none of them is there already. */
 export function pimSamplePaths(now: Date = new Date()): string[] {
   return [`${ymd(now)}.md`, "inbox.md", "bills.md", "dashboard.md", "projects/site.md", "projects/home.md",
-    "TRY ME.md", "pim/Capture.eeform", "pim/Agenda.eeform", ".eeditor/keybindings.eelisp"];
+    "TRY ME.md", "pim/Capture.eeform", "pim/Agenda.eeform", "pim/Side.eeform", ".eeditor/keybindings.eelisp"];
 }
 
 /** Fill the agenda and write the notes. Returns how many agenda items there are now. */
@@ -205,6 +206,7 @@ The app's own keys still work: ⌘P quick-open, ⌘⇧F search, ⌘E preview, �
 ## 1 · A look around
 
 - [ ] The **agenda** section in the sidebar lists the items: *renew the passport* is overdue, *pay the rent today* is today and urgent, *dentist tomorrow* is tomorrow. The 📅 button above it opens the calendar; ⚙ opens rules & categories.
+- [ ] Above the items, every category and how many open items it holds. Click *work*: only its items. Click *all* to see everything again. The section is a form, **pim/Side.eeform** — the \`(panel "agenda" …)\` line in the keybindings puts it there; open it in the designer to change it.
 - [ ] ⤢ above the agenda opens **pim/Agenda** filling the window: this tutorial as an interface — the agenda big, the notes' tasks, capture, the clock, the tracker and the review, one tab each. ⤢ in its title bar gives the room back.
 - [ ] ⌘D opens today's note (**${TODAY}.md**). Its tasks end in \`{#12}\`-style ids: each one *is* an agenda item, shown in the note.
 - [ ] ⌘P, type \`dash\`, Enter: **dashboard.md** — blocks of live results (next 7 days, inbox, work, this week's done/clock/tracker, a streak). ⌘E shows it as a page; ⌘E again to edit.
@@ -322,6 +324,7 @@ ${pimBlock(CONFIG)}
 `);
   await write("pim/Capture.eeform", CAPTURE);
   await write("pim/Agenda.eeform", AGENDA);
+  await write("pim/Side.eeform", SIDE);
 
   return Number(await ev("(item-count)"));
 }

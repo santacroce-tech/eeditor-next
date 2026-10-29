@@ -639,3 +639,10 @@
 (button "↻ update" "Mod-Alt-u")
 (button "✓ task" "Mod-Alt-t")
 (button "⌫ delete" "Mod-Alt-Backspace")
+
+;; ── the sidebar ──────────────────────────────────────────────────────────────
+;; The agenda section is pim/Side.eeform: quick add, the categories with their counts (pick one to
+;; list it), the items by date. Edit that form in the designer, point this at your own, or take the
+;; line out for the built-in list. Any other name is a sidebar section of its own:
+;; (panel "Habits" "habits.eeform").
+(panel "agenda" "pim/Side.eeform")

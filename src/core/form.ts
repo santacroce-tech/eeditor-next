@@ -537,6 +537,11 @@ export interface FormSpec {
   onPublic?: string;
   /** `:main true` — this form is an app's entry: the one Export as HTML takes the other forms along from. */
   main?: boolean;
+  /**
+   * `:on-refresh` — a form drawn in the sidebar (a `(panel …)`) runs it whenever the agenda may have
+   * changed: a key, the REPL, another form. Without it, nothing reruns there.
+   */
+  onRefresh?: string;
   /** `:on-close` — asked before the form closes: a message refuses ("unsaved changes"), nil lets it go. */
   onClose?: string;
   /** `:menu (("File" ("New" new-item) ("-") ("Quit" quit)) …)` — a menu bar under the title. */
@@ -711,6 +716,7 @@ export function parseFormSpec(x: Sx): FormSpec | { error: string } {
     else if (k === "on-load" && fnName(v) !== undefined) spec.onLoad = fnName(v);
     else if (k === "on-public" && fnName(v) !== undefined) spec.onPublic = fnName(v);
     else if (k === "on-close" && fnName(v) !== undefined) spec.onClose = fnName(v);
+    else if (k === "on-refresh" && fnName(v) !== undefined) spec.onRefresh = fnName(v);
     else if (k === "main" && v.t === "bool") spec.main = v.v || undefined;
     else if (k === "menu") spec.menu = parseMenu(v);
     else spec.extra.push([k, v]);
@@ -770,6 +776,7 @@ export function printFormSpec(spec: FormSpec): string {
   if (spec.main) head.push(kw("main"), { t: "bool", v: true });
   if (spec.onPublic) head.push(kw("on-public"), sym(spec.onPublic));
   if (spec.onClose) head.push(kw("on-close"), sym(spec.onClose));
+  if (spec.onRefresh) head.push(kw("on-refresh"), sym(spec.onRefresh));
   if (spec.menu.length) head.push(kw("menu"), menuSx(spec.menu));
   for (const [k, v] of spec.extra) head.push(kw(k), v);
   const lines = [printSx(list(...head)).slice(0, -1), ...spec.controls.map((c) => "  " + printSx(controlSx(c)))];

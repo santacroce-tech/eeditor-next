@@ -30,7 +30,7 @@ import { createCalendar } from "./ui/calendar";
 import { createAgendaSetup } from "./ui/agenda-setup";
 import { createSnippets } from "./ui/snippets";
 import { createKeybindings, type CommandTable } from "./ui/keybindings";
-import { isMacPlatform, keyLabel } from "./core/keybindings";
+import { isMacPlatform, keyLabel, type Panel } from "./core/keybindings";
 import { createSheetFunctions, FUNCTIONS_PATH, FUNCTIONS_TEMPLATE } from "./sheets/functions";
 import { createOpenWith } from "./ui/openwith";
 import { exportPdf } from "./ui/pdf";
@@ -53,11 +53,14 @@ import { installPim, replacePastedPim } from "./core/pim-install";
 import PIM_CONFIG from "../docs/pim/pim.eelisp?raw";
 import PIM_CAPTURE from "../docs/pim/Capture.eeform?raw";
 import PIM_AGENDA from "../docs/pim/Agenda.eeform?raw";
+import PIM_SIDE from "../docs/pim/Side.eeform?raw";
 import DEFAULT_KEYS from "./keybindings/default.eelisp?raw";
 import { KEYBINDINGS_PATH } from "./ui/keybindings";
 
 /** Where Install the PIM keys… (and the sample notes) put the PIM's window; ⤢ on the agenda opens it. */
 const PIM_AGENDA_PATH = "pim/Agenda.eeform";
+/** The agenda section of the sidebar, as the PIM's (panel "agenda" …) line draws it. */
+const PIM_SIDE_PATH = "pim/Side.eeform";
 /** What that window was called before (installs up to 2.4.1): still opened by ⤢, moved aside by an install. */
 const PIM_TRYME_PATH = "pim/TRYME.eeform";
 const parentDir = (p: string): string => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
@@ -788,16 +791,20 @@ function main(): void {
   // The panel's own calls go straight to `engine` as well.
   let sheetRefresh: ReturnType<typeof setTimeout> | undefined;
   let agendaRefresh: ReturnType<typeof setTimeout> | undefined;
+  /** Set while the sidebar's panels rerun their :on-refresh (see applyPanels). */
+  let panelsRefreshing = 0;
   const refreshAgendaSoon = (ms = 120): void => {
     clearTimeout(agendaRefresh);
     agendaRefresh = setTimeout(() => {
       if (!agendaBody.contains(document.activeElement)) void agenda.refresh();
+      void refreshPanels();
     }, ms);
   };
   const watched = observeEvals(engine, () => {
     clearTimeout(sheetRefresh);
     sheetRefresh = setTimeout(() => void activeSheet()?.refreshIfChanged(), 120);
-    refreshAgendaSoon();
+    // a panel's own :on-refresh is one of these evals — it mustn't ask for another
+    if (panelsRefreshing === 0) refreshAgendaSoon();
   });
   // The REPL carries out editor commands too: (ed-form "Contacts") runs a form, (ed-insert …) types.
   const repl = createRepl(replPane.body, watched, { onResult: (v) => keys.applyResult(v) });
@@ -890,6 +897,72 @@ function main(): void {
     open: (p, line) => void openFile(p).then(() => editor.gotoLine(line)),
     write: (p, content, expected) => writeNote(p, content, expected),
   });
+
+  // ── panels: (panel "agenda" "pim/Side.eeform") in the keybindings draws a form in the sidebar ──
+  // "agenda" goes in the agenda section, in place of the built-in list (the notes' group stays under
+  // it); any other name is a section of its own. Each runs `:on-refresh` whenever the agenda may have
+  // changed — after a key, the REPL, a form — as the built-in list reloads.
+  interface SidePanel extends Panel {
+    runner: FormRunner;
+    /** The section made for it — none for the agenda's. */
+    section?: HTMLElement;
+  }
+  let sidePanels: SidePanel[] = [];
+  let wantedPanels: Panel[] = [];
+  const isAgendaPanel = (p: Panel): boolean => p.name.toLowerCase() === "agenda";
+  async function refreshPanels(): Promise<void> {
+    const shown = sidePanels.filter((p) => !(p.section ?? agendaBody).contains(document.activeElement));
+    if (shown.length === 0) return;
+    panelsRefreshing++;
+    try {
+      await Promise.all(shown.map((p) => p.runner.refresh().catch(() => {})));
+    } finally {
+      panelsRefreshing--;
+    }
+  }
+  function dropPanel(p: SidePanel): void {
+    sidePanels = sidePanels.filter((x) => x !== p);
+    if (isAgendaPanel(p)) agenda.setPanel(null);
+    p.runner.destroy();
+    p.section?.remove();
+  }
+  async function startPanel(pn: Panel): Promise<void> {
+    // No such form (the PIM pasted in, its forms never installed): the built-in list stays, and the
+    // REPL says why — not a toast on every save of the keybindings.
+    if ((await ws.read(pn.path).then(() => false, () => true))) {
+      repl.note(`; keybindings: (panel "${pn.name}" "${pn.path}") — there is no ${pn.path}; Install the PIM keys… writes the PIM's`);
+      return;
+    }
+    const r = await formHost.prepare(pn.path); // says why, when it can't run
+    if (!r) return;
+    const id = formHost.identity(pn.path, r.spec.title);
+    const runner: FormRunner = createFormRunner({
+      ...formHost.wire(id),
+      ...formExtras(pn.path),
+      embedded: true,
+      onClose: () => dropPanel(live), // (ui-close): the built-in list comes back
+    });
+    const live: SidePanel = { ...pn, runner };
+    formHost.track(id, runner);
+    if (isAgendaPanel(pn)) agenda.setPanel(runner.el);
+    else {
+      const sec = section(sidebarEl, pn.name, "side-panel-section");
+      sec.body.append(runner.el);
+      live.section = sec.body.parentElement ?? undefined;
+    }
+    sidePanels.push(live);
+    await runner.start(r.spec);
+  }
+  /** The config's panels, drawn; `restart` runs them again from their files (one was just saved). */
+  async function applyPanels(panels: Panel[], restart = false): Promise<void> {
+    const key = (ps: Panel[]) => ps.map((p) => `${p.name.toLowerCase()}=${p.path}`).join("|");
+    const same = key(panels) === key(sidePanels);
+    wantedPanels = panels;
+    if (same && !restart) return void refreshPanels();
+    for (const p of [...sidePanels]) dropPanel(p);
+    for (const p of panels) await startPanel(p);
+  }
+
   const calendar = createCalendar(engine);
   calBtn.addEventListener("click", () => calendar.open());
   const agendaSetup = createAgendaSetup(engine, () => void agenda.refresh());
@@ -1557,16 +1630,19 @@ function main(): void {
         await ws.create("pim/Capture.eeform", false).catch(() => {});
         await ws.write("pim/Capture.eeform", PIM_CAPTURE);
       }
-      // The PIM's window follows EEditor's version, like the keys between the markers; a copy that
-      // differs (edited, or from an older install) is kept in .eeditor/ first.
-      const was = await ws.read(PIM_AGENDA_PATH).catch(() => null);
-      if (was === null) await ws.create(PIM_AGENDA_PATH, false).catch(() => {});
-      else if (was !== PIM_AGENDA) {
-        const old = `.eeditor/Agenda.before-${todayISO()}.eeform`;
-        await ws.create(old, false).catch(() => {});
-        await ws.write(old, was);
+      // The PIM's window and its sidebar panel follow EEditor's version, like the keys between the
+      // markers; a copy that differs (edited, or from an older install) is kept in .eeditor/ first.
+      for (const [path, text] of [[PIM_AGENDA_PATH, PIM_AGENDA], [PIM_SIDE_PATH, PIM_SIDE]]) {
+        const was = await ws.read(path).catch(() => null);
+        if (was === text) continue;
+        if (was === null) await ws.create(path, false).catch(() => {});
+        else {
+          const old = `.eeditor/${basename(path).replace(/\.eeform$/, "")}.before-${todayISO()}.eeform`;
+          await ws.create(old, false).catch(() => {});
+          await ws.write(old, was);
+        }
+        await ws.write(path, text);
       }
-      if (was !== PIM_AGENDA) await ws.write(PIM_AGENDA_PATH, PIM_AGENDA);
       // It used to be pim/TRYME.eeform: that copy goes beside the others in .eeditor/, so the
       // folder doesn't keep two of the same window.
       const tryme = await ws.read(PIM_TRYME_PATH).catch(() => null);
@@ -1687,6 +1763,8 @@ function main(): void {
       toast(`Keybindings reloaded — ${keys.bindings().length} shortcuts`);
     }
     if (sheetFns.isUserPath(tab.path)) await reloadSheetFunctions();
+    // a panel's form, edited in the designer: the sidebar runs the new one
+    if (wantedPanels.some((p) => p.path === tab.path)) await applyPanels(wantedPanels, true);
   };
 
   /**
@@ -2176,6 +2254,7 @@ function main(): void {
       userBtns.replaceChildren(...drawnButtons.map((d) => d.el));
       refreshHeader();
     },
+    onPanels: (panels) => void applyPanels(panels),
   });
 
   const sheetFns = createSheetFunctions({ engine, ws, note: (t) => repl.note(t) });

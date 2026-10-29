@@ -25,12 +25,12 @@ test("an empty folder is offered the samples, and gets every one of them, the PI
     "examples/EEditor.mindmap.md"]) expect(await there(p), p).toBe(true);
   // the PIM tour
   for (const p of ["TRY ME.md", "inbox.md", "bills.md", "dashboard.md", "projects/site.md", "projects/home.md",
-    "pim/Capture.eeform", ".eeditor/keybindings.eelisp", today]) expect(await there(p), p).toBe(true);
+    "pim/Capture.eeform", "pim/Agenda.eeform", "pim/Side.eeform", ".eeditor/keybindings.eelisp", today]) expect(await there(p), p).toBe(true);
   expect(await readFile(`${UI_EMPTY}/welcome.md`, "utf8")).toContain("TRY ME.md");
 
-  // it opens on the welcome note, the agenda has the tour's items, and the PIM's keys are live
+  // it opens on the welcome note, the agenda (the PIM's side panel) has the tour's items, and the PIM's keys are live
   await expect(page.locator(".etab.active .etab-label")).toHaveText("welcome.md");
-  await expect(page.locator(".ag-item .ag-text", { hasText: "renew the passport" })).toBeVisible();
+  await expect(page.locator(".agenda-section .formrun-ctl[data-name=grdItems] td", { hasText: "renew the passport" })).toBeVisible();
   await page.locator(".editor-host .cm-content").click();
   await page.keyboard.press(`${MOD}+Alt+k`);
   await expect(page.locator(".toast").filter({ hasText: "No clock running" })).toBeVisible();

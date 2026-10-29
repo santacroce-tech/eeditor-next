@@ -1,0 +1,102 @@
+;; Side.eeform — the agenda section of the sidebar, as a form. The PIM's keys put it there with
+;;
+;;   (panel "agenda" "pim/Side.eeform")
+;;
+;; in .eeditor/keybindings.eelisp; take that line out and the built-in list comes back. Edit this
+;; form in the designer (or point the line at a copy of your own): it's drawn as wide as the
+;; sidebar — controls anchored left and right stretch — and :on-refresh runs whenever the agenda
+;; may have changed (a key, the REPL, another form). The "in notes" group stays under it.
+;;
+;;   the box     quick add, as ⌘⌥T reads a line: "call Ana tomorrow !! #work | notes"
+;;   categories  each with how many open items it holds (its children's too); pick one to list it
+;;   the list    by date, overdue first; ✓ finishes the one picked, ⤢ opens the Agenda window
+
+(form "Agenda panel" :size (224 432) :on-load sp-fill :on-refresh sp-fill
+  (textbox txtAdd :placeholder "add — tomorrow !! #work" :at (8 8) :size (176 28) :anchor "tlr")
+  (button btnAdd :text "＋" :default true :at (188 8) :size (28 28) :anchor "tr" :on-click sp-add)
+  (label lblSummary :at (8 40) :size (208 20) :anchor "tlr")
+  (listbox lstCats :items () :at (8 64) :size (208 128) :anchor "tlr" :on-change sp-pick)
+  (grid grdItems :columns ("task" "when") :at (8 200) :size (208 188) :anchor "tlbr" :on-dblclick sp-open)
+  (button btnDone :text "✓ done" :at (8 396) :size (64 28) :anchor "lb" :on-click sp-done)
+  (button btnBig :text "⤢ agenda" :at (136 396) :size (80 28) :anchor "rb" :on-click sp-big))
+
+;; The category picked in the list: "" for every item, "-" for the ones with none.
+(local sp-cat "")
+;; label shown in the list → the category it stands for (labels carry counts, so they change)
+(local sp-labels {})
+
+(defn sp-pim? () (try (do (pim-live-ids) true) (catch e false)))
+(defn sp-cats-of (r) (filter (fn (c) (!= c "")) (map str-trim (str-split (field-get r :categories) ","))))
+(defn sp-in? (c r)
+  (cond (= c "") true
+        (= c "-") (empty? (sp-cats-of r))
+        true (some? (fn (x) (or (= x c) (str-starts-with x (str c "/")))) (sp-cats-of r))))
+(defn sp-day (w) (cond (= w "") 99999999 true (->number (str-replace w "-" ""))))
+(defn sp-today () (sp-day *date*))
+(defn sp-when (w)
+  (cond (= w "") ""
+        (< (sp-day w) (sp-today)) (str "⚠ " (date-format w "d MMM"))
+        (= w *date*) "today"
+        true (date-format w "EEE d")))
+(defn sp-bangs (p) (cond (= p "1") "!!! " (= p "2") "!! " (= p "3") "! " true ""))
+
+;; "work · 3", then its children indented by their depth — every category the agenda knows.
+(defn sp-names () (filter (fn (c) (!= c "")) (map str-trim (str-split (categories) "\n"))))
+(defn sp-depth (c) (- (length (str-split c "/")) 1))
+;; em spaces: a list's row would fold ordinary ones away
+(defn sp-indent (n) (cond (<= n 0) "" true (str " " (sp-indent (- n 1)))))
+(defn sp-label (c n)
+  (cond (= c "") (str "all · " n)
+        (= c "-") (str "no category · " n)
+        true (str (sp-indent (sp-depth c)) (last (str-split c "/")) " · " n)))
+
+(defn sp-fill (f)
+  (let (rows  (records (items))
+        cats  (append (list "") (sp-names) (list "-"))
+        shown (filter (fn (c) (or (= c "") (> (length (filter (fn (r) (sp-in? c r)) rows)) 0) (= c (var "sp-cat")))) cats)
+        labels (map (fn (c) (sp-label c (length (filter (fn (r) (sp-in? c r)) rows)))) shown)
+        picked (filter (fn (r) (sp-in? (var "sp-cat") r)) rows)
+        late  (length (filter (fn (r) (< (sp-day (field-get r :when)) (sp-today))) rows))
+        today (length (filter (fn (r) (= (field-get r :when) *date*)) rows)))
+    (var! "sp-labels" (reduce (fn (d i) (dict-set d (nth labels i) (nth shown i))) {} (range 0 (length shown) 1)))
+    (ui-set "lstCats" :items labels)
+    (ui-set "lstCats" :value (nth labels (sp-position (var "sp-cat") shown)))
+    (ui-set "lblSummary" :text
+      (str (cond (> late 0) (str late " overdue · ") true "") today " today · " (length rows) " open"))
+    (ui-set "grdItems" :rows
+      (map (fn (r) {:id (record-id r)
+                    :task (str (sp-bangs (field-get r :priority)) (field-get r :text))
+                    :when (sp-when (field-get r :when))})
+           (sort-by (fn (r) (+ (* 10 (sp-day (field-get r :when)))
+                               (let (p (field-get r :priority)) (cond (= p "") 9 true (->number p)))))
+                    picked)))))
+(defn sp-position (c cs)
+  (loop (i 0 rest cs)
+    (cond (empty? rest) 0
+          (= (first rest) c) i
+          true (recur (+ i 1) (tail rest)))))
+
+(defn sp-pick (f)
+  (var! "sp-cat" (or (dict-get (var "sp-labels") (ui-get f "lstCats")) ""))
+  (sp-fill f))
+
+;; The same parse as ⌘⌥T when the PIM is loaded (#tags, " | notes", the rules); a plain add if not.
+(defn sp-add (f)
+  (let (text (str-trim (ui-get f "txtAdd")))
+    (when (!= text "")
+      (let (c (var "sp-cat")
+            d (cond (sp-pim?) (pim-add text (cond (or (= c "") (= c "-")) (list) true (list c)))
+                    true (item->dict (add text))))
+        (ui-set "txtAdd" :value "")
+        (ui-message (str "Agenda #" (dict-get d :id) (cond (= (dict-get d :when) "") "" (nil? (dict-get d :when)) "" true (str " on " (dict-get d :when)))))))
+    (sp-fill f)
+    (ui-focus "txtAdd")))
+
+(defn sp-picked (f) (let (row (ui-get f "grdItems")) (and row (dict-get row "id"))))
+(defn sp-done (f)
+  (let (id (sp-picked f))
+    (cond (not id) (ui-message "Pick an item first")
+          true (do (item-done id) (ui-message (str "Done: #" id)) (sp-fill f)))))
+;; Double-click: the Agenda window, to edit it there.
+(defn sp-open (f) (ui-open "Agenda"))
+(defn sp-big (f) (ui-open "Agenda"))

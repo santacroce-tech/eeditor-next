@@ -13,6 +13,8 @@ export interface FormRunner {
   readonly handle: HTMLElement;
   /** Build the controls and fire `:on-load`. */
   start(spec: FormSpec): Promise<void>;
+  /** Fire `:on-refresh`, if the form has one — what a panel in the sidebar does when the agenda may have changed. */
+  refresh(): Promise<void>;
   /** Every control's value, keyed by name — what a handler receives. */
   state(): Record<string, StateValue>;
   focus(): void;
@@ -90,6 +92,11 @@ export interface FormRunnerOptions {
   onPopOut?: () => void;
   /** Drawn to fit a floating window rather than to fill a tab. */
   windowed?: boolean;
+  /**
+   * Drawn into a section of the sidebar (a `(panel …)`): no title bar, as wide as the section — its
+   * anchored controls stretch to it — and at least as tall as the form was drawn.
+   */
+  embedded?: boolean;
   /** Offered a ⤢ button: fill the app with the window, or give the room back. */
   onMaximize?: () => void;
   /** Evaluate a screen control's `:frame` expression; its value. Without it a screen stays dark. */
@@ -158,7 +165,7 @@ const asItems = (v: JsonValue): string[] => (Array.isArray(v) ? v.map(asText) : 
 const truthy = (v: JsonValue): boolean => v !== false && v !== null && v !== undefined;
 
 export function createFormRunner(opts: FormRunnerOptions): FormRunner {
-  const root = el("div", "formrun" + (opts.windowed ? " windowed" : ""));
+  const root = el("div", "formrun" + (opts.windowed ? " windowed" : "") + (opts.embedded ? " embedded" : ""));
   const stage = el("div", "formrun-stage");
   const window_ = el("div", "formrun-window");
   const title = el("div", "formrun-title");
@@ -1135,8 +1142,11 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
       title.replaceChildren(el("span", "formrun-name", spec.title || "Form"), buttons);
       dropFrames();
       drawMenu();
-      canvas.style.width = `${spec.w}px`;
-      canvas.style.height = `${spec.h}px`;
+      if (opts.embedded) canvas.style.minHeight = `${spec.h}px`;
+      else {
+        canvas.style.width = `${spec.w}px`;
+        canvas.style.height = `${spec.h}px`;
+      }
       canvas.replaceChildren();
       for (const c of spec.controls) {
         const l = build(c);
@@ -1147,6 +1157,7 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
       relayout();
       await fire(spec.onLoad);
     },
+    refresh: () => fire(current.onRefresh),
     state,
     focus: () => {
       const first = [...live.values()].find((l) => l.spec.type !== "label");

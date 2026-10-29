@@ -54,6 +54,10 @@
 ;; (ed-cmd "daily-note")). The header is these (button …) lines, in the order they're written —
 ;; the theme, preview and PDF buttons too: see "the header" below.
 ;;
+;; (panel "agenda" "pim/Side.eeform") draws a form in the sidebar's agenda section instead of the
+;; built-in list; (panel "Habits" "habits.eeform") adds a section of its own. Its :on-refresh runs
+;; whenever the agenda may have changed. The PIM's keys install one.
+;;
 ;; There may be several on-load and on-tick forms; each runs, in order.
 ;;
 ;; Context, defined fresh before every run:

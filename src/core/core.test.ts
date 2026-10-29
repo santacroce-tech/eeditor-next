@@ -312,6 +312,20 @@ describe("keybindings config", () => {
     );
   });
 
+  it("reads (panel …): a sidebar section and its form, the last one for a section winning", () => {
+    const { panels, errors } = parseKeybindings(
+      [`(panel "agenda" "pim/Old")`, `(panel "Habits" "habits.eeform")`, `(panel "Agenda" "pim/Side.eeform")`].join("\n"),
+      true,
+    );
+    expect(errors).toEqual([]);
+    expect(panels).toEqual([
+      { name: "Habits", path: "habits.eeform", line: 2 },
+      { name: "Agenda", path: "pim/Side.eeform", line: 3 },
+    ]);
+    expect(parseKeybindings(`(panel "agenda")`, true).errors[0]).toMatch(/line 1: a panel is/);
+    expect(parseKeybindings(`(panel "agenda" pim-side)`, true).errors[0]).toMatch(/two quoted strings/);
+  });
+
   it("quotes strings for injection into lisp", () => {
     expect(lispString(`a "b"\n\\c`)).toBe(`"a \\"b\\"\\n\\\\c"`);
   });

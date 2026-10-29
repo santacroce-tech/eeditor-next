@@ -438,6 +438,7 @@ export function createFormDesigner(opts: FormDesignerOptions): FormDesigner {
       eventRow("load", spec.onLoad ?? "", null, (fn) => ((spec.onLoad = fn || undefined), commit())),
       eventRow("public", spec.onPublic ?? "", null, (fn) => ((spec.onPublic = fn || undefined), commit())),
       eventRow("close", spec.onClose ?? "", null, (fn) => ((spec.onClose = fn || undefined), commit())),
+      eventRow("refresh", spec.onRefresh ?? "", null, (fn) => ((spec.onRefresh = fn || undefined), commit())),
       el("div", "fd-props-sub", "Menu"),
     );
     const menu = el("textarea", "fd-input fd-items fd-menutext");
