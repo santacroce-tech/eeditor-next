@@ -7,22 +7,105 @@
 // Every command that touches the filesystem or the engine is `#[tauri::command(async)]`. A plain
 // `#[tauri::command]` runs on the main thread, where a slow — or permission-gated — call freezes the
 // window and, on macOS, deadlocks the very consent dialog that would unblock it. See `fs_tree`.
+//
+// Each window is its own workspace: its folder and an engine over that folder's database (a
+// `Space`, keyed by the window's label). A command finds the one of the window that called it —
+// `Workspace` and `Engine` are command arguments that look it up — so two windows on two folders
+// never see each other's files or agenda. New Window… (⌃⌘N) opens another; the folders of the
+// open windows come back at the next launch.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use eelisp::server::EngineHandle;
 use serde_json::{json, Value};
-use tauri::{Emitter, Manager};
+use tauri::ipc::{CommandArg, CommandItem, InvokeError};
+use tauri::{Emitter, Manager, Runtime};
 
-/// The folder being edited. An `Arc` because the engine thread holds the same handle — that is
-/// how `(current-dir)` answers with the workspace, and keeps answering after the user picks a
-/// different one.
+/// One window's world: the folder it edits and the engine over that folder's database. `root` is
+/// an `Arc` because the engine thread holds the same handle — that is how `(current-dir)` answers
+/// with the workspace, and keeps answering after the user picks a different one.
+struct Space {
+    root: Arc<Mutex<PathBuf>>,
+    engine: EngineHandle,
+}
+
+/// Every window's space, by window label, and the order they were opened in (what's saved).
+#[derive(Default)]
+struct Spaces {
+    by_label: Mutex<HashMap<String, Arc<Space>>>,
+    order: Mutex<Vec<String>>,
+    next: AtomicUsize,
+}
+
+/// The window a command came from, as the label its space is filed under. A form's screen opened
+/// in a window of its own (`screen-<opener>-…`, see src/ui/screenwindow.ts) runs on its opener's
+/// engine — that is the point of it — so it maps to the opener.
+fn space_label(label: &str) -> &str {
+    match label.strip_prefix("screen-") {
+        Some(rest) => rest.split('-').next().filter(|l| !l.is_empty()).unwrap_or("main"),
+        None => label,
+    }
+}
+
+fn space_of<R: Runtime>(item: &CommandItem<'_, R>) -> Result<Arc<Space>, InvokeError> {
+    let webview = item.message.webview();
+    let label = webview.label().to_string();
+    let spaces = webview.state::<Spaces>();
+    let found = spaces.by_label.lock().unwrap().get(space_label(&label)).cloned();
+    found.ok_or_else(|| InvokeError::from(format!("window {label} has no workspace")))
+}
+
+/// The folder of the window that called — a command argument, like `State`.
 struct Workspace(Arc<Mutex<PathBuf>>);
+
+impl<'de, R: Runtime> CommandArg<'de, R> for Workspace {
+    fn from_command(item: CommandItem<'de, R>) -> Result<Self, InvokeError> {
+        Ok(Workspace(space_of(&item)?.root.clone()))
+    }
+}
+
+/// The engine of the window that called.
+struct Engine(Arc<Space>);
+
+impl<'de, R: Runtime> CommandArg<'de, R> for Engine {
+    fn from_command(item: CommandItem<'de, R>) -> Result<Self, InvokeError> {
+        Ok(Engine(space_of(&item)?))
+    }
+}
+
+/// A space for `label` on `root`: the engine opens `root`'s database on its own thread (a folder
+/// under ~/Documents can hold the first touch behind a privacy prompt, and this may be the main
+/// thread), and its editor RPC reads the same root handle the fs commands write to.
+fn open_space(app: &tauri::AppHandle, label: &str, root: PathBuf) {
+    let db = engine_db_path(&root);
+    let root = Arc::new(Mutex::new(root));
+    let engine_root = root.clone();
+    let engine = EngineHandle::spawn_with(db, move |it| {
+        it.editor.borrow_mut().current_dir = Some(Box::new(move || engine_root.lock().unwrap().display().to_string()));
+    });
+    let spaces = app.state::<Spaces>();
+    spaces.by_label.lock().unwrap().insert(label.to_string(), Arc::new(Space { root, engine }));
+    let mut order = spaces.order.lock().unwrap();
+    if !order.iter().any(|l| l == label) {
+        order.push(label.to_string());
+    }
+}
+
+/// The open windows' folders, in the order the windows were opened.
+fn open_roots(app: &tauri::AppHandle) -> Vec<(String, PathBuf)> {
+    let spaces = app.state::<Spaces>();
+    let by_label = spaces.by_label.lock().unwrap();
+    let order = spaces.order.lock().unwrap();
+    order
+        .iter()
+        .filter_map(|l| by_label.get(l).map(|s| (l.clone(), s.root.lock().unwrap().clone())))
+        .collect()
+}
 
 /// Files outside the workspace that the user has explicitly opened in place (drag-and-drop, "Open
 /// With", the file picker). `external_read`/`external_write` refuse anything not in here, so the
@@ -32,14 +115,16 @@ struct Workspace(Arc<Mutex<PathBuf>>);
 struct ExternalFiles(Mutex<HashSet<PathBuf>>);
 
 /// Paths handed to us by the OS (macOS "Open With" / iOS "Open in…") before the frontend was ready
-/// to listen. Drained by `take_pending_opens` on startup; afterwards opens arrive as `open-paths`.
+/// to listen, each with the window it goes to (the one in front). Drained by `take_pending_opens`
+/// on startup; afterwards opens arrive as `open-paths`.
 #[derive(Default)]
-struct PendingOpens(Mutex<Vec<PathBuf>>);
+struct PendingOpens(Mutex<Vec<(String, PathBuf)>>);
 
 /// Set once the quit has been handed to the frontend (or forced), so the deferral happens exactly
-/// once. See `defer_exit` — quitting must not drop unsaved buffers.
+/// once. See `defer_exit` — quitting must not drop unsaved buffers. `waiting` holds the windows that
+/// haven't said they're flushed yet; the app goes when it's empty.
 #[derive(Default)]
-struct ExitGuard(AtomicBool);
+struct ExitGuard(AtomicBool, Mutex<HashSet<String>>);
 
 /// How long we wait for the frontend to flush before quitting regardless. A wedged webview must
 /// never make the app unquittable; saving a handful of text files takes milliseconds.
@@ -54,10 +139,9 @@ fn engine_db_path(workspace: &Path) -> String {
 /// The workspace moved: take the engine's database with it. Blocking (the open can sit behind a
 /// macOS privacy prompt), so it runs on a blocking thread — never the main one. A file that can't
 /// be opened leaves the engine in memory; the frontend asks `(database-info)` and says so.
-async fn follow_workspace(app: &tauri::AppHandle, workspace: PathBuf) {
-    let app = app.clone();
+async fn follow_workspace(space: Arc<Space>, workspace: PathBuf) {
     let _ = tauri::async_runtime::spawn_blocking(move || {
-        if let Err(e) = app.state::<EngineHandle>().open_database(&engine_db_path(&workspace)) {
+        if let Err(e) = space.engine.open_database(&engine_db_path(&workspace)) {
             eprintln!("[eeditor] engine database: {e}");
         }
     })
@@ -66,13 +150,17 @@ async fn follow_workspace(app: &tauri::AppHandle, workspace: PathBuf) {
 
 /// Id of our own Quit item (see `build_menu`).
 const MENU_QUIT: &str = "quit";
+/// Id of New Window… (see `build_menu`).
+const MENU_NEW_WINDOW: &str = "new-window";
 
 /// Hand the quit to the frontend — it holds the unsaved buffers — and arrange to exit anyway if it
 /// never answers. Returns false when the exit was already deferred once and should now go through.
 fn defer_exit(app: &tauri::AppHandle) -> bool {
-    if app.state::<ExitGuard>().0.swap(true, Ordering::SeqCst) {
+    let guard = app.state::<ExitGuard>();
+    if guard.0.swap(true, Ordering::SeqCst) {
         return false;
     }
+    *guard.1.lock().unwrap() = open_roots(app).into_iter().map(|(l, _)| l).collect();
     let _ = app.emit("app-exiting", ());
     let handle = app.clone();
     std::thread::spawn(move || {
@@ -106,6 +194,13 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::
         ..Default::default()
     };
     let quit = MenuItem::with_id(app, MENU_QUIT, format!("Quit {name}"), true, Some("CmdOrCtrl+Q"))?;
+    // ⌘⇧N is the keybindings' New file, and a menu shortcut would take it from the editor: so ⌃⌘N
+    // (Ctrl+Alt+Shift+N elsewhere, where Ctrl+Alt+N is the PIM's capture).
+    #[cfg(target_os = "macos")]
+    let new_window_key = "Cmd+Ctrl+N";
+    #[cfg(not(target_os = "macos"))]
+    let new_window_key = "Ctrl+Alt+Shift+N";
+    let new_window = MenuItem::with_id(app, MENU_NEW_WINDOW, "New Window…", true, Some(new_window_key))?;
 
     Menu::with_items(
         app,
@@ -131,6 +226,8 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::
                 "File",
                 true,
                 &[
+                    &new_window,
+                    &PredefinedMenuItem::separator(app)?,
                     &PredefinedMenuItem::close_window(app, None)?,
                     #[cfg(not(target_os = "macos"))]
                     &quit,
@@ -254,8 +351,8 @@ fn read_text(p: &Path) -> Result<String, String> {
 /// Evaluate EELisp. `async` for the same reason as `fs_tree`: this blocks until the engine thread
 /// answers, and a binding or an `(on-start …)` that takes its time must not take the window with it.
 #[tauri::command(async)]
-fn eelisp_eval(engine: tauri::State<'_, EngineHandle>, src: String) -> String {
-    engine.eval(&src)
+fn eelisp_eval(engine: Engine, src: String) -> String {
+    engine.0.engine.eval(&src)
 }
 
 fn resolve(root: &Path, rel: &str) -> Result<PathBuf, String> {
@@ -347,7 +444,7 @@ fn children_of(dir: &Path, rel: &str, depth: usize, walk: &mut TreeWalk) -> Vec<
 /// hangs on launch showing nothing at all. Off the main thread it stays responsive and the prompt
 /// appears. The same goes for a slow network volume, or simply a large folder.
 #[tauri::command(async)]
-fn fs_tree(ws: tauri::State<'_, Workspace>) -> Result<String, String> {
+fn fs_tree(ws: Workspace) -> Result<String, String> {
     let root = ws.0.lock().unwrap().clone();
     seed_workspace(&root);
     // A workspace we cannot read at all is an error, not an empty tree: silence here is what made
@@ -371,13 +468,13 @@ fn fs_tree(ws: tauri::State<'_, Workspace>) -> Result<String, String> {
 }
 
 #[tauri::command(async)]
-fn fs_read(ws: tauri::State<'_, Workspace>, path: String) -> Result<String, String> {
+fn fs_read(ws: Workspace, path: String) -> Result<String, String> {
     let p = resolve(&ws.0.lock().unwrap(), &path)?;
     read_text(&p)
 }
 
 #[tauri::command(async)]
-fn fs_write(ws: tauri::State<'_, Workspace>, path: String, content: String) -> Result<(), String> {
+fn fs_write(ws: Workspace, path: String, content: String) -> Result<(), String> {
     let p = resolve(&ws.0.lock().unwrap(), &path)?;
     refuse_sheet(&p)?;
     if let Some(parent) = p.parent() {
@@ -387,7 +484,7 @@ fn fs_write(ws: tauri::State<'_, Workspace>, path: String, content: String) -> R
 }
 
 #[tauri::command(async)]
-fn fs_create(ws: tauri::State<'_, Workspace>, path: String, is_dir: bool) -> Result<(), String> {
+fn fs_create(ws: Workspace, path: String, is_dir: bool) -> Result<(), String> {
     let p = resolve(&ws.0.lock().unwrap(), &path)?;
     if p.exists() {
         return Err("already exists".into());
@@ -403,7 +500,7 @@ fn fs_create(ws: tauri::State<'_, Workspace>, path: String, is_dir: bool) -> Res
 }
 
 #[tauri::command(async)]
-fn fs_rename(ws: tauri::State<'_, Workspace>, from: String, to: String) -> Result<(), String> {
+fn fs_rename(ws: Workspace, from: String, to: String) -> Result<(), String> {
     let root = ws.0.lock().unwrap();
     let f = resolve(&root, &from)?;
     let t = resolve(&root, &to)?;
@@ -414,7 +511,7 @@ fn fs_rename(ws: tauri::State<'_, Workspace>, from: String, to: String) -> Resul
 }
 
 #[tauri::command(async)]
-fn fs_delete(ws: tauri::State<'_, Workspace>, path: String) -> Result<(), String> {
+fn fs_delete(ws: Workspace, path: String) -> Result<(), String> {
     let p = resolve(&ws.0.lock().unwrap(), &path)?;
     if p.is_dir() {
         fs::remove_dir_all(p).map_err(|e| e.to_string())
@@ -427,7 +524,7 @@ fn fs_delete(ws: tauri::State<'_, Workspace>, path: String) -> Result<(), String
 /// iOS Files app / Downloads) into the workspace so it becomes an editable note. Returns the new
 /// workspace-relative path (a unique name if one already exists).
 #[tauri::command(async)]
-fn import_file(ws: tauri::State<'_, Workspace>, src: String) -> Result<String, String> {
+fn import_file(ws: Workspace, src: String) -> Result<String, String> {
     let src_path = PathBuf::from(&src);
     let data = fs::read(&src_path).map_err(|e| format!("read {}: {}", src, e))?;
     let name = src_path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "imported.md".into());
@@ -533,7 +630,7 @@ fn save_asset(root: &Path, dir: &str, name: &str, bytes: &[u8]) -> Result<String
 
 /// The bytes of an image in the workspace, handed over raw (an `ArrayBuffer` on the other side).
 #[tauri::command(async)]
-fn fs_read_image(ws: tauri::State<'_, Workspace>, path: String) -> Result<tauri::ipc::Response, String> {
+fn fs_read_image(ws: Workspace, path: String) -> Result<tauri::ipc::Response, String> {
     let p = resolve(&ws.0.lock().unwrap(), &path)?;
     if !is_image(&p) {
         return Err(format!("{path} is not an image"));
@@ -546,7 +643,7 @@ fn fs_read_image(ws: tauri::State<'_, Workspace>, path: String) -> Result<tauri:
 /// base64 detour); where they go comes in the `dir` and `name` headers, percent-encoded because a
 /// header is ASCII and a name need not be.
 #[tauri::command(async)]
-fn fs_save_asset(ws: tauri::State<'_, Workspace>, request: tauri::ipc::Request<'_>) -> Result<String, String> {
+fn fs_save_asset(ws: Workspace, request: tauri::ipc::Request<'_>) -> Result<String, String> {
     let header = |key: &str| -> Result<String, String> {
         let v = request.headers().get(key).ok_or_else(|| format!("missing {key}"))?;
         let v = v.to_str().map_err(|e| e.to_string())?;
@@ -569,7 +666,7 @@ fn fs_save_asset(ws: tauri::State<'_, Workspace>, request: tauri::ipc::Request<'
 /// An image file from anywhere — dropped on the editor, or chosen in the picker — copied into the
 /// workspace folder `dir` as `name`. Like `import_file`, the user picking the file is the consent.
 #[tauri::command(async)]
-fn fs_import_asset(ws: tauri::State<'_, Workspace>, src: String, dir: String, name: String) -> Result<String, String> {
+fn fs_import_asset(ws: Workspace, src: String, dir: String, name: String) -> Result<String, String> {
     check_asset_name(&name)?;
     let src_path = PathBuf::from(&src);
     let bytes = fs::read(&src_path).map_err(|e| access_message(&src_path, &e))?;
@@ -608,7 +705,7 @@ fn workspace_rel(root: &Path, file: &Path) -> Option<String> {
 /// live inside the workspace after all — its workspace-relative path. Grants in-place access.
 #[tauri::command(async)]
 fn external_open(
-    ws: tauri::State<'_, Workspace>,
+    ws: Workspace,
     ext: tauri::State<'_, ExternalFiles>,
     path: String,
 ) -> Result<ExternalInfo, String> {
@@ -649,14 +746,14 @@ fn external_write(ext: tauri::State<'_, ExternalFiles>, path: String, content: S
 /// is the right currency inside the app and useless the moment you want to point another program at
 /// the file. Goes through `resolve`, so it can only ever name something inside the workspace.
 #[tauri::command(async)]
-fn fs_abs_path(ws: tauri::State<'_, Workspace>, path: String) -> Result<String, String> {
+fn fs_abs_path(ws: Workspace, path: String) -> Result<String, String> {
     let p = resolve(&ws.0.lock().unwrap(), &path)?;
     Ok(p.canonicalize().unwrap_or(p).to_string_lossy().to_string())
 }
 
 /// Show a workspace file in the system file manager.
 #[tauri::command(async)]
-fn fs_reveal(ws: tauri::State<'_, Workspace>, path: String) -> Result<(), String> {
+fn fs_reveal(ws: Workspace, path: String) -> Result<(), String> {
     let p = resolve(&ws.0.lock().unwrap(), &path)?;
     reveal(&p)
 }
@@ -728,16 +825,40 @@ fn check_granted(set: &HashSet<PathBuf>, path: &str) -> Result<PathBuf, String> 
 
 /// Drain the OS-delivered paths queued before the frontend was listening (cold start via "Open With").
 #[tauri::command]
-fn take_pending_opens(pending: tauri::State<PendingOpens>) -> Vec<String> {
-    pending.0.lock().unwrap().drain(..).map(|p| p.to_string_lossy().to_string()).collect()
+fn take_pending_opens(window: tauri::WebviewWindow, pending: tauri::State<PendingOpens>) -> Vec<String> {
+    let mut queue = pending.0.lock().unwrap();
+    let (mine, rest): (Vec<_>, Vec<_>) = queue.drain(..).partition(|(l, _)| l == window.label());
+    *queue = rest;
+    mine.into_iter().map(|(_, p)| p.to_string_lossy().to_string()).collect()
 }
 
 /// The frontend has flushed its unsaved buffers — quit for real. Arms the guard first so the
 /// `ExitRequested` this raises goes straight through instead of being deferred a second time.
 #[tauri::command]
-fn finish_exit(app: tauri::AppHandle, guard: tauri::State<ExitGuard>) {
+fn finish_exit(app: tauri::AppHandle, window: tauri::WebviewWindow, guard: tauri::State<ExitGuard>) {
     guard.0.store(true, Ordering::SeqCst);
-    app.exit(0);
+    let done = {
+        let mut waiting = guard.1.lock().unwrap();
+        waiting.remove(window.label());
+        waiting.is_empty()
+    };
+    if done {
+        app.exit(0);
+    }
+}
+
+/// A window has flushed and asks to close (its close button, ⌘W). With other windows open only it
+/// goes — the Destroyed event then stops its engine and takes its folder off the list. The last
+/// one quits, the same way `finish_exit` does, so the list keeps its folder for the next launch.
+#[tauri::command]
+fn close_window(app: tauri::AppHandle, window: tauri::WebviewWindow, guard: tauri::State<ExitGuard>) {
+    let others = open_roots(&app).iter().filter(|(l, _)| l != window.label()).count();
+    if others == 0 {
+        guard.0.store(true, Ordering::SeqCst);
+        app.exit(0);
+    } else {
+        let _ = window.destroy();
+    }
 }
 
 /// Open a native folder dialog, set it as the workspace root, and remember it for next launch.
@@ -751,7 +872,8 @@ fn finish_exit(app: tauri::AppHandle, guard: tauri::State<ExitGuard>) {
 #[tauri::command]
 async fn pick_workspace(
     app: tauri::AppHandle,
-    ws: tauri::State<'_, Workspace>,
+    window: tauri::WebviewWindow,
+    space: Engine,
 ) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
     let (tx, rx) = std::sync::mpsc::channel();
@@ -763,9 +885,10 @@ async fn pick_workspace(
         .unwrap_or(None);
     let path = picked.and_then(|fp| fp.into_path().ok());
     if let Some(p) = &path {
-        *ws.0.lock().unwrap() = p.clone();
-        save_workspace(&app, p);
-        follow_workspace(&app, p.clone()).await;
+        *space.0.root.lock().unwrap() = p.clone();
+        save_workspaces(&app);
+        set_title(&window, p);
+        follow_workspace(space.0.clone(), p.clone()).await;
     }
     Ok(path.map(|p| p.to_string_lossy().to_string()))
 }
@@ -775,7 +898,7 @@ async fn pick_workspace(
 /// Async + non-blocking so it never stalls the main thread while the picker is up.
 #[cfg(mobile)]
 #[tauri::command]
-async fn pick_workspace(app: tauri::AppHandle, ws: tauri::State<'_, Workspace>) -> Result<Option<String>, String> {
+async fn pick_workspace(app: tauri::AppHandle, space: Engine) -> Result<Option<String>, String> {
     use tauri_plugin_ios_files::IosFilesExt;
     let (tx, rx) = std::sync::mpsc::channel();
     app.ios_files().pick_folder(move |path| {
@@ -785,8 +908,8 @@ async fn pick_workspace(app: tauri::AppHandle, ws: tauri::State<'_, Workspace>) 
         .await
         .unwrap_or(None);
     if let Some(p) = &path {
-        *ws.0.lock().unwrap() = PathBuf::from(p);
-        follow_workspace(&app, PathBuf::from(p)).await;
+        *space.0.root.lock().unwrap() = PathBuf::from(p);
+        follow_workspace(space.0.clone(), PathBuf::from(p)).await;
     }
     Ok(path)
 }
@@ -795,7 +918,7 @@ async fn pick_workspace(app: tauri::AppHandle, ws: tauri::State<'_, Workspace>) 
 /// Returns the restored path (and updates the workspace), or None.
 #[cfg(mobile)]
 #[tauri::command]
-async fn restore_workspace(app: tauri::AppHandle, ws: tauri::State<'_, Workspace>) -> Result<Option<String>, String> {
+async fn restore_workspace(app: tauri::AppHandle, space: Engine) -> Result<Option<String>, String> {
     use tauri_plugin_ios_files::IosFilesExt;
     let (tx, rx) = std::sync::mpsc::channel();
     app.ios_files().restore_folder(move |path| {
@@ -805,8 +928,8 @@ async fn restore_workspace(app: tauri::AppHandle, ws: tauri::State<'_, Workspace
         .await
         .unwrap_or(None);
     if let Some(p) = &path {
-        *ws.0.lock().unwrap() = PathBuf::from(p);
-        follow_workspace(&app, PathBuf::from(p)).await;
+        *space.0.root.lock().unwrap() = PathBuf::from(p);
+        follow_workspace(space.0.clone(), PathBuf::from(p)).await;
     }
     Ok(path)
 }
@@ -817,7 +940,7 @@ fn restore_workspace() -> Option<String> {
     None
 }
 
-// ── persisted workspace root (app config dir/workspace.txt) ──
+// ── persisted workspace roots (app config dir/workspace.txt, one per open window) ──
 
 fn config_path(app: &tauri::AppHandle) -> Option<PathBuf> {
     let dir = app.path().app_config_dir().ok()?;
@@ -825,21 +948,113 @@ fn config_path(app: &tauri::AppHandle) -> Option<PathBuf> {
     Some(dir.join("workspace.txt"))
 }
 
-fn load_saved_workspace(app: &tauri::AppHandle) -> Option<PathBuf> {
-    let s = fs::read_to_string(config_path(app)?).ok()?;
-    let p = PathBuf::from(s.trim());
-    if p.is_dir() {
-        Some(p)
-    } else {
-        None
+/// The folders the windows had open last time — the first is the main window's. One per line; a
+/// file from before there were several windows holds one line and reads the same. Folders that are
+/// gone are skipped, and so is a folder listed twice.
+fn load_saved_workspaces(app: &tauri::AppHandle) -> Vec<PathBuf> {
+    config_path(app).and_then(|c| fs::read_to_string(c).ok()).map(|t| parse_saved(&t)).unwrap_or_default()
+}
+
+fn parse_saved(text: &str) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = Vec::new();
+    for line in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
+        let p = PathBuf::from(line);
+        if p.is_dir() && !out.iter().any(|q| same_dir(q, &p)) {
+            out.push(p);
+        }
+    }
+    out
+}
+
+fn same_dir(a: &Path, b: &Path) -> bool {
+    a == b || matches!((a.canonicalize(), b.canonicalize()), (Ok(x), Ok(y)) if x == y)
+}
+
+/// Write the open windows' folders. Never an empty list: closing the last window leaves the file
+/// saying what it had, so the next launch opens that folder again.
+#[cfg(desktop)]
+fn save_workspaces(app: &tauri::AppHandle) {
+    let roots = open_roots(app);
+    if roots.is_empty() {
+        return;
+    }
+    if let Some(cfg) = config_path(app) {
+        let text: Vec<String> = roots.iter().map(|(_, p)| p.to_string_lossy().to_string()).collect();
+        let _ = fs::write(cfg, text.join("\n") + "\n");
     }
 }
 
+/// "eeditor-next — notes": with two windows open, the title is how you tell them apart.
 #[cfg(desktop)]
-fn save_workspace(app: &tauri::AppHandle, path: &Path) {
-    if let Some(cfg) = config_path(app) {
-        let _ = fs::write(cfg, path.to_string_lossy().as_bytes());
+fn set_title<R: Runtime>(window: &tauri::WebviewWindow<R>, root: &Path) {
+    let name = root.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| root.display().to_string());
+    let _ = window.set_title(&format!("{} — {}", window.app_handle().package_info().name, name));
+}
+
+/// A window on `root`: the one already on that folder, brought forward — two windows editing the
+/// same files would overwrite each other's saves — or a new one with a space of its own.
+#[cfg(desktop)]
+fn window_on(app: &tauri::AppHandle, root: PathBuf) -> Result<(), String> {
+    if let Some((label, _)) = open_roots(app).into_iter().find(|(_, p)| same_dir(p, &root)) {
+        if let Some(w) = app.get_webview_window(&label) {
+            let _ = w.unminimize();
+            let _ = w.show();
+            let _ = w.set_focus();
+        }
+        return Ok(());
     }
+    let n = app.state::<Spaces>().next.fetch_add(1, Ordering::SeqCst);
+    let label = format!("w{}", n + 2);
+    open_space(app, &label, root.clone());
+    let built = tauri::WebviewWindowBuilder::new(app, &label, tauri::WebviewUrl::App("index.html".into()))
+        .title(app.package_info().name.clone())
+        .inner_size(1200.0, 800.0)
+        .min_inner_size(720.0, 480.0)
+        .build();
+    match built {
+        Ok(w) => {
+            set_title(&w, &root);
+            save_workspaces(app);
+            Ok(())
+        }
+        Err(e) => {
+            forget_space(app, &label);
+            Err(format!("could not open a window: {e}"))
+        }
+    }
+}
+
+/// A window closed: its engine stops (dropping the handle ends its thread) and the folder leaves
+/// the list — unless the app is quitting, when every window closes and the list must stay.
+fn forget_space(app: &tauri::AppHandle, label: &str) {
+    let spaces = app.state::<Spaces>();
+    spaces.by_label.lock().unwrap().remove(label);
+    spaces.order.lock().unwrap().retain(|l| l != label);
+}
+
+/// Ask for a folder, then open it in a window — New Window… (⌃⌘N), and the workspace menu's
+/// "Open a folder in a new window…". Cancelling the picker opens nothing.
+#[cfg(desktop)]
+#[tauri::command]
+async fn new_window(app: tauri::AppHandle) -> Result<bool, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.dialog().file().set_title("Open a folder in a new window").pick_folder(move |picked| {
+        let _ = tx.send(picked);
+    });
+    let picked = tauri::async_runtime::spawn_blocking(move || rx.recv().unwrap_or(None))
+        .await
+        .unwrap_or(None);
+    match picked.and_then(|fp| fp.into_path().ok()) {
+        Some(p) => window_on(&app, p).map(|_| true),
+        None => Ok(false),
+    }
+}
+
+#[cfg(mobile)]
+#[tauri::command]
+fn new_window() -> Result<bool, String> {
+    Err("one window on this device".into())
 }
 
 /// Resolve the workspace on startup.
@@ -864,7 +1079,7 @@ fn initial_workspace(app: &tauri::AppHandle) -> PathBuf {
             return ws;
         }
     }
-    if let Some(saved) = load_saved_workspace(app) {
+    if let Some(saved) = load_saved_workspaces(app).into_iter().next() {
         return saved;
     }
     if let Ok(p) = std::env::var("EEDITOR_WORKSPACE") {
@@ -919,15 +1134,23 @@ fn queue_opens(app: &tauri::AppHandle, paths: Vec<PathBuf>) {
     if paths.is_empty() {
         return;
     }
+    // The window in front takes them — with several open, the one you were just working in.
+    let labels: Vec<String> = open_roots(app).into_iter().map(|(l, _)| l).collect();
+    let target = labels
+        .iter()
+        .find(|l| app.get_webview_window(l).and_then(|w| w.is_focused().ok()).unwrap_or(false))
+        .or(labels.first())
+        .cloned()
+        .unwrap_or_else(|| "main".into());
     if let Some(state) = app.try_state::<PendingOpens>() {
-        state.0.lock().unwrap().extend(paths);
+        state.0.lock().unwrap().extend(paths.into_iter().map(|p| (target.clone(), p)));
     }
-    let _ = app.emit("open-paths", ());
+    let _ = app.emit_to(target.as_str(), "open-paths", ());
 
     // "Open With" on an already-running app leaves us behind Finder, so the note would open out of
     // sight. Come forward — the user just asked for this file.
     #[cfg(target_os = "macos")]
-    for (_, w) in app.webview_windows() {
+    if let Some(w) = app.get_webview_window(&target) {
         let _ = w.unminimize();
         let _ = w.show();
         let _ = w.set_focus();
@@ -943,6 +1166,14 @@ pub fn run() {
         if event.id() == MENU_QUIT && !defer_exit(app) {
             app.exit(0);
         }
+        if event.id() == MENU_NEW_WINDOW {
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = new_window(app).await {
+                    eprintln!("[eeditor] {e}");
+                }
+            });
+        }
     });
     let app = builder
         .plugin(tauri_plugin_dialog::init())
@@ -951,6 +1182,24 @@ pub fn run() {
         .manage(ExternalFiles::default())
         .manage(PendingOpens::default())
         .manage(ExitGuard::default())
+        .manage(Spaces::default())
+        .on_window_event(|window, event| {
+            // A window closed on its own (⌘W, its close button): its engine goes and the folder
+            // leaves the list. Quitting closes them all, and then the list stays as it was.
+            if let tauri::WindowEvent::Destroyed = event {
+                let app = window.app_handle();
+                let label = window.label();
+                if label.starts_with("screen-") || app.state::<ExitGuard>().0.load(Ordering::SeqCst) {
+                    return;
+                }
+                let last = open_roots(app).len() <= 1;
+                if !last {
+                    forget_space(app, label);
+                    #[cfg(desktop)]
+                    save_workspaces(app);
+                }
+            }
+        })
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -959,19 +1208,22 @@ pub fn run() {
             }
             let ws = initial_workspace(app.handle());
             eprintln!("[eeditor] workspace: {}", ws.display());
-            // The tables and agenda live in the workspace, so they survive a quit. The engine
-            // opens the file on its own thread — setup() is the main thread, and a workspace under
-            // ~/Documents can hold the first touch behind a privacy prompt.
-            let db = engine_db_path(&ws);
-            let root = Arc::new(Mutex::new(ws));
-            // The engine's editor RPC is installed on its own thread, reading through the same
-            // handle the fs commands write to — so `(current-dir)` is never stale.
-            let engine_root = root.clone();
-            app.manage(EngineHandle::spawn_with(db, move |it| {
-                it.editor.borrow_mut().current_dir =
-                    Some(Box::new(move || engine_root.lock().unwrap().display().to_string()));
-            }));
-            app.manage(Workspace(root));
+            // The tables and agenda live in the workspace, so they survive a quit.
+            open_space(app.handle(), "main", ws.clone());
+            #[cfg(desktop)]
+            {
+                if let Some(w) = app.get_webview_window("main") {
+                    set_title(&w, &ws);
+                }
+                // The other windows that were open at the last quit, each on its folder.
+                for extra in load_saved_workspaces(app.handle()).into_iter().skip(1) {
+                    if !same_dir(&extra, &ws) {
+                        if let Err(e) = window_on(app.handle(), extra) {
+                            eprintln!("[eeditor] {e}");
+                        }
+                    }
+                }
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -995,7 +1247,9 @@ pub fn run() {
             take_pending_opens,
             finish_exit,
             pick_workspace,
-            restore_workspace
+            restore_workspace,
+            new_window,
+            close_window
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
@@ -1048,6 +1302,27 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn a_screen_window_runs_on_its_openers_space() {
+        assert_eq!(space_label("main"), "main");
+        assert_eq!(space_label("w3"), "w3");
+        assert_eq!(space_label("screen-w3-1730000000-2"), "w3");
+        assert_eq!(space_label("screen-main-1-1"), "main");
+        assert_eq!(space_label("screen-"), "main");
+    }
+
+    #[test]
+    fn the_saved_list_keeps_order_and_drops_gone_and_repeated_folders() {
+        let t = Tmp::new("saved");
+        fs::create_dir_all(t.0.join("a")).unwrap();
+        fs::create_dir_all(t.0.join("b")).unwrap();
+        let (a, b) = (t.0.join("a"), t.0.join("b"));
+        // a file written before there were several windows: one line, no newline
+        assert_eq!(parse_saved(&a.display().to_string()), vec![a.clone()]);
+        let text = format!("{}\n{}\n{}\n\n{}\n", b.display(), t.0.join("gone").display(), a.display(), b.display());
+        assert_eq!(parse_saved(&text), vec![b, a]);
     }
 
     /// `fs_abs_path` hands the frontend a real filesystem path, so the confinement it leans on is

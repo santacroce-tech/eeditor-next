@@ -24,8 +24,9 @@ export function openScreenWindow(expr: string, title: string): ScreenWindow {
 function nativeWindow(url: string, title: string): ScreenWindow {
   let resolveClosed = () => {};
   const closed = new Promise<void>((r) => (resolveClosed = r));
-  const made = import("@tauri-apps/api/webviewWindow").then(({ WebviewWindow }) => {
-    const w = new WebviewWindow(`screen-${Date.now()}-${++opened}`, {
+  const made = import("@tauri-apps/api/webviewWindow").then(({ WebviewWindow, getCurrentWebviewWindow }) => {
+    // The opener's label comes first: the backend runs the screen on that window's engine.
+    const w = new WebviewWindow(`screen-${getCurrentWebviewWindow().label}-${Date.now()}-${++opened}`, {
       url,
       title,
       width: 820,
