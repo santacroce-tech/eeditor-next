@@ -76,7 +76,13 @@ presses it, `:cancel` — Escape does), `checkbox`, `radio` (`:items`, one chose
 (`:items`), `listbox` (`:items`), `grid` (`:columns`, `:rows`; `:editable` — double-click a cell to
 type into it, and `:on-edit` gets the row as edited; `:sortable` — click a header; `:filter` — a
 box that narrows the rows to those containing the text; `:page-size` — pages, with ‹ › and a
-row count), `date` (`:value` as `yyyy-mm-dd`;
+row count), `board` (a kanban — `:rows` as cards, in a column per value of each row's `:lane-by`
+field, `"lane"` unless set; `:lanes` gives the columns and their order, empty ones too — left out,
+they are the rows' own; `:card` the field a card shows, `"text"`, and `:sub` a second line under it.
+Drag a card to another column, or ⌥← / ⌥→ on the one picked: it moves there at once and
+`:on-move` runs with `$from` and `$to` in the form's state — `(ui-get f "$to")` — to make it so in
+the data; the board's value is the card picked, a dict like a grid's row, and `:on-change` /
+`:on-dblclick` work as on a grid), `date` (`:value` as `yyyy-mm-dd`;
 `:min`, `:max`), `image` (`:src`, a path beside the form like a note's `![](assets/x.png)`), `timer`
 (`:interval` ms; nothing to see, fires `:on-tick` while enabled), `tabs` (`:pages`, `:value` the
 open one), `sheet` (`:file`, a `.eesheet` beside the form — the live grid, with its formula bar
@@ -115,7 +121,7 @@ under it `"lb"`, an editor panel down the right `"tr"`. A form never lays out sm
 file is the Tab order when the form runs (the *Order* buttons in the properties move a control).
 **Events**: `:on-click` (button), `:on-change` (anything with a value — a
 textbox when editing ends, a checkbox, a radio group, a dropdown, a date, a listbox or grid when the
-selection moves), `:on-dblclick` (a listbox or grid row), `:on-validate` (a button), `:on-tick` (a
+selection moves), `:on-dblclick` (a listbox or grid row, a board's card), `:on-move` (a board's card dragged to another lane), `:on-validate` (a button), `:on-tick` (a
 timer), `:on-load` (the form), `:on-public` (the form — another form of its main wrote a public variable),
 `:on-close` (the form — asked before it closes, by its stop/✕ button, `(ui-close)`, a frame's Close or ×,
 or the main form holding it closing: a message refuses and is shown, nil lets it go; the forms in a

@@ -234,7 +234,7 @@ export function defnRange(src: string, name: string): Range | undefined {
 
 // ── the layout ────────────────────────────────────────────────────────────
 
-export type ControlType = "label" | "textbox" | "button" | "checkbox" | "radio" | "dropdown" | "listbox" | "grid" | "date" | "image" | "timer" | "tabs" | "sheet" | "frame" | "screen";
+export type ControlType = "label" | "textbox" | "button" | "checkbox" | "radio" | "dropdown" | "listbox" | "grid" | "board" | "date" | "image" | "timer" | "tabs" | "sheet" | "frame" | "screen";
 
 /** How a frame shows the forms opened in it. `screens` — one at a time, the dBASE way — is the default. */
 export const FRAME_MODES = ["screens", "tabs", "windows"] as const;
@@ -497,10 +497,29 @@ export const CONTROLS: Record<ControlType, ControlDef> = {
     events: ["change", "dblclick", "edit"],
     initial: { columns: [] },
   },
+  /**
+   * A kanban: rows as cards, in a column (lane) per value of their `:lane-by` field. Dragging a card
+   * to another lane — or ⌥← / ⌥→ on the one picked — moves it there and fires `:on-move`, with
+   * `$from` and `$to` in the form's state; the board's value is the card picked, a dict like a grid's.
+   */
+  board: {
+    label: "Board",
+    prefix: "brd",
+    w: 480,
+    h: 240,
+    props: [
+      { key: "lanes", kind: "items", label: "Lanes (empty: the rows' own)", default: [] },
+      { key: "lane-by", kind: "text", label: "Lane field", default: "lane" },
+      { key: "card", kind: "text", label: "Card text field", default: "text" },
+      { key: "sub", kind: "text", label: "Second line field", default: "" },
+    ],
+    events: ["change", "dblclick", "move"],
+    initial: { lanes: ["To do", "Doing", "Done"] },
+  },
 };
 
 /** The toolbox order: the everyday controls first, containers and the odd ones last. */
-export const CONTROL_TYPES: ControlType[] = ["label", "textbox", "button", "checkbox", "radio", "dropdown", "listbox", "grid", "date", "image", "screen", "tabs", "sheet", "frame", "timer"];
+export const CONTROL_TYPES: ControlType[] = ["label", "textbox", "button", "checkbox", "radio", "dropdown", "listbox", "grid", "board", "date", "image", "screen", "tabs", "sheet", "frame", "timer"];
 export const isControlType = (s: string): s is ControlType => s in CONTROLS;
 
 export interface Control {
@@ -837,7 +856,7 @@ export function handlerStub(name: string, event = "click"): string {
 
 /** What to call a control in a message: `txtFirstName` → "First name", `grdAll` → "All". */
 export function humanName(name: string): string {
-  const stem = name.replace(/^(lbl|txt|btn|chk|opt|cmb|lst|grd|dtp|img|tmr|tab|sht)(?=[A-Z0-9_-])/, "");
+  const stem = name.replace(/^(lbl|txt|btn|chk|opt|cmb|lst|grd|brd|dtp|img|tmr|tab|sht)(?=[A-Z0-9_-])/, "");
   const words = stem.replace(/[_-]+/g, " ").replace(/([a-z0-9])([A-Z])/g, "$1 $2").trim();
   return words ? words[0].toUpperCase() + words.slice(1).toLowerCase() : name;
 }

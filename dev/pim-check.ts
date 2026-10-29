@@ -439,6 +439,31 @@ check("…a task goes under ## Tasks in today's note, which keeps its log", (awa
   (await note(daily)).includes("water 3 glass"), await note(daily));
 check("capture nothing", (await ev(`(pim-capture "task" "  ")`)) === "Nothing to capture");
 
+// ── boards ──
+const brdCall = Number(await ev(`(dict-get (pim-add "call the printer #brd/calls" (list)) :id)`));
+const brdMail = Number(await ev(`(dict-get (pim-add "answer Ana !! #brd/mail" (list)) :id)`));
+const brdOwn = Number(await ev(`(dict-get (pim-add "sort the desk #brd" (list)) :id)`));
+await ev(`(pim-add "plan the trip #brd/calls #home" (list))`);
+const lanes = await ev(`(pim-board-lanes "brd")`);
+check("a board's lanes are the category's children, then itself", JSON.stringify(lanes) === '["brd/calls","brd/mail","brd"]', lanes);
+check("…and at the top, the top-level categories and \"-\"", JSON.stringify(await ev(`(last (pim-board-lanes ""))`)) === '"-"' &&
+  (await ev(`(some? (fn (c) (= c "brd")) (pim-board-lanes ""))`)) === true);
+const laneOf = async (id: number) =>
+  ev(`(dict-get (first (filter (fn (d) (= (dict-get d :id) ${id})) (pim-board-rows "brd"))) :lane)`);
+check("each item sits in the first lane that holds it", (await laneOf(brdCall)) === "brd/calls" && (await laneOf(brdOwn)) === "brd" &&
+  (await ev(`(length (filter (fn (d) (str-contains (dict-get d :text) "plan the trip")) (pim-board-rows "brd")))`)) === 1);
+await ev(`(pim-board-move ${brdCall} "brd" "brd/calls" "brd/mail")`);
+check("moving a card refiles the item: out of the lane it left, into the new one", (await laneOf(brdCall)) === "brd/mail" &&
+  JSON.stringify(await ev(`(dict-get (item->dict (item-get ${brdCall})) :categories)`)) === '["brd/mail"]',
+  await ev(`(dict-get (item->dict (item-get ${brdCall})) :categories)`));
+await ev(`(pim-board-move ${brdOwn} "brd" "brd" "brd/calls")`);
+check("…from the parent's own lane too", (await laneOf(brdOwn)) === "brd/calls");
+const table = String(await ev(`(pim-board "brd")`));
+check("(pim-board …) is a markdown table, a column per lane with something in it", table.startsWith("| calls · 2 | mail · 2 |\n|---|---|\n") &&
+  table.includes("!! answer Ana") && !table.includes("brd ·"), table);
+check("…and says so when there's nothing", String(await ev(`(pim-board "nothing-here")`)) === "_nothing on the board in nothing-here_");
+void brdMail;
+
 const formPrelude = await engine.ev(await readFile(path.join(root, "src/forms/prelude.eelisp"), "utf8"));
 const form = await engine.ev(await readFile(path.join(root, "docs/pim/Capture.eeform"), "utf8"));
 check("Capture.eeform loads", formPrelude.ok && form.ok, form.error ?? formPrelude.error);
