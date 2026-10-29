@@ -33,9 +33,14 @@ export interface Binding extends Body {
 /**
  * `(button "label" body…)`: a button in the editor's header. Its body is a binding's — or just a key,
  * `(button "↻" "Mod-Alt-u")`, and the button does what that key does at the time it's clicked.
+ * A body that is one app command, `(button "PDF" (ed-cmd "export-pdf"))`, may leave the label out —
+ * `(button (ed-cmd "export-pdf"))` — and the app labels it (the theme button names the next theme).
  */
 export interface Button extends Body {
+  /** "" when left out: the app's own label for `command`. */
   label: string;
+  /** Set when the body is exactly `(ed-cmd "name")`: the app command it runs. */
+  command?: string;
   /** Set when the body is a key: the canonical id of the binding to run. */
   key?: string;
   /** The key as written, or the label — for messages and the tooltip. */
@@ -277,9 +282,16 @@ function parseForm(
   return { binding: { ...compileBody(body), id: key.id, spec: str.value, line: form.line } };
 }
 
+/** `(ed-cmd "name")` and nothing else → "name". */
+function commandOf(body: string): string | undefined {
+  return /^\(\s*ed-cmd\s+"([a-z0-9-]+)"\s*\)$/.exec(body.trim())?.[1];
+}
+
 function parseButton(inner: string, from: number, line: number, mac: boolean): { button: Button } | { error: string } {
   let i = from;
   while (i < inner.length && /\s/.test(inner[i])) i++;
+  const bare = commandOf(inner.slice(i));
+  if (bare) return { button: { ...compileBody(inner.slice(i).trim()), label: "", command: bare, spec: bare, line } };
   if (inner[i] !== '"') return { error: `line ${line}: button needs a quoted label, e.g. (button "↻" "Mod-Alt-u")` };
   const label = readString(inner, i);
   if (!label) return { error: `line ${line}: unterminated label string` };
@@ -294,7 +306,20 @@ function parseButton(inner: string, from: number, line: number, mac: boolean): {
     if ("error" in key) return { error: `line ${line}: ${key.error}` };
     return { button: { source: EMPTY_BODY, label: label.value, key: key.id, spec: str.value, line } };
   }
-  return { button: { ...compileBody(body), label: label.value, spec: label.value, line } };
+  return { button: { ...compileBody(body), label: label.value, command: commandOf(body), spec: label.value, line } };
+}
+
+/** The app commands the header has always had a button for. */
+export const HEADER_COMMANDS = ["toggle-theme", "insert-image", "toggle-preview", "export-pdf", "open-keys", "toggle-repl"];
+
+/**
+ * The header's buttons: the config's. A config with no button for any of the header's own commands
+ * — written before they were buttons in the file — gets the defaults' after its own, so the theme,
+ * preview, PDF… buttons don't vanish. Writing one of them is taking the header over.
+ */
+export function headerButtons(config: Button[], defaults: Button[]): Button[] {
+  const own = (b: Button) => b.command !== undefined && HEADER_COMMANDS.includes(b.command);
+  return config.some(own) ? config : [...config, ...defaults.filter(own)];
 }
 
 /**

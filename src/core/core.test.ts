@@ -6,7 +6,7 @@ import { codeToRun, eelispBlockAt } from "./blocks";
 import { searchFiles } from "./search";
 import { wikiLinkAt, wikiLinkTargets } from "./wikilink";
 import { backlinksTo } from "./backlinks";
-import { parseKeybindings, parseKeySpec, eventKeyId, keyLabel, lispString } from "./keybindings";
+import { parseKeybindings, parseKeySpec, eventKeyId, keyLabel, lispString, headerButtons } from "./keybindings";
 import { uniqueName } from "./uniquename";
 import { highlightEelisp } from "./lisphl";
 
@@ -249,7 +249,10 @@ describe("keybindings config", () => {
     expect(parseKeybindings(`(button "x" "u")`, true).errors[0]).toContain("needs a modifier");
     expect(parseKeybindings(`(button "x")`, true).errors[0]).toContain("nothing to do");
     expect(parseKeybindings(`(button "" "Mod-u")`, true).errors[0]).toContain("label is empty");
-    expect(parseKeybindings(`(button (ed-cmd "save"))`, true).errors[0]).toContain("quoted label");
+    // one app command may go unlabelled: the app labels it
+    expect(parseKeybindings(`(button (ed-cmd "export-pdf"))`, true).buttons[0]).toMatchObject({ label: "", command: "export-pdf" });
+    expect(parseKeybindings(`(button (ed-message "x"))`, true).errors[0]).toContain("quoted label");
+    expect(parseKeybindings(`(button "x" (ed-cmd "save") (ed-cmd "search"))`, true).buttons[0].command).toBeUndefined();
   });
 
   it("names a key the way a person reads it", () => {
@@ -368,5 +371,20 @@ describe("eelisp highlighting", () => {
     expect(kinds("-3.5 1e6 .5 - x2")).toEqual([
       "number:-3.5", "number:1e6", "number:.5", "plain:-", "plain:x2",
     ]);
+  });
+});
+
+describe("the header", () => {
+  const defaults = parseKeybindings(`(button (ed-cmd "toggle-theme"))\n(button (ed-cmd "export-pdf"))\n(button "x" (ed-cmd "search"))`, true).buttons;
+
+  it("is the config's buttons once it has one of the header's own", () => {
+    const config = parseKeybindings(`(button "mine" "Mod-Alt-u")\n(button "⇩" (ed-cmd "export-pdf"))`, true).buttons;
+    expect(headerButtons(config, defaults).map((b) => b.label || b.command)).toEqual(["mine", "⇩"]);
+  });
+
+  it("gets the defaults' header buttons, after its own, when it has none", () => {
+    const config = parseKeybindings(`(button "↻ update" "Mod-Alt-u")`, true).buttons;
+    expect(headerButtons(config, defaults).map((b) => b.label || b.command)).toEqual(["↻ update", "toggle-theme", "export-pdf"]);
+    expect(headerButtons([], defaults)).toHaveLength(2);
   });
 });

@@ -634,8 +634,8 @@
 (bind "Mod-Alt-g" (ed-prompt "Category" pim-set-category "" (pim-category-names)))
 
 ;; ── buttons ──────────────────────────────────────────────────────────────────
-;; In the editor's header, beside the theme button. A key does what that key does; any body a
-;; (bind …) takes works too: (button "today" (ed-cmd "daily-note")).
+;; In the editor's header, where the file's other (button …) lines put them. A key does what that
+;; key does; any body a (bind …) takes works too: (button "today" (ed-cmd "daily-note")).
 (button "↻ update" "Mod-Alt-u")
 (button "✓ task" "Mod-Alt-t")
 (button "⌫ delete" "Mod-Alt-Backspace")

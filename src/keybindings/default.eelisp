@@ -49,9 +49,10 @@
 ;; (on-tick body…) runs once a minute, on the minute, with the same context as a key, and its
 ;; commands are carried out — (ed-notify …) for a reminder, say. Keep it quick.
 ;;
-;; (button "label" "Key") puts a button in the editor's header, beside the theme button, that does
-;; what that key does: (button "↻ update" "Mod-Alt-u"). Or give it a body, as a bind takes:
-;; (button "today" (ed-cmd "daily-note")). Buttons appear in the order they're written.
+;; (button "label" "Key") puts a button in the editor's header that does what that key does:
+;; (button "↻ update" "Mod-Alt-u"). Or give it a body, as a bind takes: (button "today"
+;; (ed-cmd "daily-note")). The header is these (button …) lines, in the order they're written —
+;; the theme, preview and PDF buttons too: see "the header" below.
 ;;
 ;; There may be several on-load and on-tick forms; each runs, in order.
 ;;
@@ -105,6 +106,24 @@
 ;;
 ;; ⌘⇧B — link back to today's note
 ;; (bind "Mod-Shift-b" (ed-insert (str "[[" *date* "]]")))
+
+;; ── the header ─────────────────────────────────────────────────────────────
+;; The buttons above the editor, left to right. Delete a line and the button goes; move it and it
+;; moves; add your own anywhere among them. A button that is one app command can leave its label
+;; out and EEditor labels it — the theme button names the next theme, preview turns into edit —
+;; or label it yourself: (button "⇩ PDF" (ed-cmd "export-pdf")). Either way it hides where the
+;; command can't work (no PDF of a form, no image in a sheet). A file with none of these six lines
+;; gets them anyway, after its own buttons; write one and the header is yours.
+(button (ed-cmd "toggle-theme"))     ;; ☀ light / ☾ dark / ▦ VB6
+(button (ed-cmd "insert-image"))     ;; image…
+(button (ed-cmd "toggle-preview"))   ;; preview / edit
+(button (ed-cmd "export-pdf"))       ;; PDF
+(button (ed-cmd "open-keys"))        ;; ⌘ — this file
+(button (ed-cmd "toggle-repl"))      ;; λ — the EELisp panel
+;; More you could add:
+;; (button "today" (ed-cmd "daily-note"))
+;; (button "🔍" (ed-cmd "search"))
+;; (button "📅" (ed-cmd "calendar"))
 
 ;; ── what opens at launch ───────────────────────────────────────────────────
 ;; Uncomment one. With every (on-start …) commented out, EEditor falls back to welcome.md — or,
