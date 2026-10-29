@@ -148,7 +148,9 @@ test("Agenda adds, edits, files and completes items across its tabs", async ({ p
   await ctl(form, "txtNotes").locator("textarea").fill("by transfer");
   await ctl(form, "btnSave").locator("button").click();
   await expect(ctl(form, "lblStatus")).toHaveText("Saved pay rent");
-  await page.locator(".repl-input").fill('(dict-get (item->dict (item-get 1)) "notes")');
+  // its id from the editor's "Item #n" — other specs may have filled the agenda before this one
+  const id = (await ctl(form, "lblEdit").innerText()).match(/#(\d+)/)[1];
+  await page.locator(".repl-input").fill(`(dict-get (item->dict (item-get ${id})) "notes")`);
   await page.locator(".repl-input").press(`${process.platform === "darwin" ? "Meta" : "Control"}+Enter`);
   await expect(page.locator(".repl-scrollback .result-scalar").last()).toContainText("by transfer");
   await ctl(form, "btnDone").locator("button").click();

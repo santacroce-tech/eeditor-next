@@ -1,4 +1,4 @@
-;; TRYME.eeform — the PIM in one window: everything TRY ME.md walks through, as an interface. It
+;; Agenda.eeform — the PIM in one window: everything TRY ME.md walks through, as an interface. It
 ;; needs the PIM library (Install the PIM keys…, or the sample notes) — the Start page says if it's
 ;; missing. ⤢ in the title bar (or a double-click on it) fills the app; the lists grow into the room.
 ;;
@@ -12,7 +12,7 @@
 ;;
 ;; It is the same agenda, tables and notes as the sidebar, the keys and the REPL.
 
-(form "Try the PIM" :size (1040 680) :on-load tm-load :menu (("PIM" ("Refresh" tm-refresh-all) ("Sweep notes now" tm-sweep) ("-") ("Close" tm-close)) ("Open" ("Today's note" tm-open-today) ("This week's review" tm-open-week) ("TRY ME.md" tm-open-tryme) ("Keybindings" tm-open-keys)) ("Help" ("About" tm-about)))
+(form "Agenda" :size (1040 680) :on-load tm-load :menu (("PIM" ("Refresh" tm-refresh-all) ("Sweep notes now" tm-sweep) ("-") ("Close" tm-close)) ("Open" ("Today's note" tm-open-today) ("This week's review" tm-open-week) ("TRY ME.md" tm-open-tryme) ("Keybindings" tm-open-keys)) ("Help" ("About" tm-about)))
   (tabs tabMain :pages ("Start here" "Agenda" "In notes" "Capture" "Clock" "Tracker" "Review") :value "Agenda" :at (8 8) :size (1024 664) :anchor "tlbr" :on-change tm-page)
   (label lblCheck :text "Is it all there?" :page "Start here" :at (20 48) :size (380 24))
   (textbox txtCheck :multiline true :readonly true :mono true :page "Start here" :at (20 76) :size (380 340) :anchor "tlb")
@@ -519,4 +519,4 @@
 
 (defn tm-close (f) (ui-close))
 (defn tm-about (f)
-  (ui-message "Try the PIM — TRY ME.md as a window. ⤢ or a double-click on the title fills the app."))
+  (ui-message "Agenda — the PIM in one window, TRY ME.md as an interface. ⤢ or a double-click on the title fills the app."))

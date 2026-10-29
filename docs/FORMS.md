@@ -273,7 +273,7 @@ tree, open from disk with the network off, reload).
 | `Tables.eeform` | Any table: pick it from `(tables)`, a WHERE / order / limit that shows the `(query …)` it ran, cells edited in place, new row, delete, pack. The table is named by an expression — `(query (str name))`. |
 | `Orders.eeform` | Master–detail: customers, the picked one's orders (`:where "customer = ?"`), a worked-out amount column and a total. |
 | `Office.eeform` | The others as one app: a `:main` form with a screens frame, their menus merged into its bar, and the last screen remembered in a `:persist` public variable. |
-| `docs/pim/TRYME.eeform` | The PIM as one window (installed as `pim/TRYME.eeform`; ⤢ on the sidebar's agenda opens it maximized): seven tabs — setup check and every key, the agenda big, the notes' unlinked tasks, capture, the clock, the tracker, the review. Anchors throughout, so it uses a maximized window. |
+| `docs/pim/Agenda.eeform` | The PIM as one window (installed as `pim/Agenda.eeform`; ⤢ on the sidebar's agenda opens it maximized): seven tabs — setup check and every key, the agenda big, the notes' unlinked tasks, capture, the clock, the tracker, the review. Anchors throughout, so it uses a maximized window. |
 | `Agenda.eeform` | The agenda PIM through most of the controls: tabs, menu, datagrid, date, radio, dropdowns, checkbox, timer. Items by due date, an editor for one (`item->dict` reads it), quick add with a `smart-parse` preview, categories, rules, saved views. |
 
 `defcategory`, `defrule` and `defview` take their arguments unevaluated, so the Agenda form writes
