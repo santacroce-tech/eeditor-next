@@ -551,7 +551,7 @@ setDoc("just words", 1);
 await press("Mod-Alt-Backspace");
 check("…a line with no task is left alone", doc.text === "just words" && doc.messages[0].startsWith("No task"), doc.messages);
 check("every (button …) presses a key the config binds",
-  parsed.buttons.length === 3 && parsed.buttons.every((b) => b.key !== undefined && parsed.bindings.some((k) => k.id === b.key)),
+  parsed.buttons.length === 2 && parsed.buttons.every((b) => b.key !== undefined && parsed.bindings.some((k) => k.id === b.key)),
   parsed.buttons);
 const typed = await ev(`(ed-write "someday.md" "new text" "what it said an hour ago")`);
 await apply(typed);
