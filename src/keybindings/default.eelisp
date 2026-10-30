@@ -59,6 +59,11 @@
 ;; "habits.eeform") adds a section of its own. Its :on-refresh runs whenever a note is saved or the
 ;; agenda may have changed. The PIM's keys install both.
 ;;
+;; ⌘P finds a file; type ">" first (or press ⌘⇧P) and it finds an action instead: the app's
+;; commands, every key here — named by the comment right above its (bind …) — the header's buttons
+;; and the folder's forms. (action "label" body…) adds one of your own, listed there and nowhere
+;; else: (action "Work tasks here" (pim-insert-block "(pim-category \"work\")")).
+;;
 ;; There may be several on-load and on-tick forms; each runs, in order.
 ;;
 ;; Context, defined fresh before every run:
@@ -75,6 +80,7 @@
 ;; ── app commands ───────────────────────────────────────────────────────────
 (bind "Mod-s"       (ed-cmd "save"))
 (bind "Mod-p"       (ed-cmd "quick-open"))
+(bind "Mod-Shift-p" (ed-cmd "command-palette"))
 (bind "Mod-Shift-f" (ed-cmd "search"))
 (bind "Mod-d"       (ed-cmd "daily-note"))
 (bind "Mod-Shift-n" (ed-cmd "new-file"))

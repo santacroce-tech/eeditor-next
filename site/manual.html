@@ -42,7 +42,7 @@
         <li><a href="#files">2. Files and folders</a></li>
         <li><a href="#editor">3. The editor</a></li>
         <li><a href="#tabs">4. Tabs</a></li>
-        <li><a href="#finding">5. Finding things</a></li>
+        <li><a href="#finding">5. Finding things</a> · <a href="#actions">actions</a></li>
         <li><a href="#links">6. Links between notes</a></li>
         <li><a href="#outside">7. Files from outside</a></li>
         <li><a href="#agenda">8. The agenda</a></li>
@@ -132,6 +132,12 @@
       <kbd>⌘D</kbd> opens today's note, <code>YYYY-MM-DD.md</code> at the root of the workspace,
       creating it with a date heading if it doesn't exist. It never overwrites an existing one, so
       pressing it repeatedly through the day just takes you back to the same note.
+    </p>
+    <p>
+      What a new one starts with can be yours: a <code>(defn daily-template (day) …)</code> in the
+      keybindings' <code>(on-load …)</code> returns its text — or, with the PIM, its
+      <code>pim-daily-template</code> does, with today's agenda filled in. See
+      <a href="#daily-template">a daily note that starts with your lists</a>.
     </p>
   </div></div>
 </section>
@@ -245,7 +251,32 @@ sequenceDiagram
     <p>
       Fuzzy matching over every file in the workspace. Type fragments in any order —
       <code>agmt</code> finds <code>agenda-meeting.md</code>. Arrow keys move, <kbd>↵</kbd> opens,
-      <kbd>Esc</kbd> dismisses.
+      <kbd>Esc</kbd> dismisses. Actions whose names match what you typed come under the files, marked
+      <code>›</code>.
+    </p>
+
+    <h3 id="actions">Actions — <kbd>⌘⇧P</kbd>, or <kbd>&gt;</kbd> in <kbd>⌘P</kbd></h3>
+    <p>
+      Type <kbd>&gt;</kbd> first in <kbd>⌘P</kbd> — or press <kbd>⌘⇧P</kbd>, which starts there — and it
+      finds something to <em>do</em> instead of a file: <code>&gt;sweep</code>, <code>&gt;new mind map</code>,
+      <code>&gt;clock</code>. <kbd>↵</kbd> runs it in the note in front, as if you had pressed its key
+      there, and each row shows that key on the right — the list teaches you the shortcuts. Backspace
+      over the <kbd>&gt;</kbd> and you're back among the files.
+    </p>
+    <p>Nothing in the list is written by hand. It's gathered each time it opens, from:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Where</th><th>Named by</th></tr>
+      <tr><td>every <code>(bind …)</code> in your keybindings</td><td>the <code>;</code> comment right above it — <code>;; ⌘⌥S — Sweep: scan every note…</code> is <em>Sweep</em>, the rest its second line</td></tr>
+      <tr><td>your <code>(action …)</code> lines</td><td>their label — see <a href="#own-actions">actions of your own</a></td></tr>
+      <tr><td>the header's buttons</td><td>their label, as another word that finds the key they press</td></tr>
+      <tr><td>the app's commands</td><td><em>New mind map</em>, <em>Export as PDF</em>, <em>Theme: dark</em>…</td></tr>
+      <tr><td>the folder's forms</td><td><em>Run form: Agenda</em></td></tr>
+    </table></div>
+    <p>
+      What you type is matched against the name first, then the second line, the button's label and
+      the function the key calls — so <code>&gt;scan tasks</code> finds <em>Sweep</em> as well — and
+      letters close together count too: <code>&gt;nmm</code> is <em>New mind map</em>. The one you
+      picked last comes first next time.
     </p>
     <h3>Full-text search — <kbd>⌘⇧F</kbd></h3>
     <p>
@@ -428,6 +459,13 @@ sequenceDiagram
       <em>No clock running</em> says they're live. The
       <a href="https://github.com/santacroce-tech/eeditor-next/blob/main/docs/PIM.md">PIM guide</a> has
       every key and function.
+    </p>
+    <p>
+      It puts two buttons in the header — <strong>↻ update</strong> (<kbd>⌘⌥U</kbd>, recompute the note's
+      lists) and <strong>⇄ sweep</strong> (<kbd>⌘⌥S</kbd>, every note in step with the agenda) — and every
+      key of it is in <a href="#actions">⌘P's actions</a> by name, with a few more that have no key:
+      <em>Insert the tasks in a category…</em>, <em>Insert a board of a category…</em>, <em>Insert the
+      inbox</em>, <em>Open the Agenda window</em>.
     </p>
 
     <h3>The sidebar's agenda, as a form</h3>
@@ -1285,6 +1323,22 @@ zzalinhar — function
       sidebar</a>.
     </p>
 
+    <h3 id="own-actions">Actions of your own</h3>
+    <p>
+      An <code>(action "label" …)</code> line is written like a button, but it's listed only in
+      <a href="#actions">⌘P's actions</a> — for the things worth finding by name that don't deserve a
+      key or a place in the header. Its body is a binding's, or a key to press:
+    </p>
+<pre><code>(action <span class="st">"Work tasks here"</span>   (pim-insert-block <span class="st">"(pim-category \"work\")"</span>))
+(action <span class="st">"Open the roadmap"</span>  (ed-open <span class="st">"projects/roadmap.md"</span>))
+(action <span class="st">"Sweep"</span> <span class="st">"Mod-Alt-s"</span>)</code></pre>
+    <p>
+      A key needs no <code>action</code> line to be listed: the comment right above its
+      <code>(bind …)</code> names it. A capitalised name before a colon is the whole name —
+      <code>;; ⌘⌥G — Set the category: file the caret's task under one</code> — and the keys written in
+      front of the dash are left out.
+    </p>
+
     <h3>Choosing what opens at launch</h3>
     <p>
       <code>(on-start …)</code> runs the same kind of commands once, after the workspace loads. With
@@ -1305,7 +1359,8 @@ zzalinhar — function
     <div class="table-wrap"><table>
       <tr><th>Command</th><th>Does</th></tr>
       <tr><td><code>save</code></td><td>save the current note</td></tr>
-      <tr><td><code>quick-open</code></td><td>fuzzy file finder</td></tr>
+      <tr><td><code>quick-open</code></td><td>fuzzy file finder — and, after a <kbd>&gt;</kbd>, the actions</td></tr>
+      <tr><td><code>command-palette</code></td><td>the same, opened on the actions</td></tr>
       <tr><td><code>search</code></td><td>full-text search</td></tr>
       <tr><td><code>daily-note</code></td><td>open (or create) today's note</td></tr>
       <tr><td><code>new-file</code> / <code>new-folder</code> / <code>new-sheet</code> / <code>new-form</code> / <code>new-mindmap</code></td><td>create at the workspace root, asking for a name</td></tr>
@@ -1350,6 +1405,31 @@ zzalinhar — function
   (ed-new (str <span class="st">"journal/"</span> *date* <span class="st">".md"</span>) (str <span class="st">"# "</span> *date* <span class="st">"\n\n"</span>))
   (ed-message <span class="st">"journal entry ready"</span>))</code></pre>
 
+    <h3 id="daily-template">A daily note that starts with your lists</h3>
+    <p>
+      <code>daily-template</code> is what a new daily note starts with — <kbd>⌘D</kbd>, the
+      <code>daily-note</code> command, <em>Today's daily note</em> in ⌘P's actions:
+    </p>
+<pre><code>(on-load
+  (defn daily-template (day)
+    (str <span class="st">"# "</span> day <span class="st">" · "</span> (date-format day <span class="st">"EEEE"</span>) <span class="st">"\n\n## Today\n\n- [ ] \n\n## Notes\n\n"</span>)))</code></pre>
+    <p>
+      With the PIM, <kbd>⌘D</kbd> makes the note from <code>pim-daily-template</code>; define that one
+      instead and the note can open with live lists — each a block that's filled when the note is
+      made and that <kbd>⌘⌥U</kbd> refreshes through the day. A list of headings and blocks keeps it
+      easy to change:
+    </p>
+<pre><code>(on-load
+  (def my-daily-blocks
+    (list (list <span class="st">"Agenda"</span> <span class="st">"(pim-agenda 1)"</span>)
+          (list <span class="st">"Work"</span>   <span class="st">"(pim-category \"work\")"</span>)
+          (list <span class="st">"Inbox"</span>  <span class="st">"(pim-inbox)"</span>)))
+  (defn pim-daily-template (day)
+    (str <span class="st">"# "</span> day <span class="st">" · "</span> (date-format day <span class="st">"EEEE"</span>) <span class="st">"\n\n"</span>
+         (str-join <span class="st">""</span> (map (fn (b) (str <span class="st">"## "</span> (first b) <span class="st">"\n\n"</span> (pim-block (second b)) <span class="st">"\n\n"</span>))
+                          my-daily-blocks))
+         <span class="st">"## Log\n\n\n## Notes\n\n"</span>)))</code></pre>
+
     <div class="note">
       <p>
         Mistakes are reported, not swallowed: a binding that fails prints its error in the REPL and
@@ -1387,7 +1467,8 @@ zzalinhar — function
     <div class="table-wrap"><table>
       <tr><th>Key</th><th>Does</th></tr>
       <tr><td><kbd>⌘S</kbd></td><td>Save</td></tr>
-      <tr><td><kbd>⌘P</kbd></td><td>Quick open</td></tr>
+      <tr><td><kbd>⌘P</kbd></td><td>Quick open — type <kbd>&gt;</kbd> for actions</td></tr>
+      <tr><td><kbd>⌘⇧P</kbd></td><td>Actions: everything EEditor can do, by name</td></tr>
       <tr><td><kbd>⌘⇧F</kbd></td><td>Full-text search</td></tr>
       <tr><td><kbd>⌘D</kbd></td><td>Today's note</td></tr>
       <tr><td><kbd>⌘I</kbd></td><td>New note stamped with the minute</td></tr>

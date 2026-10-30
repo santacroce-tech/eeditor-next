@@ -24,13 +24,14 @@ import { createRepl } from "./ui/repl";
 import { createSidebar } from "./ui/sidebar";
 import { createAgendaPanel } from "./ui/agenda";
 import { createQuickOpen } from "./ui/quickopen";
+import { paletteItems, type PaletteItem } from "./core/palette";
 import { createTagsPanel } from "./ui/tagspanel";
 import { createSearch } from "./ui/search";
 import { createCalendar } from "./ui/calendar";
 import { createAgendaSetup } from "./ui/agenda-setup";
 import { createSnippets } from "./ui/snippets";
 import { createKeybindings, type CommandTable } from "./ui/keybindings";
-import { isMacPlatform, keyLabel, type Panel } from "./core/keybindings";
+import { clockDefs, isMacPlatform, keyLabel, lispString, type Panel } from "./core/keybindings";
 import { createSheetFunctions, FUNCTIONS_PATH, FUNCTIONS_TEMPLATE } from "./sheets/functions";
 import { createOpenWith } from "./ui/openwith";
 import { exportPdf } from "./ui/pdf";
@@ -1491,7 +1492,26 @@ function main(): void {
     showContextMenu(r.left, r.bottom + 2, items);
   };
   newBtn.addEventListener("click", () => menuUnder(newBtn, newItems("")));
-  const quickOpen = createQuickOpen(() => sidebar.files(), (p) => void openFile(p));
+  // ⌘P: the files — and after a ">" (⌘⇧P opens there) the actions, gathered fresh each time.
+  const quickOpen = createQuickOpen(() => sidebar.files(), (p) => void openFile(p), {
+    items: () =>
+      paletteItems({
+        commands: Object.keys(commands),
+        bindings: keys.bindings(),
+        buttons: keys.buttons(),
+        actions: keys.actions(),
+        forms: sidebar.files().map((f) => f.path).filter(isFormPath),
+        mac: isMacPlatform(),
+      }),
+    run: (item: PaletteItem) => {
+      focusDocument(); // a key's *line-text*, an ed-insert: the note in front, as if the key were pressed there
+      const r = item.run;
+      if (r.kind === "command") void commands[r.command]?.();
+      else if (r.kind === "binding") void keys.runBinding(r.binding);
+      else if (r.kind === "button") void keys.press(r.button);
+      else void runForm(r.path);
+    },
+  });
   // Search reads a sheet as its values — a row per line — so a match points at a cell.
   const search = createSearch(
     () => sidebar.files(),
@@ -2024,10 +2044,21 @@ function main(): void {
     }
   }
 
-  // Today's note (YYYY-MM-DD.md at the workspace root), with a date heading when it's new.
+  // Today's note (YYYY-MM-DD.md at the workspace root). A new one starts with a date heading — or
+  // with what the keybindings' (daily-template day) returns, or the PIM's pim-daily-template, so the
+  // command, ⌘P's "Today's daily note" and a "today" button make the same note ⌘D does.
   async function openDailyNote(): Promise<void> {
     const date = todayISO();
-    await openOrCreate(`${date}.md`, `# ${date}\n\n`);
+    const path = `${date}.md`;
+    let content = `# ${date}\n\n`;
+    if ((await noteText(path)) === null) {
+      const day = lispString(date);
+      const env = await engine.evalSrc(
+        `${clockDefs()}\n(try (daily-template ${day}) (catch e (try (pim-daily-template ${day}) (catch e nil))))`,
+      );
+      if (env.ok && typeof env.result === "string" && env.result !== "") content = env.result;
+    }
+    await openOrCreate(path, content);
   }
 
   /** Focus whatever the editor pane is showing: a sheet's grid, or the text. */
@@ -2046,6 +2077,7 @@ function main(): void {
   const commands: CommandTable = {
     save: () => void save(),
     "quick-open": () => quickOpen.open(),
+    "command-palette": () => quickOpen.open(">"),
     search: () => search.open(),
     "daily-note": () => void openDailyNote(),
     "new-file": () => void newFile(""),

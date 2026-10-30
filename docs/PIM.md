@@ -130,6 +130,20 @@ blocks, and **⇄ sweep** (⌘⌥S), which brings every note in step with the ag
 `(button "label" "Mod-Alt-u")` clicks a key, and any body a `bind` takes works too. Change them
 there — but outside the markers, or the next install puts the PIM's back.
 
+**Every key is in ⌘P's actions, by name.** Press ⌘⇧P (or type `>` in ⌘P) and type what you want —
+`sweep`, `clock`, `refile`, `scan tasks` — then ↵: it runs in the note in front, and its key is shown
+beside it. A key's name is the start of the comment above its `(bind …)`: `;; ⌘⌥S — Sweep: scan
+every note…` is *Sweep*. The PIM adds a few that have no key, as `(action …)` lines:
+
+| Action | Does |
+|---|---|
+| Insert the tasks in a category… | asks which, then puts `(pim-category "…")` at the caret |
+| Insert a board of a category… | the same with `(pim-board "…")` — its children as columns |
+| Insert today's agenda / the inbox / the undated tasks | `(pim-agenda 1)`, `(pim-inbox)`, `(pim-someday)` |
+| Open the Agenda window | the big window, with its Board tab |
+
+Add your own outside the markers, e.g. `(action "Work tasks here" (pim-insert-block "(pim-category \"work\")"))`.
+
 **Pasted in by hand earlier?** Install anyway: EEditor offers to replace that copy with the
 current one, keeps your own keys and settings around it, saves the file as it was as
 `.eeditor/keybindings.before-pim-<date>.eelisp`, and puts the new one between the markers — so

@@ -175,6 +175,16 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-s
 .qo-row { padding: 7px 14px; font-family: var(--mono); font-size: 13px; color: var(--fg); cursor: default; }
 .qo-row:hover { background: var(--bg); }
 .qo-row.active { background: var(--accent); color: #11111b; }
+.qo-list { max-height: min(420px, 60vh); }
+.qo-row.qo-action { display: flex; align-items: center; gap: 12px; font-family: inherit; }
+.qo-panel:not(.actions) .qo-action .qo-title::before { content: "› "; color: var(--muted); }
+.qo-text { flex: 1; min-width: 0; }
+.qo-title, .qo-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qo-detail { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+.qo-row.active .qo-detail { color: inherit; opacity: .75; }
+.qo-key { flex: none; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.qo-row.active .qo-key { color: inherit; }
+.qo-none { padding: 10px 14px; color: var(--muted); font-size: 13px; }
 
 /* ── full-text search ── */
 .search-panel { width: 640px; }
