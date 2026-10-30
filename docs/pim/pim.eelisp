@@ -729,9 +729,11 @@
     (cond (nil? next) (ed-message "No finished tasks here")
           true (list (ed-set-buffer next) (ed-goto *cursor*)))))
 
-;; ⌘⌥I / ⌘⌥O / ⌘⌥K — clock in on the task or heading at the caret, clock out, what's running
+;; ⌘⌥I — clock in on the task or heading at the caret
 (bind "Mod-Alt-i" (pim-clock-in *line-text*))
+;; ⌘⌥O — clock out
 (bind "Mod-Alt-o" (pim-clock-out))
+;; ⌘⌥K — the clock: what's running, and for how long
 (bind "Mod-Alt-k" (pim-clock-status))
 
 ;; ⌘⌥L — log the caret's line to the tracker ("coffee 2", "walk 30", "rice 550 kcal | lunch")

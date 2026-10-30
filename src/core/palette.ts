@@ -82,13 +82,23 @@ const humanize = (name: string): string => name.charAt(0).toUpperCase() + name.s
 /**
  * A key's comment as a title. "⌘⌥S — every note in step with the agenda: lines whose…" → "Every
  * note in step with the agenda": the keys written in front go, and a long one stops at its first
- * ":", "." or ";" — the rest is the detail line.
+ * ":", ";", " — " or end of sentence that isn't inside quotes, parens or a <!-- … --> — the rest
+ * is the detail line.
  */
 export function docTitle(doc: string): string {
   let t = withoutKeys(doc);
   if (t.length > 48) {
-    const m = /^(.{12,}?)(?:[:.;](?:\s|$)|\s—\s)/.exec(t);
-    if (m) t = m[1];
+    // the first ": ", "; ", " — " or ". Next" that isn't inside quotes, parens or a <!-- … -->
+    const cut = /(?:[:;]\s|\s—\s|\.\s(?=[A-Z])|[:.;]$)/g;
+    for (let m = cut.exec(t); m; m = cut.exec(t)) {
+      const head = t.slice(0, m.index);
+      const count = (re: RegExp) => (head.match(re) ?? []).length;
+      const open = count(/"/g) % 2 === 1 || count(/\(/g) > count(/\)/g) || count(/<!--/g) > count(/-->/g);
+      if (head.length >= 12 && !open) {
+        t = head;
+        break;
+      }
+    }
   }
   return t.charAt(0).toUpperCase() + t.slice(1);
 }

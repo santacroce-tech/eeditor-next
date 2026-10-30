@@ -17,6 +17,12 @@ describe("keys' comments", () => {
     );
     expect(docTitle("⌘⌥I / ⌘⌥O / ⌘⌥K — clock in on the task")).toBe("Clock in on the task");
     expect(docTitle("today's note")).toBe("Today's note");
+    expect(docTitle('⌘I — a new note stamped with the minute, e.g. "2026-08-09 1430.md", with the same stamp as its heading')).toBe(
+      'A new note stamped with the minute, e.g. "2026-08-09 1430.md", with the same stamp as its heading',
+    );
+    expect(docTitle("⌘⌥U — recompute every <!-- eel: … --> block, and tick the lines finished in the agenda")).toBe(
+      "Recompute every <!-- eel: … --> block, and tick the lines finished in the agenda",
+    );
   });
 });
 
