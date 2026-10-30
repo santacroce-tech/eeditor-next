@@ -313,6 +313,13 @@
       (cond (empty? paths) (str "_no notes tagged #" tag "_")
             true (str-join "\n" (map (fn (p) (str "- " (pim-note-link p))) paths)))))
   ;; ⌘⌥B's answer: the block for that tag, at the caret.
+  ;; ⌘P's "Insert the tasks in a category…" and "Insert a board of a category…".
+  (defn pim-insert-category (c)
+    (cond (= (str-trim c) "") (ed-message "Which category?")
+          true (pim-insert-block (str "(pim-category \"" (str-trim c) "\")"))))
+  (defn pim-insert-board (c)
+    (cond (= (str-trim c) "") (ed-message "Which category?")
+          true (pim-insert-block (str "(pim-board \"" (str-trim c) "\")"))))
   (defn pim-insert-tagged (answer)
     (let (t (str-trim (str-replace (str-trim answer) "#" "")))
       (cond (= t "") (ed-message "Which tag?")
@@ -708,58 +715,70 @@
 ;; ⌘⌥ + a letter ("Mod-Alt-": Ctrl+Alt on Windows and Linux), so nothing of the app's or
 ;; CodeMirror's is taken. Not ⌘⌥D: macOS keeps that one for hiding the Dock, so the date is ⌘⌥E.
 
-;; ⌘D — today's note, created from the template the first time
+;; ⌘D — Today's note: made from the template the first time, its blocks filled in
 (bind "Mod-d" (ed-new (str *date* ".md") (pim-daily-template *date*)))
 
-;; ⌘⌥T — cycle the caret's line: text → - [ ] {#id} (an agenda item) → - [x] ✓ date (done there too) → -
+;; ⌘⌥T — Task, done, plain: cycle the caret's line — text → - [ ] {#id} (an agenda item) → - [x] ✓ date
+;; (done there too) → -
 (bind "Mod-Alt-t" (pim-cycle *line-text*))
-;; ⌘⌥⌫ — delete the caret's task: gone from the agenda and the note, not logged as done
+;; ⌘⌥⌫ — Delete the task: the caret's, gone from the agenda and the note, not logged as done
 (bind "Mod-Alt-Backspace" (pim-delete *line-text*))
-;; ⌘⌥P — cycle its priority: !!! → !! → ! → none
+;; ⌘⌥P — Priority: cycle the caret's task through !!! → !! → ! → none
 (bind "Mod-Alt-p" (pim-priority *line-text*))
-;; ⌘⌥A — link a hand-typed task to the agenda, or push an edited linked line to its item
+;; ⌘⌥A — Link the task: a hand-typed one becomes an agenda item; an edited linked line updates its item
 (bind "Mod-Alt-a" (pim-schedule *line-text*))
-;; ⌘⌥W — the next seven days, as a block ⌘⌥U keeps fresh
+;; ⌘⌥W — Insert this week's agenda: the next seven days, as a block ⌘⌥U keeps fresh
 (bind "Mod-Alt-w" (pim-insert-block "(pim-agenda 7)"))
-;; ⌘⌥U — recompute every <!-- eel: … --> block, and tick the lines finished in the agenda
+;; ⌘⌥U — Update the blocks: recompute every <!-- eel: … --> list in the note, and tick the lines
+;; finished in the agenda
 (bind "Mod-Alt-u" (ed-set-buffer (pim-sync (pim-update-blocks *buffer*))) (ed-goto *cursor*))
-;; ⌘⌥X — move the finished tasks to "## Archive" at the end of the note
+;; ⌘⌥X — Archive the finished tasks: move them to "## Archive" at the end of the note
 (bind "Mod-Alt-x"
   (let (next (pim-archive *buffer*))
     (cond (nil? next) (ed-message "No finished tasks here")
           true (list (ed-set-buffer next) (ed-goto *cursor*)))))
 
-;; ⌘⌥I — clock in on the task or heading at the caret
+;; ⌘⌥I — Clock in: start timing the task or heading at the caret
 (bind "Mod-Alt-i" (pim-clock-in *line-text*))
-;; ⌘⌥O — clock out
+;; ⌘⌥O — Clock out: stop the clock, and log the time
 (bind "Mod-Alt-o" (pim-clock-out))
-;; ⌘⌥K — the clock: what's running, and for how long
+;; ⌘⌥K — Clock status: what's running, and for how long
 (bind "Mod-Alt-k" (pim-clock-status))
 
-;; ⌘⌥L — log the caret's line to the tracker ("coffee 2", "walk 30", "rice 550 kcal | lunch")
+;; ⌘⌥L — Track the line: log the caret's line to the tracker ("coffee 2", "walk 30", "rice 550 kcal | lunch")
 (bind "Mod-Alt-l" (pim-track-line *line-text*))
-;; ⌘⌥C — one keystroke for the thing you do twenty times a day
+;; ⌘⌥C — Log a coffee: one keystroke for the thing you do twenty times a day
 (bind "Mod-Alt-c" (ed-message (str "Logged " (track "coffee" 1 "" ""))))
-;; ⌘⌥R — today's tracker log at the caret
+;; ⌘⌥R — Insert today's tracker log: what the tracker has for today, as a block at the caret
 (bind "Mod-Alt-r" (pim-insert-block (str "(pim-day-log \"" *date* "\")")))
 
-;; ⌘⌥V — this week's review note, filled in
+;; ⌘⌥V — Weekly review: this week's review note — done, time, tracker, coming up — filled in
 (bind "Mod-Alt-v"
   (ed-new (str "reviews/" (pim-monday *date*) " week.md") (pim-weekly-template (pim-monday *date*))))
-;; ⌘⌥N — capture from anywhere: a small window, type, Enter
+;; ⌘⌥N — Capture: a small window from anywhere — type, Enter, and it's filed
 (bind "Mod-Alt-n" (ed-form "pim/Capture"))
 
-;; ⌘⌥S — every note in step with the agenda: lines whose items were finished are ticked, and in
-;; pim-agenda-files the hand-typed "- [ ]" lines become items
+;; ⌘⌥S — Sweep: scan every note for tasks and bring it in step with the agenda — lines whose items
+;; were finished are ticked, and in pim-agenda-files the hand-typed "- [ ]" lines become items
 (bind "Mod-Alt-s" (pim-sweep-now))
-;; ⌘⌥F — refile the caret's line under a heading of any note (type to narrow the list)
+;; ⌘⌥F — Refile: move the caret's line under a heading of any note (type to narrow the list)
 (bind "Mod-Alt-f" (ed-prompt "Refile to" pim-refile "" (pim-refile-targets)))
-;; ⌘⌥E — a date for the caret's task: "tomorrow", "in 3 days", "2026-10-12", "none"
+;; ⌘⌥E — Set a date: schedule the caret's task — "tomorrow", "in 3 days", "2026-10-12", "none"
 (bind "Mod-Alt-e" (ed-prompt "When?" pim-set-when))
-;; ⌘⌥G — file the caret's task under a category
+;; ⌘⌥G — Set the category: file the caret's task under one
 (bind "Mod-Alt-g" (ed-prompt "Category" pim-set-category "" (pim-category-names)))
-;; ⌘⌥B — links to the notes with a #tag, as a block ⌘⌥U keeps fresh
+;; ⌘⌥B — Insert links to a tag's notes: the notes with a #tag, as a block ⌘⌥U keeps fresh
 (bind "Mod-Alt-b" (ed-prompt "Notes tagged" pim-insert-tagged "" (pim-tag-names)))
+
+;; ── actions ──────────────────────────────────────────────────────────────────
+;; In ⌘P's list of actions (type ">", or ⌘⇧P) with the keys above — the things worth finding by
+;; name that don't need a key of their own.
+(action "Insert the tasks in a category…" (ed-prompt "Tasks in" pim-insert-category "" (pim-category-names)))
+(action "Insert a board of a category…"   (ed-prompt "Board of" pim-insert-board "" (pim-category-names)))
+(action "Insert today's agenda"           (pim-insert-block "(pim-agenda 1)"))
+(action "Insert the inbox"                (pim-insert-block "(pim-inbox)"))
+(action "Insert the undated tasks"        (pim-insert-block "(pim-someday)"))
+(action "Open the Agenda window"          (ed-form "pim/Agenda"))
 
 ;; ── buttons ──────────────────────────────────────────────────────────────────
 ;; In the editor's header, where the file's other (button …) lines put them. A key does what that

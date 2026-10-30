@@ -17,6 +17,7 @@ describe("keys' comments", () => {
     );
     expect(docTitle("⌘⌥I / ⌘⌥O / ⌘⌥K — clock in on the task")).toBe("Clock in on the task");
     expect(docTitle("today's note")).toBe("Today's note");
+    expect(docTitle("⌘⌥S — Sweep: scan every note for tasks")).toBe("Sweep"); // a name, then what it does
     expect(docTitle('⌘I — a new note stamped with the minute, e.g. "2026-08-09 1430.md", with the same stamp as its heading')).toBe(
       'A new note stamped with the minute, e.g. "2026-08-09 1430.md", with the same stamp as its heading',
     );
@@ -53,11 +54,13 @@ describe("the action list", () => {
   const titled = (t: string) => items.find((i) => i.title === t);
 
   it("has the PIM's keys by their comments, with the key and the button that presses it", () => {
-    const sweep = titled("Every note in step with the agenda");
+    const sweep = titled("Sweep");
     expect(sweep?.key).toBe("⌘⌥S");
-    expect(sweep?.also).toBe("⇄ sweep");
+    expect(sweep?.also).toContain("⇄ sweep");
     expect(sweep?.detail).toContain("hand-typed");
-    expect(titled("Today's note, created from the template the first time")?.key).toBe("⌘D");
+    expect(titled("Clock in")?.key).toBe("⌘⌥I");
+    expect(titled("Insert the tasks in a category…")).toBeDefined(); // the PIM's own (action …)s
+    expect(titled("Today's note")?.key).toBe("⌘D");
   });
 
   it("has the app's commands — the key bound to one shown on it — but not the list itself", () => {
@@ -67,15 +70,19 @@ describe("the action list", () => {
   });
 
   it("has your (action …)s and the folder's forms", () => {
-    expect(items[0].title).toBe("Work tasks here");
+    expect(items.find((i) => i.id.startsWith("act:"))?.title).toBe("Insert the tasks in a category…");
+    expect(titled("Work tasks here")).toBeDefined();
     expect(titled("Run form: Agenda")?.run).toEqual({ kind: "form", path: "pim/Agenda.eeform" });
   });
 
   it("finds by the start of the title, a word, then letters in order — recent first among equals", () => {
-    expect(rankItems("sweep", items, [])[0].title).toBe("Every note in step with the agenda"); // the button's label
-    expect(rankItems("every note", items, [])[0].title).toBe("Every note in step with the agenda");
+    expect(rankItems("sweep", items, [])[0].title).toBe("Sweep"); // the button's label
+    expect(rankItems("every note", items, [])[0].title).toBe("Sweep"); // its description
+    expect(rankItems("scan tasks", items, [])[0].title).toBe("Sweep"); // every word, anywhere
+    expect(rankItems("sweep-now", items, [])[0].title).toBe("Sweep"); // what it calls
+    expect(rankItems("zqxv", items, [], { loose: false })).toEqual([]);
     const today = rankItems("today", items, []).map((i) => i.title);
-    expect(today[0]).toBe("Today's note, created from the template the first time"); // your keys before the app's
+    expect(today[0]).toBe("Today's note"); // your keys before the app's
     expect(today.slice(0, 3)).toContain("Today's daily note");
     expect(rankItems("today", items, ["cmd:daily-note"])[0].title).toBe("Today's daily note");
     expect(rankItems("zzqx", items, [])).toEqual([]);

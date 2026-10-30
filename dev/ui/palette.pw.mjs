@@ -1,7 +1,7 @@
 // ⌘P's actions, in a real browser against a real engine: ">" (or ⌘⇧P) lists the app's commands,
 // every key named by the comment above its (bind …), (action …)s and the folder's forms; typing
 // narrows them, Enter runs one in the note in front, and the one picked comes first next time.
-// Backspacing the ">" is the file finder again.
+// Backspacing the ">" is the file finder again; without one, the actions that match come under the files.
 //
 // The config, form and note are written for this spec and removed after it.
 
@@ -98,4 +98,16 @@ test("the one picked last comes first; backspacing the > is the file finder agai
   await expect(rows(page).first()).toHaveText("pal-note.md");
   await page.keyboard.press("Escape");
   await expect.poll(() => readFile(NOTE, "utf8")).toContain("hello palz");
+});
+
+test("plain ⌘P shows the actions that match under the files — › marks them — and Enter runs one", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".etab.active .etab-label")).toHaveText("pal-note.md");
+  await page.locator(".cm-content").click();
+  await page.keyboard.press(`${MOD}+p`);
+  await page.keyboard.type("stamp palx");
+  await expect(rows(page)).toHaveCount(1); // no file by that name: just the key, found by its comment
+  await expect(page.locator(".quick-open .qo-action .qo-title")).toHaveText("Stamp the caret's line with the word palx");
+  await input(page).press("Enter");
+  await expect(page.locator(".cm-content")).toContainText("palx");
 });

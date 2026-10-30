@@ -65,9 +65,14 @@ export function createQuickOpen(
 
   function render(): void {
     if (actionMode()) {
-      results = rankItems(input.value.slice(1), all, loadRecent()).slice(0, 80).map((item) => ({ item }));
+      results = rankItems(input.value.slice(1), all, loadRecent()).map((item) => ({ item }));
     } else {
       results = rankFiles(input.value, getFiles()).slice(0, 50).map((file) => ({ file }));
+      // what you typed may be an action rather than a file: the close matches, under the files
+      if (input.value.trim().length >= 3) {
+        const acts = rankItems(input.value, all, loadRecent(), { loose: false }).slice(0, 6);
+        results = [...results.slice(0, 50 - acts.length), ...acts.map((item) => ({ item }))];
+      }
     }
     panel.classList.toggle("actions", actionMode());
     if (selected >= results.length) selected = Math.max(0, results.length - 1);
@@ -77,6 +82,7 @@ export function createQuickOpen(
       row.className = "qo-row" + (i === selected ? " active" : "");
       if ("file" in r) row.textContent = r.file.path;
       else {
+        row.classList.add("qo-action");
         const text = document.createElement("div");
         text.className = "qo-text";
         const title = document.createElement("div");

@@ -80,13 +80,16 @@ const HIDDEN = new Set(["quick-open", "command-palette"]);
 const humanize = (name: string): string => name.charAt(0).toUpperCase() + name.slice(1).replace(/-/g, " ");
 
 /**
- * A key's comment as a title. "⌘⌥S — every note in step with the agenda: lines whose…" → "Every
- * note in step with the agenda": the keys written in front go, and a long one stops at its first
+ * A key's comment as a title. "⌘⌥S — Sweep: scan every note…" → "Sweep": a capitalised name
+ * before a colon is the name. Otherwise "⌘⌥S — every note in step with the agenda: lines whose…"
+ * → "Every note in step with the agenda": the keys written in front go, and a long one stops at its first
  * ":", ";", " — " or end of sentence that isn't inside quotes, parens or a <!-- … --> — the rest
  * is the detail line.
  */
 export function docTitle(doc: string): string {
   let t = withoutKeys(doc);
+  const named = /^([A-Z][^:"(<]{0,40}):\s/.exec(t); // "Sweep: scan every note…" — a name, then what it does
+  if (named) return named[1];
   if (t.length > 48) {
     // the first ": ", "; ", " — " or ". Next" that isn't inside quotes, parens or a <!-- … -->
     const cut = /(?:[:;]\s|\s—\s|\.\s(?=[A-Z])|[:.;]$)/g;
@@ -106,9 +109,12 @@ export function docTitle(doc: string): string {
 /** A comment without the keys written in front of it: "⌘⌥S — every note…" → "every note…". */
 const withoutKeys = (doc: string): string => doc.replace(/^[^—]*[⌘⌥⌃⇧][^—]*—\s*/, "").trim();
 
+/** A body's source as written — `(pim-sweep-now)` — which finds it too: "sweep" is in its name. */
+const bodyText = (source: string): string => source.replace(/^\(list\s*/, "").replace(/\)$/, "").replace(/\s+/g, " ").trim();
+
 /** A binding with no comment: its body, shortened — `(pim-clock-out)`. */
 function bodyTitle(b: Binding): string {
-  const body = b.source.replace(/^\(list\s*/, "").replace(/\)$/, "").replace(/\s+/g, " ").trim();
+  const body = bodyText(b.source);
   return body.length > 56 ? body.slice(0, 55) + "…" : body;
 }
 
@@ -141,6 +147,7 @@ export function paletteItems(src: PaletteSources): PaletteItem[] {
       id: `act:${a.label}`,
       title: a.label,
       key: a.key && bound ? keyLabel(bound.spec, src.mac) : undefined,
+      also: bodyText((bound ?? a).source),
       run: a.command ? { kind: "command", command: a.command } : { kind: "button", button: a },
     });
   }
@@ -151,7 +158,7 @@ export function paletteItems(src: PaletteSources): PaletteItem[] {
       title: b.doc ? docTitle(b.doc) : bodyTitle(b),
       detail: b.doc && docTitle(b.doc).length < withoutKeys(b.doc).length ? withoutKeys(b.doc) : undefined,
       key: keyLabel(b.spec, src.mac),
-      also: labelOf.get(b.id),
+      also: [labelOf.get(b.id), bodyText(b.source)].filter(Boolean).join(" "),
       run: { kind: "binding", binding: b },
     });
   }
@@ -177,10 +184,12 @@ export function paletteItems(src: PaletteSources): PaletteItem[] {
 
 /**
  * The list for what's typed (without the ">"): the matches, best first — the title starting with
- * it, then a word of it starting with it, then containing it, then the letters in order anywhere —
- * and among equals the recently used first. Nothing typed: the recent ones, then the rest in order.
+ * it, then a word of it starting with it, then containing it — the title, or its detail, button
+ * label or body — then all its words anywhere, then (loose) the letters in order anywhere — and
+ * among equals the recently used first. Nothing typed: the recent ones, then the rest in order.
  */
-export function rankItems(query: string, items: PaletteItem[], recent: string[]): PaletteItem[] {
+export function rankItems(query: string, items: PaletteItem[], recent: string[], opts: { loose?: boolean } = {}): PaletteItem[] {
+  const loose = opts.loose ?? true;
   const q = query.trim().toLowerCase();
   const rec = (it: PaletteItem): number => {
     const i = recent.indexOf(it.id);
@@ -193,8 +202,10 @@ export function rankItems(query: string, items: PaletteItem[], recent: string[])
     if (t.split(/[\s:/(—-]+/).some((w) => w.startsWith(q))) return 1;
     if (t.includes(q)) return 2;
     if (all.includes(q)) return 3;
-    if (fuzzyMatch(q, t)) return 4;
-    if (fuzzyMatch(q, all)) return 5;
+    if (q.split(/\s+/).every((w) => all.includes(w))) return 4; // "scan tasks": every word, anywhere
+    if (!loose) return -1;
+    if (fuzzyMatch(q, t)) return 5;
+    if (fuzzyMatch(q, all)) return 6;
     return -1;
   };
   const scored = items

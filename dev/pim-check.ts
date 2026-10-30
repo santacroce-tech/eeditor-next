@@ -578,6 +578,20 @@ check("⌘⌥B asks which tag, offering them", doc.prompts.at(-1)?.[0] === "Note
 await answer("#tgw/pool");
 check("…and puts the block at the caret", doc.text.includes('<!-- eel: (pim-tagged "tgw/pool") -->\n- [[beta]] · tg\n<!-- /eel -->'), doc.text);
 
+// the PIM's (action …)s — ⌘P's list runs one as a binding with its body
+const action = (label: string) => parsed.actions.find((a) => a.label === label);
+check("every (action …) has a body or a key it presses", parsed.actions.length >= 6 &&
+  parsed.actions.every((a) => a.source !== "(list)" || (a.key !== undefined && parsed.bindings.some((k) => k.id === a.key))), parsed.actions);
+setDoc("# Index\n", 2);
+await run(action("Insert the tasks in a category…")!, "action");
+check("\"Insert the tasks in a category…\" asks which, offering them", doc.prompts.at(-1)?.[0] === "Tasks in");
+await answer("tgcat");
+check("…and puts the block at the caret", doc.text.includes('<!-- eel: (pim-category "tgcat") -->\n_nothing in tgcat_\n<!-- /eel -->'), doc.text);
+setDoc("# Index\n", 2);
+await run(action("Insert a board of a category…")!, "action");
+await answer("tgcat");
+check("\"Insert a board of a category…\" puts that block", doc.text.includes('<!-- eel: (pim-board "tgcat") -->'), doc.text);
+
 await engine.ev(`(set! ui-loading "pim/Tags.eeform")`);
 const tagsForm = await engine.ev(await readFile(path.join(root, "docs/pim/Tags.eeform"), "utf8"));
 await engine.ev(`(set! ui-loading "")`);
