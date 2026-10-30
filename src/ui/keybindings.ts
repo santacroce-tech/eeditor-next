@@ -44,6 +44,10 @@ export interface Keybindings {
   buttons(): Button[];
   /** Click a button: its key's binding as it is now, or its own body. */
   press(button: Button): Promise<void>;
+  /** The config's `(action …)` forms, in order — ⌘P's own entries; `press` runs one. */
+  actions(): Button[];
+  /** Run a binding as if its key had been pressed. */
+  runBinding(binding: Binding): Promise<void>;
 }
 
 export interface KeybindingsOptions {
@@ -129,6 +133,7 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
   let start: StartHook | undefined;
   let ticks: StartHook[] = [];
   let buttons: Button[] = [];
+  let actions: Button[] = [];
   let preludeLoaded = false;
 
   // ── config ──
@@ -151,6 +156,7 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
     start = parsed.start;
     ticks = parsed.tick;
     buttons = headerButtons(parsed.buttons, src === DEFAULT_CONFIG ? [] : DEFAULT_BUTTONS);
+    actions = parsed.actions;
     opts.onButtons?.(buttons);
     for (const e of errors) opts.note(`; keybindings: ${e}`);
     if (errors.length > 0) toast(`keybindings: ${errors.length} problem(s) — see the REPL`);
@@ -478,5 +484,7 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
     tick,
     buttons: () => [...buttons],
     press,
+    actions: () => [...actions],
+    runBinding: (b) => run(b),
   };
 }

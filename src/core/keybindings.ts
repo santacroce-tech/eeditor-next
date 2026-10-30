@@ -9,6 +9,7 @@
 //   (on-tick (my-reminders))               ; once a minute
 //   (button "↻ update" "Mod-Alt-u")         ; a button in the editor's header that presses ⌘⌥U
 //   (panel "agenda" "pim/Side.eeform")      ; a form drawn in the sidebar — here, as the agenda
+//   (action "Work tasks here" (pim-insert-block "(pim-category \"work\")"))  ; in ⌘P's > list only
 //
 // We only parse far enough to pull out the key and the *source text* of the body — the body itself
 // is EELisp and is evaluated by the engine when the key fires. Wrapping it in `(list …)` means a
@@ -29,6 +30,8 @@ export interface Binding extends Body {
   spec: string;
   /** 1-based line of the `(bind …)` form, for error messages. */
   line: number;
+  /** The `;` comment right above the form, if any — what ⌘P's action list calls the key. */
+  doc?: string;
 }
 
 /**
@@ -81,6 +84,11 @@ export interface ParsedConfig {
   buttons: Button[];
   /** Every `(panel …)`, in order — one per section, the last one written for a name winning. */
   panels: Panel[];
+  /**
+   * Every `(action "label" body…)`, in order: written like a button, but listed only in ⌘P's
+   * actions (type ">"), never in the header.
+   */
+  actions: Button[];
   errors: string[];
 }
 
@@ -267,17 +275,22 @@ function parseForm(
   | { start: StartHook }
   | { hook: Hook; body: StartHook }
   | { button: Button }
+  | { action: Button }
   | { panel: Panel }
   | { error: string } {
   const inner = form.text.slice(1, -1);
-  const head = /^\s*(bind|button|panel|on-start|on-load|on-tick)(?=[\s)]|$)/.exec(inner);
+  const head = /^\s*(bind|button|action|panel|on-start|on-load|on-tick)(?=[\s)]|$)/.exec(inner);
   if (!head) {
     const what = form.text.slice(0, 40).replace(/\s+/g, " ");
     return {
-      error: `line ${form.line}: expected (bind "Key" …), (button "Label" …), (panel "agenda" "Form"), (on-start …), (on-load …) or (on-tick …), got ${what}…`,
+      error: `line ${form.line}: expected (bind "Key" …), (button "Label" …), (action "Label" …), (panel "agenda" "Form"), (on-start …), (on-load …) or (on-tick …), got ${what}…`,
     };
   }
   if (head[1] === "button") return parseButton(inner, head[0].length, form.line, mac);
+  if (head[1] === "action") {
+    const r = parseButton(inner, head[0].length, form.line, mac, "action");
+    return "button" in r ? { action: r.button } : r;
+  }
   if (head[1] === "panel") return parsePanel(inner, head[0].length, form.line);
   if (head[1] !== "bind") {
     const body = { ...compileBody(inner.slice(head[0].length).trim()), line: form.line };
@@ -304,18 +317,25 @@ function commandOf(body: string): string | undefined {
   return /^\(\s*ed-cmd\s+"([a-z0-9-]+)"\s*\)$/.exec(body.trim())?.[1];
 }
 
-function parseButton(inner: string, from: number, line: number, mac: boolean): { button: Button } | { error: string } {
+/** A button, or (what = "action") an action: the same shape, but an action always has its label. */
+function parseButton(
+  inner: string,
+  from: number,
+  line: number,
+  mac: boolean,
+  what: "button" | "action" = "button",
+): { button: Button } | { error: string } {
   let i = from;
   while (i < inner.length && /\s/.test(inner[i])) i++;
   const bare = commandOf(inner.slice(i));
-  if (bare) return { button: { ...compileBody(inner.slice(i).trim()), label: "", command: bare, spec: bare, line } };
-  if (inner[i] !== '"') return { error: `line ${line}: button needs a quoted label, e.g. (button "↻" "Mod-Alt-u")` };
+  if (bare && what === "button") return { button: { ...compileBody(inner.slice(i).trim()), label: "", command: bare, spec: bare, line } };
+  if (inner[i] !== '"') return { error: `line ${line}: ${what} needs a quoted label, e.g. (${what} "↻" "Mod-Alt-u")` };
   const label = readString(inner, i);
   if (!label) return { error: `line ${line}: unterminated label string` };
-  if (label.value.trim() === "") return { error: `line ${line}: the button's label is empty` };
+  if (label.value.trim() === "") return { error: `line ${line}: the ${what}'s label is empty` };
 
   const body = inner.slice(label.end).trim();
-  if (body === "") return { error: `line ${line}: (button "${label.value}" …) has nothing to do` };
+  if (body === "") return { error: `line ${line}: (${what} "${label.value}" …) has nothing to do` };
   // A body that is one string is a key to press, not lisp to run.
   const str = body.startsWith('"') ? readString(body, 0) : null;
   if (str && str.end === body.length) {
@@ -367,20 +387,43 @@ export function parseKeybindings(src: string, mac: boolean = isMacPlatform()): P
   const load: StartHook[] = [];
   const tick: StartHook[] = [];
   const buttons: Button[] = [];
+  const actions: Button[] = [];
   const panels = new Map<string, Panel>();
   for (const form of forms) {
     const r = parseForm(form, mac);
     if ("error" in r) errors.push(r.error);
     else if ("button" in r) buttons.push(r.button);
+    else if ("action" in r) actions.push(r.action);
     else if ("panel" in r) {
       panels.delete(r.panel.name.toLowerCase()); // the last one for a section wins, in its place
       panels.set(r.panel.name.toLowerCase(), r.panel);
     }
     else if ("start" in r) start = r.start;
     else if ("hook" in r) (r.hook === "on-load" ? load : tick).push(r.body);
-    else byId.set(r.binding.id, r.binding);
+    else {
+      const doc = commentAbove(src, form.start);
+      byId.set(r.binding.id, doc ? { ...r.binding, doc } : r.binding);
+    }
   }
-  return { bindings: [...byId.values()], start, load, tick, buttons, panels: [...panels.values()], errors };
+  return { bindings: [...byId.values()], start, load, tick, buttons, actions, panels: [...panels.values()], errors };
+}
+
+/**
+ * The `;` lines right above the form starting at `start` — no blank line between — joined into one,
+ * or undefined. Section rules (";; ── keys ──") aren't a description and end the search.
+ */
+export function commentAbove(src: string, start: number): string | undefined {
+  const lines = src.slice(0, start).split("\n");
+  if (lines.pop()?.trim() !== "") return undefined; // something else on the form's own line
+  const out: string[] = [];
+  while (lines.length > 0) {
+    const t = lines[lines.length - 1].trim();
+    if (!t.startsWith(";") || /[─═]{2}/.test(t)) break;
+    out.unshift(t.replace(/^;+\s?/, "").trim());
+    lines.pop();
+  }
+  const doc = out.join(" ").replace(/\s+/g, " ").trim();
+  return doc === "" ? undefined : doc;
 }
 
 // ── emitting lisp ──────────────────────────────────────────────────────────

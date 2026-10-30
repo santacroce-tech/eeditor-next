@@ -1,21 +1,54 @@
-// Quick-open palette (⌘/Ctrl+P): a fuzzy file finder modal over the tested `fuzzy.ts` ranking.
+// Quick-open palette (⌘/Ctrl+P): a fuzzy file finder modal over the tested `fuzzy.ts` ranking —
+// and, typed after a ">" (or opened with ⌘⇧P), the actions: every command, key, button and form,
+// ranked by core/palette.ts.
 
 import type { FileEntry } from "../core/fuzzy";
 import { rankFiles } from "../core/fuzzy";
+import type { PaletteItem } from "../core/palette";
+import { pushRecent, rankItems } from "../core/palette";
 
 export interface QuickOpen {
-  open(): void;
+  /** Open on the files — or, given ">", on the actions. */
+  open(prefix?: string): void;
 }
 
-export function createQuickOpen(getFiles: () => FileEntry[], onOpen: (path: string) => void): QuickOpen {
+export interface QuickOpenActions {
+  /** Every action, gathered fresh each time the list opens. */
+  items: () => PaletteItem[];
+  run: (item: PaletteItem) => void;
+}
+
+const RECENT_KEY = "eeditor.palette.recent";
+
+function loadRecent(): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveRecent(r: string[]): void {
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(r));
+  } catch {
+    /* private window, blocked storage: the order just isn't remembered */
+  }
+}
+
+export function createQuickOpen(
+  getFiles: () => FileEntry[],
+  onOpen: (path: string) => void,
+  actions?: QuickOpenActions,
+): QuickOpen {
   const overlay = document.createElement("div");
-  overlay.className = "qo-overlay";
+  overlay.className = "qo-overlay quick-open";
   overlay.style.display = "none";
   const panel = document.createElement("div");
   panel.className = "qo-panel";
   const input = document.createElement("input");
   input.className = "qo-input";
-  input.placeholder = "Open file…";
   input.spellcheck = false;
   const list = document.createElement("div");
   list.className = "qo-list";
@@ -23,33 +56,76 @@ export function createQuickOpen(getFiles: () => FileEntry[], onOpen: (path: stri
   overlay.appendChild(panel);
   document.body.appendChild(overlay);
 
-  let results: FileEntry[] = [];
+  type Row = { file: FileEntry } | { item: PaletteItem };
+  let results: Row[] = [];
   let selected = 0;
+  let all: PaletteItem[] = [];
+
+  const actionMode = (): boolean => !!actions && input.value.startsWith(">");
 
   function render(): void {
-    results = rankFiles(input.value, getFiles()).slice(0, 50);
+    if (actionMode()) {
+      results = rankItems(input.value.slice(1), all, loadRecent()).slice(0, 80).map((item) => ({ item }));
+    } else {
+      results = rankFiles(input.value, getFiles()).slice(0, 50).map((file) => ({ file }));
+    }
+    panel.classList.toggle("actions", actionMode());
     if (selected >= results.length) selected = Math.max(0, results.length - 1);
     list.innerHTML = "";
-    results.forEach((f, i) => {
+    results.forEach((r, i) => {
       const row = document.createElement("div");
       row.className = "qo-row" + (i === selected ? " active" : "");
-      row.textContent = f.path;
+      if ("file" in r) row.textContent = r.file.path;
+      else {
+        const text = document.createElement("div");
+        text.className = "qo-text";
+        const title = document.createElement("div");
+        title.className = "qo-title";
+        title.textContent = r.item.title;
+        text.appendChild(title);
+        if (r.item.detail) {
+          const detail = document.createElement("div");
+          detail.className = "qo-detail";
+          detail.textContent = r.item.detail;
+          text.appendChild(detail);
+        }
+        row.appendChild(text);
+        if (r.item.key) {
+          const key = document.createElement("span");
+          key.className = "qo-key";
+          key.textContent = r.item.key;
+          row.appendChild(key);
+        }
+        if (r.item.detail) row.title = r.item.detail;
+      }
       row.addEventListener("click", () => choose(i));
       list.appendChild(row);
     });
+    if (results.length === 0 && actionMode()) {
+      const none = document.createElement("div");
+      none.className = "qo-none";
+      none.textContent = "No action by that name";
+      list.appendChild(none);
+    }
+    list.querySelector(".qo-row.active")?.scrollIntoView({ block: "nearest" });
   }
 
   function choose(i: number): void {
-    const f = results[i];
-    if (f) {
-      close();
-      onOpen(f.path);
+    const r = results[i];
+    if (!r) return;
+    close();
+    if ("file" in r) onOpen(r.file.path);
+    else if (actions) {
+      saveRecent(pushRecent(loadRecent(), r.item.id));
+      actions.run(r.item);
     }
   }
 
-  function open(): void {
+  function open(prefix = ""): void {
     overlay.style.display = "flex";
-    input.value = "";
+    all = actions?.items() ?? [];
+    input.value = actions ? prefix : "";
+    input.placeholder = actions ? "Open file…   or type > for actions" : "Open file…";
     selected = 0;
     render();
     input.focus();
