@@ -410,12 +410,13 @@
                      true l)))
            (str-split text "\n"))))
   ;; One note: ticked where its items are done, and (link? and an agenda file) its new tasks linked.
-  ;; An editor command, or nil when the note doesn't change.
+  ;; An editor command, or nil when the note doesn't change. The items it just made aren't in live,
+  ;; which was read before: read it again, or they'd be ticked as finished elsewhere.
   (defn pim-sweep-note (path live link?)
     (let (old (or (read-note path) ""))
       (cond (not (str-contains old "- [ ] ")) nil   ;; most notes: nothing to look at
             true (let (linked (cond (and link? (pim-agenda-file? path)) (pim-link-new old) true old)
-                       new (pim-sync-in linked path live))
+                       new (pim-sync-in linked path (cond (= linked old) live true (pim-live-ids))))
                    (cond (= new old) nil true (ed-write path new old))))))
   (defn pim-sweep (link?)
     (let (live (pim-live-ids))

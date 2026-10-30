@@ -517,6 +517,8 @@ await press("Mod-Alt-s");
 const site = await note("projects/site.md");
 const spec = Number(/write the spec \{#(\d+)\}/.exec(site)?.[1]);
 check("in pim-agenda-files, a hand-typed - [ ] becomes an agenda item", (await ids()).includes(spec), site);
+check("…and stays open, in the note and the done log", site.includes(`- [ ] write the spec {#${spec}}\n`) &&
+  (await ev(`(count-records done :where "item = ?" :params (list ${spec}))`)) === 0, site);
 check("…but a line with a live link is left as it is", site.includes(`- [ ] ship it {#${ship}}`), site);
 await press("Mod-Alt-s");
 check("sweeping again changes nothing", doc.messages[0] === "Every note is in step with the agenda" && (await note("projects/site.md")) === site, doc.messages);
