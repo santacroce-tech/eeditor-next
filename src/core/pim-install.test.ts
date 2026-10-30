@@ -70,7 +70,7 @@ describe("installPim", () => {
     const parsed = parseKeybindings(r, true);
     expect(parsed.errors).toEqual([]);
     expect(parsed.bindings.some((b) => b.spec === "Mod-Alt-Backspace")).toBe(true);
-    expect(parsed.buttons).toHaveLength(3);
+    expect(parsed.buttons).toHaveLength(2);
     // and now it's ours: installing again is a plain update
     expect(installPim(r, REAL).action).toBe("unchanged");
   });

@@ -763,8 +763,7 @@
 ;; In the editor's header, where the file's other (button …) lines put them. A key does what that
 ;; key does; any body a (bind …) takes works too: (button "today" (ed-cmd "daily-note")).
 (button "↻ update" "Mod-Alt-u")
-(button "✓ task" "Mod-Alt-t")
-(button "⌫ delete" "Mod-Alt-Backspace")
+(button "⇄ sweep" "Mod-Alt-s")
 
 ;; ── the sidebar ──────────────────────────────────────────────────────────────
 ;; The agenda section is pim/Side.eeform: quick add, the categories with their counts (pick one to
