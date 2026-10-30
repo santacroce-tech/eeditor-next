@@ -6,7 +6,6 @@
 // workspace's forms.
 
 import type { Binding, Button } from "./keybindings";
-import { fuzzyMatch } from "./fuzzy";
 import { keyLabel } from "./keybindings";
 
 /** What picking an action does — main.ts carries it out. */
@@ -185,7 +184,7 @@ export function paletteItems(src: PaletteSources): PaletteItem[] {
 /**
  * The list for what's typed (without the ">"): the matches, best first — the title starting with
  * it, then a word of it starting with it, then containing it — the title, or its detail, button
- * label or body — then all its words anywhere, then (loose) the letters in order anywhere — and
+ * label or body — then all its words anywhere, then (loose) its letters close together — and
  * among equals the recently used first. Nothing typed: the recent ones, then the rest in order.
  */
 export function rankItems(query: string, items: PaletteItem[], recent: string[], opts: { loose?: boolean } = {}): PaletteItem[] {
@@ -204,8 +203,7 @@ export function rankItems(query: string, items: PaletteItem[], recent: string[],
     if (all.includes(q)) return 3;
     if (q.split(/\s+/).every((w) => all.includes(w))) return 4; // "scan tasks": every word, anywhere
     if (!loose) return -1;
-    if (fuzzyMatch(q, t)) return 5;
-    if (fuzzyMatch(q, all)) return 6;
+    if (closeMatch(q, t)) return 5; // "nmm" → New mind map: the letters in order, not strewn about
     return -1;
   };
   const scored = items
@@ -213,6 +211,24 @@ export function rankItems(query: string, items: PaletteItem[], recent: string[],
     .filter((x) => x.s >= 0);
   scored.sort((a, b) => a.s - b.s || a.r - b.r || a.order - b.order);
   return scored.map((x) => x.it);
+}
+
+/**
+ * The letters of `q` in order in `t`, the first of them at a word's start and all of them within
+ * four times q's length — so "nmm" finds "New mind map", but "board" isn't found in a long title
+ * that happens to hold a b, an o, an a… in that order.
+ */
+function closeMatch(q: string, t: string): boolean {
+  const letters = q.replace(/\s+/g, "");
+  if (letters === "") return false;
+  for (let start = t.indexOf(letters[0]); start >= 0; start = t.indexOf(letters[0], start + 1)) {
+    if (start > 0 && /[a-z0-9]/.test(t[start - 1])) continue;
+    let i = 0;
+    let k = start;
+    for (; k < t.length && k - start < letters.length * 4 && i < letters.length; k++) if (t[k] === letters[i]) i++;
+    if (i === letters.length) return true;
+  }
+  return false;
 }
 
 /** The recently-used list after picking `id`: it first, at most `max`. */

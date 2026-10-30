@@ -89,6 +89,13 @@ describe("the action list", () => {
     expect(rankItems("", items, ["cmd:save"])[0].title).toBe("Save");
   });
 
+  it("takes letters in order only when they're close together", () => {
+    const mk = (title: string, also?: string) => ({ id: title, title, also, run: { kind: "command" as const, command: "x" } });
+    const few = [mk("New mind map"), mk("Open LayerTwoLabs", '(ed-open "LayerTwoLabs.md")')];
+    expect(rankItems("nmm", few, []).map((i) => i.title)).toEqual(["New mind map"]);
+    expect(rankItems("board", few, [])).toEqual([]);
+  });
+
   it("remembers the last ones picked, newest first", () => {
     expect(pushRecent(["a", "b", "c"], "b", 2)).toEqual(["b", "a"]);
   });
