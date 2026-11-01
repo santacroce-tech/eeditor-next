@@ -1278,10 +1278,14 @@ body.screen-window .zx-host { width: 100%; height: 100%; }
 .mm-d0 .mm-box { fill: var(--accent); stroke: none; }
 .mm-d0 .mm-text { fill: var(--bg); }
 .mm-d1 .mm-box { fill: color-mix(in srgb, var(--c) 16%, var(--bg)); stroke-width: 2; }
-.mm-d2 .mm-box { fill: transparent; stroke: transparent; }
-.mm-d2:hover .mm-box { fill: color-mix(in srgb, var(--c) 10%, transparent); }
+/* levels 2…CELL_DEPTH: cells that fade with depth (--tint/--edge/--sw set per node from cellLook) */
+.mm-cell .mm-box { fill: color-mix(in srgb, var(--c) var(--tint), var(--bg)); stroke-width: var(--sw);
+  stroke: color-mix(in srgb, var(--c) var(--edge), transparent); }
+.mm-cell:hover .mm-box { fill: color-mix(in srgb, var(--c) calc(var(--tint) + 6%), var(--bg)); }
+.mm-plain .mm-box { fill: transparent; stroke: transparent; }
+.mm-plain:hover .mm-box { fill: color-mix(in srgb, var(--c) 10%, transparent); }
 .mm-node.mm-sel .mm-box { stroke: var(--fg); stroke-width: 2; stroke-dasharray: none; }
-.mm-d2.mm-sel .mm-box { fill: color-mix(in srgb, var(--c) 14%, transparent); stroke: var(--c); }
+.mm-plain.mm-sel .mm-box { fill: color-mix(in srgb, var(--c) 14%, transparent); stroke: var(--c); }
 .mm-d0.mm-sel .mm-box { stroke: var(--fg); }
 .mm-linked .mm-text { text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--fg) 40%, transparent); }
 .mm-node.mm-editing .mm-text { visibility: hidden; }
