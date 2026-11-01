@@ -503,6 +503,26 @@ export const mapFont = (depth: number): string =>
   depth === 0 ? `600 17px ${MAP_FONT_FAMILY}` : depth === 1 ? `600 14px ${MAP_FONT_FAMILY}` : `13px ${MAP_FONT_FAMILY}`;
 export const mapLine = (depth: number): number => (depth === 0 ? 22 : depth === 1 ? 19 : 17);
 
+/** The deepest level drawn as a cell (a tinted, outlined box); nodes below it are plain text. */
+export const CELL_DEPTH = 5;
+
+/**
+ * How a cell below the main branches looks, fading with depth so the levels still read as a
+ * hierarchy: `tint` is the branch colour's share of the fill (%), `stroke` its share of the
+ * outline (%), `width` the outline's width. Null for the root and main branches (styled on
+ * their own) and for anything deeper than `CELL_DEPTH`.
+ */
+export function cellLook(depth: number): { tint: number; stroke: number; width: number } | null {
+  if (depth < 2 || depth > CELL_DEPTH) return null;
+  const looks = [
+    { tint: 11, stroke: 90, width: 1.5 },
+    { tint: 8, stroke: 75, width: 1.25 },
+    { tint: 6, stroke: 60, width: 1 },
+    { tint: 4, stroke: 50, width: 1 },
+  ];
+  return looks[Math.min(depth - 2, looks.length - 1)];
+}
+
 export interface SvgColours {
   background: string;
   text: string;
@@ -558,6 +578,14 @@ export function mapSvg(L: MapLayout, c: SvgColours = PRINT_COLOURS, pad = 24): s
     if (b.depth === 0) out.push(`<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="12" fill="${c.accent}"/>`);
     else if (b.depth === 1)
       out.push(`<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="7" fill="${tint(col, 0.85)}" stroke="${col}" stroke-width="2"/>`);
+    else {
+      const look = cellLook(b.depth);
+      if (look)
+        out.push(
+          `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="7" fill="${tint(col, 1 - look.tint / 100)}" ` +
+            `stroke="${col}" stroke-opacity="${look.stroke / 100}" stroke-width="${look.width}"/>`,
+        );
+    }
     const tx = b.depth === 0 ? b.x + b.w / 2 : b.x + 12;
     const anchor = b.depth === 0 ? "middle" : "start";
     const spans = b.lines

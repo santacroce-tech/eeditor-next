@@ -13,6 +13,7 @@ import {
   addChild,
   autoFold,
   mapFont,
+  cellLook,
   mapLine,
   mapSvg,
   addSibling,
@@ -178,8 +179,15 @@ export function createMindmapView(opts: MindmapOptions): MindmapView {
     }
     world.append(edges);
     for (const b of layout.boxes) {
-      const g = svg("g", { class: `mm-node mm-d${Math.min(b.depth, 2)}` });
+      const look = cellLook(b.depth);
+      const kind = b.depth < 2 ? `mm-d${b.depth}` : look ? "mm-cell" : "mm-plain";
+      const g = svg("g", { class: `mm-node ${kind}` });
       if (b.branch >= 0) g.style.setProperty("--c", `var(--mm-${(b.branch % PALETTE) + 1})`);
+      if (look) {
+        g.style.setProperty("--tint", `${look.tint}%`);
+        g.style.setProperty("--edge", `${look.stroke}%`);
+        g.style.setProperty("--sw", `${look.width}`);
+      }
       g.dataset.path = b.path.join(".");
       const r = svg("rect", { class: "mm-box", x: b.x, y: b.y, width: b.w, height: b.h, rx: b.depth === 0 ? 12 : 7 });
       g.append(r);
