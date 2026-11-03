@@ -32,6 +32,8 @@ export interface Binding extends Body {
   line: number;
   /** The `;` comment right above the form, if any — what ⌘P's action list calls the key. */
   doc?: string;
+  /** One of the app's own keys (`BUILTIN_KEYS`), not from the config. */
+  builtin?: boolean;
 }
 
 /**
@@ -374,6 +376,28 @@ export const HEADER_COMMANDS = ["toggle-theme", "insert-image", "toggle-preview"
 export function headerButtons(config: Button[], defaults: Button[]): Button[] {
   const own = (b: Button) => b.command !== undefined && HEADER_COMMANDS.includes(b.command);
   return config.some(own) ? config : [...config, ...defaults.filter(own)];
+}
+
+/**
+ * Keys every editor has for moving between tabs. They're built in rather than written into the
+ * default config so a config from before them gets them too. A `(bind …)` on the same key wins.
+ */
+export const BUILTIN_KEYS: ReadonlyArray<readonly [spec: string, command: string]> = [
+  ["Ctrl-Tab", "next-tab"],
+  ["Ctrl-Shift-Tab", "prev-tab"],
+  ...[1, 2, 3, 4, 5, 6, 7, 8].map((n) => [`Mod-${n}`, `tab-${n}`] as const),
+  ["Mod-9", "last-tab"], // as in browsers; ⌘0 is left alone — a mind map's "fit", beside ⌘= / ⌘-
+];
+
+/** The built-in keys the config doesn't bind itself, as bindings (line 0: they're in no file). */
+export function builtinBindings(taken: ReadonlySet<string>, mac: boolean = isMacPlatform()): Binding[] {
+  const out: Binding[] = [];
+  for (const [spec, command] of BUILTIN_KEYS) {
+    const k = parseKeySpec(spec, mac);
+    if (!("id" in k) || taken.has(k.id)) continue;
+    out.push({ id: k.id, spec, line: 0, command, source: `(list (ed-cmd ${lispString(command)}))`, builtin: true });
+  }
+  return out;
 }
 
 /**

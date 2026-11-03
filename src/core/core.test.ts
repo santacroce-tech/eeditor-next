@@ -6,7 +6,7 @@ import { codeToRun, eelispBlockAt } from "./blocks";
 import { searchFiles } from "./search";
 import { wikiLinkAt, wikiLinkTargets } from "./wikilink";
 import { backlinksTo } from "./backlinks";
-import { parseKeybindings, parseKeySpec, eventKeyId, keyLabel, lispString, headerButtons } from "./keybindings";
+import { parseKeybindings, parseKeySpec, eventKeyId, keyLabel, lispString, headerButtons, builtinBindings } from "./keybindings";
 import { uniqueName } from "./uniquename";
 import { highlightEelisp } from "./lisphl";
 
@@ -310,6 +310,25 @@ describe("keybindings config", () => {
     expect(eventKeyId({ code: "KeyI", key: "ˆ", metaKey: true, ctrlKey: false, altKey: true, shiftKey: false } as KeyboardEvent)).toBe(
       "id" in parseKeySpec("Cmd-Alt-i", true) ? (parseKeySpec("Cmd-Alt-i", true) as { id: string }).id : "",
     );
+  });
+
+  it("has built-in tab keys that a (bind …) on the same key replaces", () => {
+    const ev = (init: Partial<KeyboardEvent>): KeyboardEvent => ({ metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...init }) as KeyboardEvent;
+    const all = new Map(builtinBindings(new Set(), true).map((b) => [b.id, b.command]));
+    expect(all.get(eventKeyId(ev({ code: "Tab", key: "Tab", ctrlKey: true })))).toBe("next-tab");
+    expect(all.get(eventKeyId(ev({ code: "Tab", key: "Tab", ctrlKey: true, shiftKey: true })))).toBe("prev-tab");
+    expect(all.get(eventKeyId(ev({ code: "Digit3", key: "3", metaKey: true })))).toBe("tab-3");
+    expect(all.get(eventKeyId(ev({ code: "Digit9", key: "9", metaKey: true })))).toBe("last-tab");
+    expect(all.has(eventKeyId(ev({ code: "Digit0", key: "0", metaKey: true })))).toBe(false); // a mind map's fit
+    // Ctrl+1 elsewhere
+    const win = new Map(builtinBindings(new Set(), false).map((b) => [b.id, b.command]));
+    expect(win.get(eventKeyId(ev({ code: "Digit1", key: "1", ctrlKey: true })))).toBe("tab-1");
+    // the config's own key wins
+    const { bindings } = parseKeybindings(`(bind "Mod-1" (ed-cmd "daily-note"))`, true);
+    const left = builtinBindings(new Set(bindings.map((b) => b.id)), true);
+    expect(left.some((b) => b.command === "tab-1")).toBe(false);
+    expect(left.some((b) => b.command === "tab-2")).toBe(true);
+    expect(left.every((b) => b.builtin && b.line === 0)).toBe(true);
   });
 
   it("reads (panel …): a sidebar section and its form, the last one for a section winning", () => {

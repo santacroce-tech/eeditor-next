@@ -2127,12 +2127,22 @@ function main(): void {
     "copy-into-workspace": () => void copyActiveIntoWorkspace(),
     "close-tab": () => void closeTab(activeIdx),
     "next-tab": () => {
-      if (tabs.length > 1) switchTab((activeIdx + 1) % tabs.length);
+      if (tabs.length > 1) goToTab((activeIdx + 1) % tabs.length);
     },
     "prev-tab": () => {
-      if (tabs.length > 1) switchTab((activeIdx - 1 + tabs.length) % tabs.length);
+      if (tabs.length > 1) goToTab((activeIdx - 1 + tabs.length) % tabs.length);
     },
+    ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8].map((n) => [`tab-${n}`, () => goToTab(n - 1)])),
+    "last-tab": () => goToTab(tabs.length - 1),
   };
+
+  /** ⌃Tab, ⌘1…⌘8, ⌘9: that tab, in front, with the caret in it. No such tab → nothing happens. */
+  function goToTab(idx: number): void {
+    if (idx < 0 || idx >= tabs.length) return;
+    if (idx !== activeIdx) switchTab(idx);
+    if (narrow()) setMobileView("editor");
+    focusDocument();
+  }
 
   // ── files from outside: dragged onto the window, or handed over by "Open With" ──
   function openInPlace(f: ExternalFile): void {

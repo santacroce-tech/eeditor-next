@@ -66,6 +66,10 @@
 ;;
 ;; There may be several on-load and on-tick forms; each runs, in order.
 ;;
+;; Switching tabs is built in, with no line here: ⌃Tab / ⌃⇧Tab the next / previous tab, ⌘1…⌘8 the
+;; first eight, ⌘9 the last (Ctrl+1… on Windows and Linux). A (bind …) of your own on one of those
+;; keys replaces it — (bind "Mod-1" (ed-cmd "daily-note")), say.
+;;
 ;; Context, defined fresh before every run:
 ;;   *file*        path of the current note        *cursor*   caret offset
 ;;   *line*        caret line (1-based)            *col*      caret column (1-based)
@@ -156,6 +160,7 @@
 ;; reload-keys · toggle-repl · focus-repl · toggle-preview · toggle-theme · export-pdf · snippets
 ;; theme-dark · theme-light · theme-vb6   pick a theme (toggle-theme walks all three)
 ;; calendar · agenda-setup · agenda-refresh · close-tab · next-tab · prev-tab · focus-editor
+;; tab-1 … tab-8 · last-tab   go to that tab (what ⌘1…⌘8 and ⌘9 do)
 ;; form-design · form-code · form-run   the active form tab's mode
 ;; mindmap-map · mindmap-text          the active mind map tab: the map, or its markdown outline
 ;; open-file           pick a file from anywhere; asks whether to copy it in or edit it in place
