@@ -46,7 +46,7 @@ if (process.argv[2] === "bench") {
   const r = run(src("../src/msx/msx.test.eelisp"));
   process.stdout.write(r.stdout);
   if (r.stderr.trim()) process.stderr.write(r.stderr);
-  const banked = mapped();
+  const banked = mapped() && joystick();
   const game = snake();
   process.exit(r.status === 0 && /all passed\s*$/.test(r.stdout) && banked && game ? 0 : 1);
 }
@@ -97,6 +97,37 @@ start:   call INIT32
   const top = (g.stdout.trim().split("\n").pop().match(/\d+/g) ?? []).map((n) => String.fromCharCode(Number(n))).join("");
   const ok = top.includes("59");
   console.log(`${ok ? "ok   " : "FAIL "} a Konami SCC cartridge switches its own banks: it prints "59"${ok ? "" : ` — the screen starts ${JSON.stringify(top.trim())}`}`);
+  if (g.stderr.trim()) process.stderr.write(g.stderr);
+  return ok;
+}
+
+// The BIOS reads joystick 1 from the keys: GTSTCK 1 with → held is 3, GTTRIG 1 with Space 0xFF.
+function joystick() {
+  const code = assemble(`
+GTSTCK   equ 0x00D5
+GTTRIG   equ 0x00D8
+         org 0x4000
+         db "AB"
+         dw start
+         ds 12
+start:   ei
+         halt
+         ld a,1
+         call GTSTCK
+         ld (0xE000),a
+         ld a,1
+         call GTTRIG
+         ld (0xE001),a
+         jr start
+`, "joystick.asm").bytes;
+  const g = run(`(def m (msx-new msx-cbios-main msx-cbios-logo))
+(msx-insert m "${Buffer.from(code).toString("base64")}")
+(msx-reset m)
+(loop (i 0) (when (< i 200) (do (msx-frame m {"ArrowRight" true "Space" true}) (recur (+ i 1)))))
+(msx-use m)
+(println (zx-rd 0xe000) (zx-rd 0xe001))`);
+  const ok = /^3 255$/m.test(g.stdout.trim());
+  console.log(`${ok ? "ok   " : "FAIL "} the BIOS reads joystick 1 from the keys: → is direction 3, Space is button A${ok ? "" : ` — got ${g.stdout.trim().split("\n").pop()}`}`);
   if (g.stderr.trim()) process.stderr.write(g.stderr);
   return ok;
 }

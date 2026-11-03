@@ -116,6 +116,37 @@
 (msx-out 0x99 0xf4) (msx-out 0x99 0x87)              ; register 7 = 0xF4
 (check "a register write" (bget msx-st (+ msx-VREG 7)) 0xf4)
 
+;; ── sprites: collisions and the fifth on a line, in the status ──
+(defn vreg! (r v) (do (msx-out 0x99 v) (msx-out 0x99 (bor 0x80 r))))
+(vreg! 0 0x00) (vreg! 1 0x40) (vreg! 5 0x36) (vreg! 6 0x07)      ; Graphics I, sprites at 0x1B00 / 0x3800
+(loop (i 0) (when (< i 8) (do (msx-vpoke m (+ 0x3800 i) 0xff) (recur (+ i 1)))))   ; pattern 0: solid
+(msx-vpoke m (+ 0x3808 0) 0x80)                                     ; pattern 1: one pixel, top left
+(defn sprite! (s y x name) (do (msx-vpoke m (+ 0x1b00 (* 4 s)) y) (msx-vpoke m (+ 0x1b01 (* 4 s)) x)
+                               (msx-vpoke m (+ 0x1b02 (* 4 s)) name) (msx-vpoke m (+ 0x1b03 (* 4 s)) 15)))
+(defn sprites-end! (s) (msx-vpoke m (+ 0x1b00 (* 4 s)) 208))
+(defn status () (do (bset msx-st msx-VSTAT 0) (msx-sprite-status!) (bget msx-st msx-VSTAT)))
+(sprites-end! 0)
+(check "no sprites: nothing to say" (status) 0)
+(sprite! 0 49 10 0) (sprite! 1 49 30 0) (sprites-end! 2)
+(check "two apart: no collision" (status) 0)
+(sprite! 1 52 17 0)
+(check "two overlapping: the collision bit" (status) 0x20)
+(sprite! 1 49 18 0)
+(check "side by side, touching no pixel: none" (status) 0)
+(sprite! 1 49 17 1)
+(check "one pixel of the other's inside it: a collision" (status) 0x20)
+(sprite! 1 49 18 1)
+(check "that pixel just outside: none" (status) 0)
+(loop (s 0) (when (< s 6) (do (sprite! s 99 (* s 20) 0) (recur (+ s 1))))) (sprites-end! 6)
+(check "five on a line: the fifth-sprite bit, and the fifth's number" (status) (bor 0x40 4))
+;; sprite 4 is a fifth from line 104, sprite 5 from line 100: the higher line wins
+(sprite! 4 103 100 0) (sprite! 5 99 120 0)
+(check "the first such line from the top counts, not the first sprite" (band (status) 0x5f) (bor 0x40 5))
+(vreg! 1 0x50)
+(check "text mode has no sprites" (status) 0)
+(vreg! 1 0x40) (sprites-end! 0)
+(check "reading the status clears them" (do (bset msx-st msx-VSTAT 0x60) (list (msx-vdp-status) (bget msx-st msx-VSTAT))) (list 0x60 0))
+
 ;; ── the frame and its interrupt ──
 (msx-out 0x99 0xe0) (msx-out 0x99 0x81)              ; r1: display and interrupts on
 (bset msx-st msx-VSTAT 0x80) (msx-irq!)
@@ -134,6 +165,17 @@
 (check "↑ is row 8, bit 5" (msx-in 0xa9) 0xdf)
 (msx-keys! {})
 (check "let go, the row is all 1s" (msx-in 0xa9) 0xff)
+
+;; ── the joystick: port 1 is the keys ──
+(defn joy (r15) (do (msx-out 0xa0 15) (msx-out 0xa1 r15) (msx-out 0xa0 14) (msx-in 0xa2)))
+(msx-keys! {})
+(check "nothing held: port 1 reads all ones" (joy 0x00) 0x7f)
+(msx-keys! {"ArrowUp" true "Space" true})
+(check "up and Space: bits 0 and 4 low" (joy 0x00) (bxor 0x7f 0x11))
+(msx-keys! {"ArrowRight" true "KeyM" true})
+(check "right and M: bits 3 and 5 low" (joy 0x00) (bxor 0x7f 0x28))
+(check "port 2 has nothing plugged in" (joy 0x40) 0x7f)
+(msx-keys! {})
 
 ;; ── C-BIOS boots, and with no cartridge says so ──
 (def cb (msx-new msx-cbios-main msx-cbios-logo))

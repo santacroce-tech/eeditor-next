@@ -39,6 +39,7 @@
 (def msx-MAPPER 33)   ; the cartridge's mapper: 0 none, else 1 + its place in msx-MAPPERS
 (def msx-BANKS 34)    ; the bank in each 8 KB region of 0x4000–0xBFFF, 34–37
 (def msx-SCCON 38)    ; 1 while the SCC shows at 0x9800 (Konami SCC)
+(def msx-JOY 39)      ; joystick port 1 as the keys make it, as PSG register 14 reads it
 (def msx-ST 40)
 
 (def msx-FRAME-T 59736)   ; 3,579,545 Hz / 59.92 frames a second
@@ -283,12 +284,13 @@
     (do (bset msx-st msx-VSTAT (band s 0x1f)) (bset msx-st msx-VLATCH 0) (msx-irq!) s)))
 
 ;; ---------------------------------------------------------------------------
-;; The PSG — AY-3-8910: its registers, and its sound (below, msx-psg-frame). Register 14 is the
-;; joystick port: nothing plugged in.
+;; The PSG — AY-3-8910: its registers, and its sound (below, msx-psg-frame). Register 14 reads
+;; the joystick port register 15's bit 6 picks: port 1 is the keys (msx-keys!), port 2 has
+;; nothing plugged in.
 ;; ---------------------------------------------------------------------------
 (defn msx-psg-read ()
   (let (r (bget msx-st msx-PSGL))
-    (cond (= r 14) 0x7f
+    (cond (= r 14) (if (= 0 (band (bget msx-st (+ msx-PSG 15)) 0x40)) (bget msx-st msx-JOY) 0x7f)
           (< r 16) (bget msx-st (+ msx-PSG r))
           true 0xff)))
 
@@ -338,8 +340,16 @@
    "Backspace" 61 "Enter" 63 "NumpadEnter" 63
    "Space" 64 "ArrowLeft" 68 "ArrowUp" 69 "ArrowDown" 70 "ArrowRight" 71})
 
+;; Joystick port 1, from the keys: the cursor keys, Space for button A and M for B — a 0 bit
+;; for each held: 0 up, 1 down, 2 left, 3 right, 4 A, 5 B.
+(def msx-joymap {"ArrowUp" 1 "ArrowDown" 2 "ArrowLeft" 4 "ArrowRight" 8 "Space" 16 "KeyM" 32})
+
 (defn msx-keys! (held)
-  (do (bfill msx-mat 0 11 0xff)
+  (do (bset msx-st msx-JOY
+            (bxor 0x7f (if held (loop (l (dict-keys held) bits 0)
+                                  (if (empty? l) bits (recur (cdr l) (bor bits (or (dict-get msx-joymap (first l)) 0)))))
+                              0)))
+      (bfill msx-mat 0 11 0xff)
       (when held
         (for-each k (dict-keys held)
           (let (rb (dict-get msx-keymap k))
@@ -507,6 +517,102 @@
             (when (or audible scc) (bytes->base64 msx-pcm 0 n)))))))
 
 ;; ---------------------------------------------------------------------------
+;; What the VDP says about the sprites. The host draws them (src/display/tms9918.ts); this is
+;; what a program can ask, in the status register at the end of each frame:
+;;   bit 6  a fifth sprite on a line — the TMS9918 shows four — with that sprite's number in
+;;          bits 0–4 (the first such line, from the top)
+;;   bit 5  two sprites' pixels touch, on a line where both are shown, whatever their colours
+;; ---------------------------------------------------------------------------
+;; Worked out once a frame, per sprite: its top line and left pixel (each + 32, so a byte holds
+;; one above or left of the screen) and where its pattern starts.
+(def msx-spr-on (make-bytes (* 192 4)))   ; the sprites shown on each line, four at most
+(def msx-spr-count (make-bytes 192))
+(def msx-spr-top (make-bytes 32))
+(def msx-spr-x (make-bytes 32))
+(def msx-spr-pat (make-bytes 64))         ; 2 bytes a sprite
+
+;; Sprite pixels each pixel doubled: a byte → 16 bits, for magnified sprites.
+(def msx-double
+  (map (fn (b) (loop (i 0 out 0) (if (= i 8) out (recur (+ i 1) (if (= 0 (band b (shl 1 i))) out (bor out (shl 3 (* 2 i))))))))
+       (range 256)))
+
+(defn msx-vr (n) (bget msx-st (+ msx-VREG n)))
+
+;; Sprite s's row on `line`, as bits — the leftmost pixel highest, `size` wide.
+(defn msx-sprite-row (s line big mag)
+  (let (at (+ (bor (shl (bget msx-spr-pat (* 2 s)) 8) (bget msx-spr-pat (+ 1 (* 2 s))))
+              (floor (/ (- line (- (bget msx-spr-top s) 32)) mag)))
+        l (bget msx-vram (band at 0x3fff))
+        r (if big (bget msx-vram (band (+ at 16) 0x3fff)) 0))
+    (if (= mag 2)
+        (if big (bor (shl (nth msx-double l) 16) (nth msx-double r)) (nth msx-double l))
+        (if big (bor (shl l 8) r) l))))
+
+(defn msx-sprite-status! ()
+  (let (attrs (shl (band (msx-vr 5) 0x7f) 7))
+    (when (and (!= 0 (band (msx-vr 1) 0x40))        ; the display on
+               (= 0 (band (msx-vr 1) 0x10))         ; not text: it has no sprites
+               (!= 208 (bget msx-vram attrs)))
+      (let (big (!= 0 (band (msx-vr 1) 2))
+            mag (if (!= 0 (band (msx-vr 1) 1)) 2 1)
+            size (* (if big 16 8) mag)
+            pats (shl (band (msx-vr 6) 7) 11))
+        (do (bfill msx-spr-count 0 192 0)
+            ;; which sprites each line shows; the first fifth, by line
+            (let (fifth
+                  (loop (s 0 best-line 999 best 0)
+                    (let (a (+ attrs (* 4 s)) y (bget msx-vram a))
+                      (if (or (= s 32) (= y 208))
+                          (if (< best-line 999) best -1)
+                          (let (top (+ 1 (if (> y 0xe0) (- y 256) y))
+                                ec (bget msx-vram (+ a 3))
+                                name (if big (band (bget msx-vram (+ a 2)) 0xfc) (bget msx-vram (+ a 2)))
+                                pat (+ pats (* 8 name))
+                                hit (loop (dy (max 0 (- top)) found 999)
+                                      (let (line (+ top dy))
+                                        (if (or (= dy size) (>= line 192))
+                                            found
+                                            (let (c (bget msx-spr-count line))
+                                              (do (when (< c 4)
+                                                    (do (bset msx-spr-on (+ (* 4 line) c) s)
+                                                        (bset msx-spr-count line (+ c 1))))
+                                                  (recur (+ dy 1) (if (and (= c 4) (< line found)) line found))))))))
+                            (do (bset msx-spr-top s (+ top 32))
+                                (bset msx-spr-x s (band (+ 32 (bget msx-vram (+ a 1)) (if (!= 0 (band ec 0x80)) -32 0)) 0xff))
+                                (bset msx-spr-pat (* 2 s) (shr pat 8)) (bset msx-spr-pat (+ 1 (* 2 s)) (band pat 0xff))
+                                (if (< hit best-line) (recur (+ s 1) hit s) (recur (+ s 1) best-line best))))))))
+              (do (when (>= fifth 0)
+                    (bset msx-st msx-VSTAT (bor (band (bget msx-st msx-VSTAT) 0xa0) 0x40 fifth)))
+                  ;; two of a line's sprites with a pixel in common
+                  (when (loop (line 0)
+                          (cond (= line 192) false
+                                (< (bget msx-spr-count line) 2) (recur (+ line 1))
+                                (msx-line-collides? line big mag size) true
+                                true (recur (+ line 1))))
+                    (bset msx-st msx-VSTAT (bor (bget msx-st msx-VSTAT) 0x20))))))))))
+
+;; Whether two of the sprites shown on `line` have a pixel in common there.
+(defn msx-line-collides? (line big mag size)
+  (let (n (bget msx-spr-count line) base (* 4 line))
+    (loop (i 0)
+      (if (>= i (- n 1))
+          false
+          (let (sa (bget msx-spr-on (+ base i)) xa (bget msx-spr-x sa) ra (msx-sprite-row sa line big mag))
+            (if (and (!= 0 ra)
+                     (loop (j (+ i 1))
+                       (if (>= j n)
+                           false
+                           (let (sb (bget msx-spr-on (+ base j)) d (- (bget msx-spr-x sb) xa))
+                             (if (or (>= d size) (<= d (- size)))
+                                 (recur (+ j 1))
+                                 (let (rb (msx-sprite-row sb line big mag))
+                                   (if (!= 0 (if (>= d 0) (band ra (shr rb d)) (band rb (shr ra (- d)))))
+                                       true
+                                       (recur (+ j 1)))))))))
+                true
+                (recur (+ i 1))))))))
+
+;; ---------------------------------------------------------------------------
 ;; The machine
 ;; ---------------------------------------------------------------------------
 (defn msx-bytes (data) (if (string? data) (base64->bytes data) data))
@@ -604,7 +710,9 @@
                         true (recur (+ t (zx-exec msx-irq))))))
         (do (zx-r! zx-TCARRY (- end msx-FRAME-T))
             (zx-r! zx-FRAME (+ (zx-r zx-FRAME) 1))
-            ;; the frame is drawn: the VDP raises its flag, and the interrupt if it's on
+            ;; the frame is drawn: the VDP has seen the sprites, raises its flag, and the
+            ;; interrupt if it's on
+            (msx-sprite-status!)
             (bset msx-st msx-VSTAT (bor (bget msx-st msx-VSTAT) 0x80))
             (msx-irq!)
             (let (pcm (msx-psg-frame))

@@ -15,7 +15,8 @@
 ;;
 ;; Keys: the PC's letters, digits and punctuation are the MSX's (its international layout); Shift
 ;; is SHIFT, Ctrl is CTRL, Alt is GRAPH, the arrows are the cursor keys, Space and Enter are
-;; theirs. Click the screen first.
+;; theirs. The arrows, Space and M are also joystick 1 (M its second button). Click the screen
+;; first.
 
 (form "MSX" :size (560 512) :on-load msxapp-load
   (button btnCart :text "Load cartridge…" :at (16 12) :size (120 24) :on-click msxapp-pick-cart)

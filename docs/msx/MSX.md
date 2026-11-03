@@ -91,6 +91,15 @@ played at its own pitch (the fifth plays the fourth's). Its registers are at 0x9
 0x3F is at 0x8000, and its samples are added to the PSG's in each frame's audio, a channel at a
 time.
 
+**Sprites, as the program sees them.** At the end of each frame the VDP's status says whether
+a line had a fifth sprite (bit 6, with its number in bits 0–4 — the TMS9918 shows four) and
+whether two shown sprites have a pixel in common (bit 5). Each sprite's place is worked out once
+a frame, and only lines with two or more sprites are compared, a row's pixels at a time: under
+2 ms a frame with all 32 sprites big, magnified and piled up, nothing when there are none.
+
+**The joystick.** Joystick port 1 is the keys: the cursor keys, Space for button A, M for B. They
+stay keys too, so a game that reads either works. Port 2 has nothing plugged in.
+
 ## Speed
 
 A busy Spectrum runs at about real time in the native engine (`npm run spectrum:bench`, 20 ms a
@@ -104,8 +113,4 @@ frame halted, waiting for the interrupt, and run at 60 frames a second (`npm run
 
 - **The key click** (port 0xAA, bit 7), and samples played by changing a channel's volume very
   fast — a frame's sound is made at its end, from the registers as they are then.
-- **Sprite collision and the fifth-sprite flag** in the status register; the host draws the
-  sprites, four to a line, but the program can't ask about them yet.
-- **Joysticks.** PSG register 14 reads as nothing plugged in; the cursor keys and Space, which most
-  games also take, work.
 - **MSX BASIC, disks, cassettes** — they need Microsoft's ROMs, which aren't free, or a disk system.
