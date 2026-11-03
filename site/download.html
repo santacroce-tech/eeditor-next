@@ -142,6 +142,15 @@
 <pre><code>shasum -a 256 EEditor-macOS.dmg</code></pre>
 
       <h2>Release notes</h2>
+      <p><strong>2.5.0</strong> — several windows, ⌘P for every action, a board, and a screen that plays games: a raycaster and an MSX. <a href="https://github.com/santacroce-tech/eeditor-next/releases/tag/v2.5.0">Full notes</a>.</p>
+      <ul>
+        <li><strong>Several windows</strong>, one workspace each: <em>File → New Window…</em> (<kbd>⌃⌘N</kbd>), every window its own folder, agenda and keybindings, restored at the next launch.</li>
+        <li><strong>⌘P finds actions</strong>: type <code>&gt;</code> (or press <kbd>⌘⇧P</kbd>) for every command, key, button and form, by any of their words. <kbd>⌃Tab</kbd> steps through the tabs, <kbd>⌘1</kbd>…<kbd>⌘9</kbd> picks one.</li>
+        <li><strong>A board</strong> (kanban) for forms and the Agenda window, and <code>(pim-board "work")</code> as a table in a note. The header's buttons and the sidebar's panels come from your keybindings file: <code>(button …)</code>, <code>(panel …)</code>.</li>
+        <li><strong>Sheets</strong>: <code>iferror</code> for a formula's fallback, and <code>=(sparkline B2:B30)</code> draws a line in its cell. <code>(install-pim)</code> puts the PIM's keys into any folder.</li>
+        <li><strong>A screen for games</strong>: a form's screen now shows any picture a program draws, frame by frame, with the keys held and sound. <a href="manual.html#screens">In the manual</a>, with a <a href="apps/Raycaster.html">raycaster</a> to try.</li>
+        <li><strong>An MSX</strong>, written in EELisp: its Z80, video and sound chips, booting the free C-BIOS. Cartridges up to 2 MB, Konami's SCC sound, the joystick on the cursor keys. <a href="apps/MSX.html">Play Snake on it</a> — and <a href="msx.html">write that game yourself</a>, in Z80 assembly, in five steps.</li>
+      </ul>
       <p><strong>2.4.1</strong> — spreadsheet functions in every sheet, and an About box. <a href="https://github.com/santacroce-tech/eeditor-next/releases/tag/v2.4.1">Full notes</a>.</p>
       <ul>
         <li><strong>Spreadsheet functions</strong>, ready in any formula with nothing to load: <code>countif</code>, <code>sumif</code>, <code>averageif</code> and their <code>…ifs</code> forms, <code>vlookup</code>, <code>xlookup</code>, <code>index</code>, <code>match</code>, <code>median</code>, <code>stdev</code>, <code>rank</code>, <code>left</code>, <code>mid</code>, <code>proper</code>, <code>textjoin</code> and more. Conditions read the way a spreadsheet reads them: <code>"Work"</code>, <code>"&gt;10"</code>, <code>"&lt;&gt;Done"</code>, <code>"W*"</code>. <a href="manual.html#sheets">In the manual</a>.</li>

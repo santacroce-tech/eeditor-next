@@ -36,7 +36,76 @@
 (msx-out 0xa8 0xf4)                                  ; page 1 → slot 1
 (check "a cartridge shows in slot 1 at 0x4000" (list (zx-rd 0x4000) (zx-rd 0x4001)) (list 0x41 0x42))
 (check "a small one again at 0x6000" (zx-rd 0x6000) 0x41)
-(check "one too big for no mapper is refused" (string? (msx-insert m (make-bytes 0x10000))) true)
+(check "one over 2 MB is refused" (string? (msx-insert m (make-bytes 0x200001))) true)
+(check "so is a mapper nobody makes" (string? (msx-insert-as m (make-bytes 0x10000) "acme")) true)
+
+;; ── mappers ──
+;; a ROM of n 8 KB banks, each filled with its own number: a read says which bank is where
+(defn stamped (n)
+  (let (b (make-bytes (* n 0x2000)))
+    (loop (k 0) (if (= k n) b (do (bfill b (* k 0x2000) 0x2000 k) (recur (+ k 1)))))))
+;; a ROM of 64 KB whose code writes A to these addresses (LD (nnnn),A), for the guess
+(defn writing (addrs)
+  (let (b (make-bytes 0x10000 0))
+    (loop (i 0 l addrs)
+      (if (empty? l) b
+          (do (bset b i 0x32) (bset b (+ i 1) (band (first l) 0xff)) (bset b (+ i 2) (shr (first l) 8))
+              (recur (+ i 3) (cdr l)))))))
+(check "the guess: Konami SCC" (msx-guess-mapper (writing '(0x5000 0x7000 0x9000 0xb000))) "konami-scc")
+(check "the guess: Konami" (msx-guess-mapper (writing '(0x6000 0x8000 0xa000))) "konami")
+(check "the guess: ASCII 8" (msx-guess-mapper (writing '(0x6000 0x6800 0x7000 0x7800))) "ascii8")
+(check "the guess: ASCII 16" (msx-guess-mapper (writing '(0x6000 0x77ff 0x77ff))) "ascii16")
+(check "32 KB is plain ROM, no mapper" (do (msx-insert m (stamped 4)) (msx-cart-mapper m)) nil)
+(check "over 32 KB a mapper is guessed" (do (msx-insert m (stamped 16)) (msx-cart-mapper m)) "ascii8")
+
+;; slot 1 on pages 1 and 2, the RAM on page 3
+(defn on-cart (rom mapper)
+  (do (msx-insert-as m rom mapper) (msx-reset m) (msx-use m) (msx-out 0xa8 0xd4)))
+(defn regions () (list (zx-rd 0x4000) (zx-rd 0x6000) (zx-rd 0x8000) (zx-rd 0xa000)))
+
+(on-cart (stamped 16) "ascii8")
+(check "ASCII 8 starts on bank 0 everywhere" (regions) (list 0 0 0 0))
+(zx-wr 0x6000 1) (zx-wr 0x6800 2) (zx-wr 0x7000 3) (zx-wr 0x7800 4)
+(check "and a write at 0x6000/0x6800/0x7000/0x7800 picks each region's" (regions) (list 1 2 3 4))
+(zx-wr 0x7800 17)
+(check "a bank past the end wraps round" (zx-rd 0xa000) 1)
+(msx-out 0xa8 0xf4) (msx-out 0xa8 0xd4)                ; page 2 away to the RAM and back
+(check "the banks stay put while the page is away" (regions) (list 1 2 3 1))
+(zx-wr 0x4000 9)
+(check "the ROM isn't written" (zx-rd 0x4000) 1)
+(msx-reset m) (msx-use m) (msx-out 0xa8 0xd4)
+(check "reset puts the banks back" (regions) (list 0 0 0 0))
+
+(on-cart (stamped 16) "ascii16")
+(check "ASCII 16 starts on bank 0 in both halves" (regions) (list 0 1 0 1))
+(zx-wr 0x6000 3) (zx-wr 0x77ff 5)
+(check "0x6000 and 0x7000 pick 16 KB each" (regions) (list 6 7 10 11))
+
+(on-cart (stamped 16) "konami")
+(check "Konami starts on banks 0 1 2 3" (regions) (list 0 1 2 3))
+(zx-wr 0x4000 7) (zx-wr 0x6000 5) (zx-wr 0x8000 6) (zx-wr 0xa000 9)
+(check "0x4000 stays bank 0; 0x6000, 0x8000, 0xA000 pick the rest" (regions) (list 0 5 6 9))
+
+(on-cart (stamped 64) "konami-scc")
+(check "Konami SCC starts on banks 0 1 2 3" (regions) (list 0 1 2 3))
+(zx-wr 0x5000 4) (zx-wr 0x7000 5) (zx-wr 0x9000 6) (zx-wr 0xb000 7)
+(check "0x5000, 0x7000, 0x9000, 0xB000 pick the four" (regions) (list 4 5 6 7))
+(check "the SCC isn't there yet: 0x9800 is ROM" (do (zx-wr 0x9800 0x40) (zx-rd 0x9800)) 6)
+(zx-wr 0x9000 0x3f)
+(check "bank 0x3F at 0x8000 brings the SCC: a waveform reads back" (do (zx-wr 0x9800 0x40) (zx-rd 0x9800)) 0x40)
+(check "and the rest of the page is bank 0x3F" (zx-rd 0x8000) 0x3f)
+(check "a silent SCC makes no sound" (msx-psg-frame) nil)
+(loop (i 0) (when (< i 32) (do (zx-wr (+ 0x9800 i) (if (< i 16) 0x60 0xa0)) (recur (+ i 1)))))   ; a square wave
+(zx-wr 0x9880 0xfe) (zx-wr 0x9881 0x00)             ; channel 1: 3,579,545 / 32 / 255 ≈ 439 Hz
+(zx-wr 0x988a 15) (zx-wr 0x988f 1)                   ; loud, and on
+(def scc-pcm (msx-psg-frame))
+(check "channel 1 on: the frame has sound" (string? scc-pcm) true)
+(check "a square wave: both sides of 128" (let (b (base64->bytes scc-pcm) l (map (fn (i) (bget b i)) (range 368))) (list (> (apply max l) 128) (< (apply min l) 128))) (list true true))
+(zx-wr 0x9890 0x00)                                  ; 0x9890 repeats 0x9880
+(check "the registers repeat at 0x9890" (bget msx-scc 0x80) 0)
+(zx-wr 0x9000 0)
+(check "another bank at 0x8000 hides the SCC again" (do (zx-wr 0x988f 0) (bget msx-scc 0x8f)) 1)
+(msx-insert m (list->bytes '(0x41 0x42 0x10 0x40)))
 
 ;; ── the VDP ──
 (msx-out 0x99 0x34) (msx-out 0x99 0x52)              ; write at 0x1234
@@ -46,6 +115,37 @@
 (check "reads come from the read-ahead" (list (msx-in 0x98) (msx-in 0x98)) (list 0xaa 0xbb))
 (msx-out 0x99 0xf4) (msx-out 0x99 0x87)              ; register 7 = 0xF4
 (check "a register write" (bget msx-st (+ msx-VREG 7)) 0xf4)
+
+;; ── sprites: collisions and the fifth on a line, in the status ──
+(defn vreg! (r v) (do (msx-out 0x99 v) (msx-out 0x99 (bor 0x80 r))))
+(vreg! 0 0x00) (vreg! 1 0x40) (vreg! 5 0x36) (vreg! 6 0x07)      ; Graphics I, sprites at 0x1B00 / 0x3800
+(loop (i 0) (when (< i 8) (do (msx-vpoke m (+ 0x3800 i) 0xff) (recur (+ i 1)))))   ; pattern 0: solid
+(msx-vpoke m (+ 0x3808 0) 0x80)                                     ; pattern 1: one pixel, top left
+(defn sprite! (s y x name) (do (msx-vpoke m (+ 0x1b00 (* 4 s)) y) (msx-vpoke m (+ 0x1b01 (* 4 s)) x)
+                               (msx-vpoke m (+ 0x1b02 (* 4 s)) name) (msx-vpoke m (+ 0x1b03 (* 4 s)) 15)))
+(defn sprites-end! (s) (msx-vpoke m (+ 0x1b00 (* 4 s)) 208))
+(defn status () (do (bset msx-st msx-VSTAT 0) (msx-sprite-status!) (bget msx-st msx-VSTAT)))
+(sprites-end! 0)
+(check "no sprites: nothing to say" (status) 0)
+(sprite! 0 49 10 0) (sprite! 1 49 30 0) (sprites-end! 2)
+(check "two apart: no collision" (status) 0)
+(sprite! 1 52 17 0)
+(check "two overlapping: the collision bit" (status) 0x20)
+(sprite! 1 49 18 0)
+(check "side by side, touching no pixel: none" (status) 0)
+(sprite! 1 49 17 1)
+(check "one pixel of the other's inside it: a collision" (status) 0x20)
+(sprite! 1 49 18 1)
+(check "that pixel just outside: none" (status) 0)
+(loop (s 0) (when (< s 6) (do (sprite! s 99 (* s 20) 0) (recur (+ s 1))))) (sprites-end! 6)
+(check "five on a line: the fifth-sprite bit, and the fifth's number" (status) (bor 0x40 4))
+;; sprite 4 is a fifth from line 104, sprite 5 from line 100: the higher line wins
+(sprite! 4 103 100 0) (sprite! 5 99 120 0)
+(check "the first such line from the top counts, not the first sprite" (band (status) 0x5f) (bor 0x40 5))
+(vreg! 1 0x50)
+(check "text mode has no sprites" (status) 0)
+(vreg! 1 0x40) (sprites-end! 0)
+(check "reading the status clears them" (do (bset msx-st msx-VSTAT 0x60) (list (msx-vdp-status) (bget msx-st msx-VSTAT))) (list 0x60 0))
 
 ;; ── the frame and its interrupt ──
 (msx-out 0x99 0xe0) (msx-out 0x99 0x81)              ; r1: display and interrupts on
@@ -65,6 +165,17 @@
 (check "↑ is row 8, bit 5" (msx-in 0xa9) 0xdf)
 (msx-keys! {})
 (check "let go, the row is all 1s" (msx-in 0xa9) 0xff)
+
+;; ── the joystick: port 1 is the keys ──
+(defn joy (r15) (do (msx-out 0xa0 15) (msx-out 0xa1 r15) (msx-out 0xa0 14) (msx-in 0xa2)))
+(msx-keys! {})
+(check "nothing held: port 1 reads all ones" (joy 0x00) 0x7f)
+(msx-keys! {"ArrowUp" true "Space" true})
+(check "up and Space: bits 0 and 4 low" (joy 0x00) (bxor 0x7f 0x11))
+(msx-keys! {"ArrowRight" true "KeyM" true})
+(check "right and M: bits 3 and 5 low" (joy 0x00) (bxor 0x7f 0x28))
+(check "port 2 has nothing plugged in" (joy 0x40) 0x7f)
+(msx-keys! {})
 
 ;; ── C-BIOS boots, and with no cartridge says so ──
 (def cb (msx-new msx-cbios-main msx-cbios-logo))

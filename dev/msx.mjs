@@ -4,8 +4,9 @@
 //   node dev/msx.mjs          run the tests
 //   node dev/msx.mjs bench    C-BIOS and the demo cartridge for 300 frames, and the speed
 //
-// The tests end with the tutorial's game (docs/msx/snake/snake.asm), assembled and played a
-// little: its title, Space to start, the snake on its way.
+// The tests end with two cartridges assembled here and booted: a 128 KB Konami SCC one whose
+// program switches its own banks and prints what it finds in them, and the tutorial's game
+// (docs/msx/snake/snake.asm), played a little — its title, Space to start, the snake on its way.
 
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -45,8 +46,90 @@ if (process.argv[2] === "bench") {
   const r = run(src("../src/msx/msx.test.eelisp"));
   process.stdout.write(r.stdout);
   if (r.stderr.trim()) process.stderr.write(r.stderr);
+  const banked = mapped() && joystick();
   const game = snake();
-  process.exit(r.status === 0 && /all passed\s*$/.test(r.stdout) && game ? 0 : 1);
+  process.exit(r.status === 0 && /all passed\s*$/.test(r.stdout) && banked && game ? 0 : 1);
+}
+
+// A 128 KB Konami SCC cartridge: bank 0 is the program, banks 1–15 each filled with their number.
+// It puts its own slot on page 2, then switches bank 5 in at 0x8000 and bank 9 at 0xA000 and
+// prints the first byte of each as a digit.
+function mapped() {
+  const code = assemble(`
+CHPUT    equ 0x00A2
+INIT32   equ 0x006F
+         org 0x4000
+         db "AB"
+         dw start
+         ds 12
+start:   call INIT32
+         in a,(0xA8)            ; page 2 on the slot page 1 is on: ours
+         and 0b00001100
+         rlca
+         rlca
+         ld b,a
+         in a,(0xA8)
+         and 0b11001111
+         or b
+         out (0xA8),a
+         ld a,5
+         ld (0x9000),a          ; bank 5 at 0x8000
+         ld a,(0x8000)
+         add a,'0'
+         call CHPUT
+         ld a,9
+         ld (0xB000),a          ; bank 9 at 0xA000
+         ld a,(0xA000)
+         add a,'0'
+         call CHPUT
+.end     ei
+         halt
+         jr .end
+`, "mapped.asm").bytes;
+  const rom = Buffer.alloc(16 * 0x2000);
+  for (let k = 1; k < 16; k++) rom.fill(k, k * 0x2000, (k + 1) * 0x2000);
+  rom.set(code, 0);
+  const g = run(`(def m (msx-new msx-cbios-main msx-cbios-logo))
+(println "mapper" (msx-insert-as m "${rom.toString("base64")}" "konami-scc"))
+(msx-reset m)
+(loop (i 0) (when (< i 200) (do (msx-frame m {}) (recur (+ i 1)))))
+(println (map (fn (x) (msx-vpeek m (+ 0x1800 x))) (range 64)))`);
+  const top = (g.stdout.trim().split("\n").pop().match(/\d+/g) ?? []).map((n) => String.fromCharCode(Number(n))).join("");
+  const ok = top.includes("59");
+  console.log(`${ok ? "ok   " : "FAIL "} a Konami SCC cartridge switches its own banks: it prints "59"${ok ? "" : ` — the screen starts ${JSON.stringify(top.trim())}`}`);
+  if (g.stderr.trim()) process.stderr.write(g.stderr);
+  return ok;
+}
+
+// The BIOS reads joystick 1 from the keys: GTSTCK 1 with → held is 3, GTTRIG 1 with Space 0xFF.
+function joystick() {
+  const code = assemble(`
+GTSTCK   equ 0x00D5
+GTTRIG   equ 0x00D8
+         org 0x4000
+         db "AB"
+         dw start
+         ds 12
+start:   ei
+         halt
+         ld a,1
+         call GTSTCK
+         ld (0xE000),a
+         ld a,1
+         call GTTRIG
+         ld (0xE001),a
+         jr start
+`, "joystick.asm").bytes;
+  const g = run(`(def m (msx-new msx-cbios-main msx-cbios-logo))
+(msx-insert m "${Buffer.from(code).toString("base64")}")
+(msx-reset m)
+(loop (i 0) (when (< i 200) (do (msx-frame m {"ArrowRight" true "Space" true}) (recur (+ i 1)))))
+(msx-use m)
+(println (zx-rd 0xe000) (zx-rd 0xe001))`);
+  const ok = /^3 255$/m.test(g.stdout.trim());
+  console.log(`${ok ? "ok   " : "FAIL "} the BIOS reads joystick 1 from the keys: → is direction 3, Space is button A${ok ? "" : ` — got ${g.stdout.trim().split("\n").pop()}`}`);
+  if (g.stderr.trim()) process.stderr.write(g.stderr);
+  return ok;
 }
 
 // The tutorial's snake: the screen's rows as text after the title, and after a start.
