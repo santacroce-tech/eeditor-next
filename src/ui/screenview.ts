@@ -1,14 +1,26 @@
-// A ZX Spectrum screen, live: evaluates an expression up to fifty times a second and paints the
-// screen it returns, with the keyboard held on it passed in. Used by the form's `screen` control
-// and by the page a screen gets when it opens in a window of its own (src/screen.ts).
+// A screen, live: evaluates an expression :hz times a second (50 by default) and paints the frame
+// it returns — a ZX Spectrum's, or any picture in the kinds docs/DISPLAY.md lists — with the keys
+// held on it and the time passed in. Used by the form's `screen` control and by the page a screen
+// gets when it opens in a window of its own (src/screen.ts).
 //
-//   ⌨  the Spectrum's keyboard, on screen
+//   In each evaluation:
+//     ui-keys   the Spectrum's 8-byte key matrix, as base64
+//     ui-held   the PC keys held down, by KeyboardEvent.code: {"KeyW" true "ArrowUp" true}
+//     ui-ms     milliseconds since the screen started — the clock
+//
+//   A frame may carry sound too ("tones", "audio" — src/display/sound.ts); it plays from the first
+//   click or key on the screen, as browsers ask.
+//
+//   ⌨  the Spectrum's keyboard, on screen (shown while the frames are a Spectrum's)
+//   🔈 sound on or off (shown once a frame has carried any)
 //   ⛶  full screen — the picture fills the window, and the window the display; Esc comes back
 //   ⧉  its own window, when the host can open one — the machine is the same, the form keeps going
 
 import { dictGet, isDict, type JsonValue } from "../engine/types";
 import { inTauri } from "../engine/workspace";
-import { borderCss, frameOf, H, KeyMatrix, screenRgba, W, type Key } from "../spectrum/screen";
+import { decodeFrame, newFrameState } from "../display/frame";
+import { decodeSound, SoundOut } from "../display/sound";
+import { H, KeyMatrix, W, type Key } from "../spectrum/screen";
 import { createZxKeyboard } from "./zxkeyboard";
 
 /** A screen running in a window of its own. */
@@ -24,6 +36,8 @@ export interface ScreenViewOptions {
   frame?: (src: string) => Promise<JsonValue>;
   /** The expression, e.g. `(zx-frame zx ui-keys)` — `ui-keys` is bound to the keys held. */
   expr: string;
+  /** Frames a second it asks for — 50 (a Spectrum, PAL) unless said; Doom's tic rate is 35. */
+  hz?: number;
   running: boolean;
   onError: (message: string) => void;
   /** Text pasted on the screen. */
@@ -33,17 +47,30 @@ export interface ScreenViewOptions {
   /** The keyboard opened or closed below the box, `height` tall — a form grows to hold it. */
   onBoard?: (shown: boolean, height: number) => void;
   /** Offered as ⧉: open this screen in a window of its own. */
-  popOut?: (expr: string) => ScreenWindow;
+  popOut?: (expr: string, hz: number) => ScreenWindow;
 }
 
 export interface ScreenView {
   setExpr(expr: string): void;
   setRunning(on: boolean): void;
+  setHz(hz: number): void;
   running(): boolean;
   showKeyboard(show: boolean): void;
   focus(): void;
   destroy(): void;
 }
+
+/** Frames a second, kept to what a webview can ask for. */
+export const screenHz = (v: unknown): number => {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? Math.min(120, Math.max(1, n)) : 50;
+};
+
+/**
+ * PC keys a screen takes for itself even when they mean nothing to a Spectrum — a game reads them
+ * in `ui-held`. Tab, Escape, the function keys and ⌘ shortcuts stay the form's and the app's.
+ */
+const GAME_KEY = /^(Key[A-Z]|Digit\d|Numpad|Arrow|Shift|Control|Alt|Space$|Enter$|Backspace$|Minus$|Equal$|Comma$|Period$|Slash$|Semicolon$|Quote$|Bracket|Backslash$|Backquote$)/;
 
 /** A key is held at least this long: the ROM reads the keyboard once a frame, and a quick tap could fall between two reads. */
 const HOLD = 80;
@@ -63,32 +90,64 @@ export function createScreenView(host: HTMLElement, o: ScreenViewOptions): Scree
   host.append(stage);
 
   const g = view.getContext("2d");
-  const image = g?.createImageData(W, H);
+  let image = g?.createImageData(W, H);
+  const decoded = newFrameState();
+  let kind = "screen";
   const keys = new KeyMatrix();
+  /** PC keys down, by code — `ui-held`. */
+  const held = new Set<string>();
+  const born = performance.now();
   let expr = o.expr;
+  let period = 1000 / screenHz(o.hz);
   let on = o.running;
   let away: ScreenWindow | null = null; // running in its own window: this one waits
   let stopped = false;
   let wait: ReturnType<typeof setTimeout> | undefined;
   let due = 0;
   let painted = 0;
+  let sounded = 0;
+  const sound = new SoundOut();
 
-  // ── the frame loop: the next starts when this one is back and its 20 ms are up ──
+  /** The keys held, as an EELisp dict literal: `{"KeyW" true}`. */
+  const heldDict = () => `{${[...held].map((c) => `${JSON.stringify(c)} true`).join(" ")}}`;
+
+  // ── the frame loop: the next starts when this one is back and its period is up ──
   const later = (ms: number) => (wait = setTimeout(step, ms));
   function step(): void {
     if (stopped) return;
     if (!on || away || !expr || !o.frame || !g || !image) return void later(100);
     const now = performance.now();
     if (now < due) return void later(due - now);
-    due = now - due > 100 ? now + 20 : due + 20;
-    o.frame(`(let (ui-keys ${JSON.stringify(keys.base64())}) ${expr})`)
+    due = now - due > 100 ? now + period : due + period;
+    const ms = Math.round(now - born);
+    o.frame(`(let (ui-keys ${JSON.stringify(keys.base64())} ui-held ${heldDict()} ui-ms ${ms}) ${expr})`)
       .then(
         (v) => {
-          const f = isDict(v) ? frameOf((k) => dictGet(v, k)) : null;
-          if (!f || stopped) return;
-          screenRgba(f, image.data);
+          if (isDict(v) && !stopped) {
+            const s = decodeSound((k) => dictGet(v, k));
+            if (s.tones.length || s.pcm) {
+              sound.play(s);
+              view.dataset.sounds = String(++sounded); // how many frames carried sound: tests read it
+              if (soundToggle.hidden) soundToggle.hidden = false;
+            }
+          }
+          const f = isDict(v) ? decodeFrame((k) => dictGet(v, k), decoded) : null;
+          if (!f || stopped || !image) return;
+          if (f.w !== view.width || f.h !== view.height) {
+            view.width = f.w;
+            view.height = f.h;
+            image = g.createImageData(f.w, f.h);
+          }
+          if (f.kind !== kind) {
+            kind = f.kind;
+            view.dataset.kind = kind;
+            // The Spectrum's keyboard means nothing under another machine's picture.
+            kbToggle.hidden = kind !== "screen";
+            if (kbToggle.hidden && !board.el.hidden) showKeyboard(false);
+          }
+          image.data.set(f.rgba);
           g.putImageData(image, 0, 0);
-          stage.style.background = borderCss(f.border);
+          stage.style.background = f.border;
           view.dataset.frames = String(++painted); // how many it has painted: tests read it
         },
         (e) => {
@@ -96,7 +155,10 @@ export function createScreenView(host: HTMLElement, o: ScreenViewOptions): Scree
           o.onError(e instanceof Error ? e.message : String(e));
         },
       )
-      .finally(step);
+      // through a timer, never straight on: the engine in the page (an exported app's) answers
+      // at once, and a frame slower than its period would otherwise chain the next one without
+      // the browser ever painting or taking a key
+      .finally(() => later(0));
   }
   later(0);
 
@@ -111,8 +173,9 @@ export function createScreenView(host: HTMLElement, o: ScreenViewOptions): Scree
   const release = (id: string) => {
     const left = HOLD - (performance.now() - (since.get(id) ?? 0));
     since.delete(id);
-    if (left <= 0) return void keys.release(id);
-    pendingUp.set(id, setTimeout(() => (pendingUp.delete(id), keys.release(id)), left));
+    const up = () => (keys.release(id), held.delete(id));
+    if (left <= 0) return void up();
+    pendingUp.set(id, setTimeout(() => (pendingUp.delete(id), up()), left));
   };
   view.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && host.classList.contains("zx-expanded")) {
@@ -121,7 +184,10 @@ export function createScreenView(host: HTMLElement, o: ScreenViewOptions): Scree
       return void expand(false);
     }
     // ⌘ is the OS's; Ctrl+V pastes (a typed / is still the Spectrum's /)
-    if (e.metaKey || (e.ctrlKey && e.key.toLowerCase() === "v") || !keys.press(e.code, e.key)) return;
+    if (e.metaKey || (e.ctrlKey && e.key.toLowerCase() === "v")) return;
+    const spectrum = keys.press(e.code, e.key);
+    if (!spectrum && !GAME_KEY.test(e.code)) return;
+    held.add(e.code);
     pressed(e.code);
     e.preventDefault();
     e.stopPropagation();
@@ -131,7 +197,8 @@ export function createScreenView(host: HTMLElement, o: ScreenViewOptions): Scree
     e.preventDefault();
     release(e.code);
   });
-  view.addEventListener("pointerdown", () => view.focus());
+  view.addEventListener("pointerdown", () => (view.focus(), sound.unlock()));
+  view.addEventListener("keydown", () => sound.unlock());
 
   // ── paste: a canvas isn't editable, and a webview may not send it a paste event, so after
   //    ⌘V/Ctrl+V with none the clipboard is read ──
@@ -169,6 +236,13 @@ export function createScreenView(host: HTMLElement, o: ScreenViewOptions): Scree
   board.el.classList.add("formrun-zxkb");
   board.el.hidden = true;
   const kbToggle = button("formrun-screen-kbtoggle", "⌨", "The Spectrum's keyboard", () => showKeyboard(board.el.hidden));
+  const soundToggle = button("zx-sound", "🔈", "Sound on or off", () => {
+    sound.setMuted(!sound.muted);
+    soundToggle.textContent = sound.muted ? "🔇" : "🔈";
+    soundToggle.classList.toggle("on", sound.muted);
+    sound.unlock();
+  });
+  soundToggle.hidden = true;
   const fsToggle = button("zx-fullscreen", "⛶", "Full screen (Esc to come back)", () => expand(!host.classList.contains("zx-expanded")));
   const popButton = o.popOut ? button("zx-popout", "⧉", "Open in a window of its own", () => popOut()) : null;
   stage.append(bar);
@@ -221,7 +295,7 @@ export function createScreenView(host: HTMLElement, o: ScreenViewOptions): Scree
   function popOut(): void {
     if (away || !o.popOut) return away?.focus();
     if (host.classList.contains("zx-expanded")) void expand(false);
-    const w = o.popOut(expr);
+    const w = o.popOut(expr, 1000 / period);
     away = w;
     awayNote.hidden = false;
     popButton?.classList.add("on");
@@ -235,18 +309,21 @@ export function createScreenView(host: HTMLElement, o: ScreenViewOptions): Scree
 
   view.addEventListener("blur", () => {
     keys.clear();
+    held.clear();
     board.reset();
   });
 
   return {
     setExpr: (e) => void (expr = e),
     setRunning: (r) => void (on = r),
+    setHz: (hz) => void (period = 1000 / screenHz(hz)),
     running: () => on,
     showKeyboard,
     focus: () => view.focus(),
     destroy: () => {
       stopped = true;
       clearTimeout(wait);
+      sound.close();
       document.removeEventListener("fullscreenchange", onFullscreenChange);
       if (host.classList.contains("zx-expanded")) void expand(false);
       away?.close();

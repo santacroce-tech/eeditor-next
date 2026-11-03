@@ -102,7 +102,7 @@ export interface FormRunnerOptions {
   /** Evaluate a screen control's `:frame` expression; its value. Without it a screen stays dark. */
   frame?: (src: string) => Promise<JsonValue>;
   /** Open a screen control in a native window of its own (⧉), over the same engine. Left out where there's none. */
-  popScreen?: (expr: string, title: string) => ScreenWindow;
+  popScreen?: (expr: string, title: string, hz?: number) => ScreenWindow;
 }
 
 /** What the runner needs of a sheet grid: the element, loading, writing what is being typed, and letting go. */
@@ -853,10 +853,12 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
         break;
       }
       case "screen": {
-        // A ZX Spectrum screen — the view (src/ui/screenview.ts) runs :frame and paints it.
+        // A screen — the view (src/ui/screenview.ts) runs :frame :hz times a second and paints the
+        // frame it returns: a ZX Spectrum's, or any picture docs/DISPLAY.md describes.
         const sv = createScreenView(box, {
           frame: opts.frame,
           expr: asText(p.frame as string),
+          hz: p.hz === undefined ? undefined : Number(p.hz),
           running: p.enabled !== false,
           onError: (m) => opts.onError(`${c.name} :frame: ${m}`),
           onPaste: c.events.paste ? (text) => void fire(c.events.paste, undefined, { $text: text }) : undefined,
@@ -864,7 +866,7 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
           onBoard: (shown, height) => {
             canvas.style.height = `${Math.max(current.h, shown ? c.y + c.h + 8 + height + 8 : 0)}px`;
           },
-          popOut: opts.popScreen ? (expr) => opts.popScreen!(expr, current.title || humanName(c.name)) : undefined,
+          popOut: opts.popScreen ? (expr, hz) => opts.popScreen!(expr, current.title || humanName(c.name), hz) : undefined,
         });
         if (p.keyboard === true) queueMicrotask(() => sv.showKeyboard(true));
         loops.push(() => sv.destroy());
@@ -874,6 +876,7 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
           value: () => sv.running(),
           set: (k, v) => {
             if (k === "frame") sv.setExpr(asText(v));
+            else if (k === "hz") sv.setHz(Number(v));
             else if (k === "keyboard") sv.showKeyboard(truthy(v));
             else if (k === "enabled" || k === "value") sv.setRunning(truthy(v));
           },

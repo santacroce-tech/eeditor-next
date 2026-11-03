@@ -1,0 +1,204 @@
+;; MSX.eeform — an MSX1, running in a form.
+;;
+;; The machine is EELisp: the Spectrum's Z80 (src/spectrum/zx.eelisp) with an MSX around it —
+;; its slots, the TMS9918A video chip, the PPI and the PSG (src/msx/msx.eelisp, loaded for a form
+;; that calls msx-…). It boots C-BIOS, a free BIOS that comes with it (src/msx/cbios.eelisp), so
+;; nothing needs downloading. The screen asks for a frame 60 times a second; each one runs 59,736
+;; T-states of the Z80 and sends back the video chip's memory, which the host draws
+;; ("tms9918" in docs/DISPLAY.md).
+;;
+;; C-BIOS runs cartridges — it has no BASIC. Without one it says so. Demo puts in a small
+;; cartridge written for this form (below) — hold Space in it for a note from the PSG; Snake is
+;; the game docs/msx/TUTORIAL.md builds; Load cartridge… takes a .rom of up to 32 KB. Sound plays
+;; from the first click on the screen.
+;;
+;; Keys: the PC's letters, digits and punctuation are the MSX's (its international layout); Shift
+;; is SHIFT, Ctrl is CTRL, Alt is GRAPH, the arrows are the cursor keys, Space and Enter are
+;; theirs. Click the screen first.
+
+(form "MSX" :size (560 480) :on-load msxapp-load
+  (button btnCart :text "Load cartridge…" :at (16 12) :size (120 24) :on-click msxapp-pick-cart)
+  (button btnDemo :text "Demo" :at (144 12) :size (56 24) :on-click msxapp-demo)
+  (button btnSnake :text "Snake" :at (208 12) :size (56 24) :on-click msxapp-snake)
+  (button btnReset :text "Reset" :at (272 12) :size (56 24) :on-click msxapp-do-reset)
+  (button btnPause :text "Pause" :at (336 12) :size (64 24) :on-click msxapp-pause)
+  (label lblStatus :at (408 16) :size (136 24))
+  (screen scrMSX :frame "(msx-frame msx ui-held)" :hz 60 :at (16 48) :size (528 416)))
+
+(def msx (msx-new msx-cbios-main msx-cbios-logo))
+(def msxapp-cart nil)          ; the cartridge in, so Reset boots it again
+(def msxapp-paused false)
+
+(defn msxapp-say (text) (ui-set "lblStatus" :text text))
+(defn msxapp-load (f) (msxapp-say "C-BIOS, no cartridge"))
+
+;; Reset: the BIOS boots again, and runs the cartridge if there is one.
+(defn msxapp-do-reset (f)
+  (do (msx-reset msx)
+      (msxapp-say (if msxapp-cart "running" "C-BIOS, no cartridge"))
+      (ui-focus "scrMSX")))
+
+(defn msxapp-put-in (rom name)
+  (let (ok (msx-insert msx rom))
+    (if (= ok true)
+        (do (set! msxapp-cart rom) (msx-reset msx) (msxapp-say name) (ui-focus "scrMSX"))
+        (ui-message ok))))
+
+(defn msxapp-pick-cart (f) (ui-pick msxapp-got-cart))
+(defn msxapp-got-cart (f) (msxapp-put-in (base64->bytes (ui-get f "$file")) (ui-get f "$filename")))
+
+(defn msxapp-pause (f)
+  (do (set! msxapp-paused (not msxapp-paused))
+      (ui-set "scrMSX" :enabled (not msxapp-paused))
+      (ui-set "btnPause" :text (if msxapp-paused "Resume" "Pause"))))
+
+;; The demo cartridge, 335 bytes at 0x4000: the "AB" header C-BIOS looks for, then a program
+;; that sets the colours, prints a few lines, moves a sprite with the cursor keys and, while Space
+;; is held, plays a note on the PSG whose pitch follows the sprite — all through the BIOS (INIT32
+;; 0x6F, CHPUT 0xA2, LDIRVM 0x5C, GTSTCK 0xD5, GTTRIG 0xD8, CHGCLR 0x62, WRTPSG 0x93).
+;; Hand-assembled:
+;;   4000  41 42                    DB 'AB'
+;;   4002  10 40                    DW INIT
+;;   4004  00 00 00 00 00 00 00 00  DS 12
+;;   4010                           INIT:
+;;   4010  3E 0F                    LD A,15
+;;   4012  32 E9 F3                 LD (FORCLR),A
+;;   4015  3E 04                    LD A,4
+;;   4017  32 EA F3                 LD (BAKCLR),A
+;;   401A  32 EB F3                 LD (BDRCLR),A
+;;   401D  CD 62 00                 CALL CHGCLR
+;;   4020  CD 6F 00                 CALL INIT32
+;;   4023  3E 07                    LD A,7
+;;   4025  1E BE                    LD E,0xBE
+;;   4027  CD 93 00                 CALL WRTPSG
+;;   402A  3E 01                    LD A,1
+;;   402C  1E 01                    LD E,1
+;;   402E  CD 93 00                 CALL WRTPSG
+;;   4031  21 DB 40                 LD HL,TEXT
+;;   4034                           PRINT:
+;;   4034  7E                       LD A,(HL)
+;;   4035  B7                       OR A
+;;   4036  28 06                    JR Z,SHOWN
+;;   4038  CD A2 00                 CALL CHPUT
+;;   403B  23                       INC HL
+;;   403C  18 F6                    JR PRINT
+;;   403E                           SHOWN:
+;;   403E  21 D3 40                 LD HL,SPRITE
+;;   4041  11 00 38                 LD DE,0x3800
+;;   4044  01 08 00                 LD BC,8
+;;   4047  CD 5C 00                 CALL LDIRVM
+;;   404A  3E 7C                    LD A,124
+;;   404C  32 00 E0                 LD (X),A
+;;   404F  3E 78                    LD A,120
+;;   4051  32 01 E0                 LD (Y),A
+;;   4054                           LOOP:
+;;   4054  FB                       EI
+;;   4055  76                       HALT
+;;   4056  AF                       XOR A
+;;   4057  CD D5 00                 CALL GTSTCK
+;;   405A  87                       ADD A,A
+;;   405B  5F                       LD E,A
+;;   405C  16 00                    LD D,0
+;;   405E  21 C1 40                 LD HL,STEPS
+;;   4061  19                       ADD HL,DE
+;;   4062  3A 00 E0                 LD A,(X)
+;;   4065  86                       ADD A,(HL)
+;;   4066  32 00 E0                 LD (X),A
+;;   4069  23                       INC HL
+;;   406A  3A 01 E0                 LD A,(Y)
+;;   406D  86                       ADD A,(HL)
+;;   406E  32 01 E0                 LD (Y),A
+;;   4071  21 10 E0                 LD HL,ATTR
+;;   4074  77                       LD (HL),A
+;;   4075  23                       INC HL
+;;   4076  3A 00 E0                 LD A,(X)
+;;   4079  77                       LD (HL),A
+;;   407A  23                       INC HL
+;;   407B  36 00                    LD (HL),0
+;;   407D  23                       INC HL
+;;   407E  36 0B                    LD (HL),11
+;;   4080  23                       INC HL
+;;   4081  36 D0                    LD (HL),0xD0
+;;   4083  21 10 E0                 LD HL,ATTR
+;;   4086  11 00 1B                 LD DE,0x1B00
+;;   4089  01 05 00                 LD BC,5
+;;   408C  CD 5C 00                 CALL LDIRVM
+;;   408F  AF                       XOR A
+;;   4090  CD D8 00                 CALL GTTRIG
+;;   4093  B7                       OR A
+;;   4094  28 22                    JR Z,QUIET
+;;   4096  3A 01 E0                 LD A,(Y)
+;;   4099  5F                       LD E,A
+;;   409A  AF                       XOR A
+;;   409B  CD 93 00                 CALL WRTPSG
+;;   409E  3E 08                    LD A,8
+;;   40A0  1E 0C                    LD E,12
+;;   40A2  CD 93 00                 CALL WRTPSG
+;;   40A5  3A 02 E0                 LD A,(T)
+;;   40A8  3C                       INC A
+;;   40A9  32 02 E0                 LD (T),A
+;;   40AC  0F                       RRCA
+;;   40AD  0F                       RRCA
+;;   40AE  E6 0F                    AND 15
+;;   40B0  32 EB F3                 LD (BDRCLR),A
+;;   40B3  CD 62 00                 CALL CHGCLR
+;;   40B6  18 9C                    JR LOOP
+;;   40B8                           QUIET:
+;;   40B8  3E 08                    LD A,8
+;;   40BA  1E 00                    LD E,0
+;;   40BC  CD 93 00                 CALL WRTPSG
+;;   40BF  18 93                    JR LOOP
+;;   40C1                           STEPS:
+;;   40C1  00 00 00 FE 02 FE 02 00  DB 0,0, 0,-2, 2,-2, 2,0, 2,2, 0,2, -2,2, -2,0, -2,-2
+;;   40D3                           SPRITE:
+;;   40D3  3C 7E DB FF FF DB 66 3C  DB smiley
+;;   40DB                           TEXT:
+;;   40DB  45 45 64 69 74 6F 72 20  DB "…", 0
+(def msxapp-demo-cart
+  (list->bytes
+   '(
+    0x41 0x42 0x10 0x40 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+    0x3e 0x0f 0x32 0xe9 0xf3 0x3e 0x04 0x32 0xea 0xf3 0x32 0xeb 0xf3 0xcd 0x62 0x00
+    0xcd 0x6f 0x00 0x3e 0x07 0x1e 0xbe 0xcd 0x93 0x00 0x3e 0x01 0x1e 0x01 0xcd 0x93
+    0x00 0x21 0xdb 0x40 0x7e 0xb7 0x28 0x06 0xcd 0xa2 0x00 0x23 0x18 0xf6 0x21 0xd3
+    0x40 0x11 0x00 0x38 0x01 0x08 0x00 0xcd 0x5c 0x00 0x3e 0x7c 0x32 0x00 0xe0 0x3e
+    0x78 0x32 0x01 0xe0 0xfb 0x76 0xaf 0xcd 0xd5 0x00 0x87 0x5f 0x16 0x00 0x21 0xc1
+    0x40 0x19 0x3a 0x00 0xe0 0x86 0x32 0x00 0xe0 0x23 0x3a 0x01 0xe0 0x86 0x32 0x01
+    0xe0 0x21 0x10 0xe0 0x77 0x23 0x3a 0x00 0xe0 0x77 0x23 0x36 0x00 0x23 0x36 0x0b
+    0x23 0x36 0xd0 0x21 0x10 0xe0 0x11 0x00 0x1b 0x01 0x05 0x00 0xcd 0x5c 0x00 0xaf
+    0xcd 0xd8 0x00 0xb7 0x28 0x22 0x3a 0x01 0xe0 0x5f 0xaf 0xcd 0x93 0x00 0x3e 0x08
+    0x1e 0x0c 0xcd 0x93 0x00 0x3a 0x02 0xe0 0x3c 0x32 0x02 0xe0 0x0f 0x0f 0xe6 0x0f
+    0x32 0xeb 0xf3 0xcd 0x62 0x00 0x18 0x9c 0x3e 0x08 0x1e 0x00 0xcd 0x93 0x00 0x18
+    0x93 0x00 0x00 0x00 0xfe 0x02 0xfe 0x02 0x00 0x02 0x02 0x00 0x02 0xfe 0x02 0xfe
+    0x00 0xfe 0xfe 0x3c 0x7e 0xdb 0xff 0xff 0xdb 0x66 0x3c 0x45 0x45 0x64 0x69 0x74
+    0x6f 0x72 0x20 0x4d 0x53 0x58 0x0d 0x0a 0x0d 0x0a 0x43 0x2d 0x42 0x49 0x4f 0x53
+    0x20 0x6f 0x6e 0x20 0x61 0x20 0x5a 0x38 0x30 0x20 0x77 0x72 0x69 0x74 0x74 0x65
+    0x6e 0x0d 0x0a 0x69 0x6e 0x20 0x45 0x45 0x4c 0x69 0x73 0x70 0x2e 0x0d 0x0a 0x0d
+    0x0a 0x43 0x75 0x72 0x73 0x6f 0x72 0x20 0x6b 0x65 0x79 0x73 0x3a 0x20 0x6d 0x6f
+    0x76 0x65 0x20 0x74 0x68 0x65 0x20 0x66 0x61 0x63 0x65 0x2e 0x0d 0x0a 0x53 0x70
+    0x61 0x63 0x65 0x3a 0x20 0x61 0x20 0x6e 0x6f 0x74 0x65 0x2c 0x20 0x61 0x6e 0x64
+    0x20 0x74 0x68 0x65 0x20 0x62 0x6f 0x72 0x64 0x65 0x72 0x2e 0x0d 0x0a 0x00
+)))
+
+(defn msxapp-demo (f) (msxapp-put-in msxapp-demo-cart "demo"))
+
+;; Snake: the game the tutorial builds (docs/msx/TUTORIAL.md), docs/msx/snake/snake.asm assembled
+;; — its bytes up to the filling at the end, as base64. After changing the source:
+;;   node dev/z80asm.mjs docs/msx/snake/snake.asm --base64
+;; (dev/z80asm.test.mjs checks the two agree.)
+(def msxapp-snake-cart
+  (str
+   "QUIQQAAAAAAAAAAAAAAAAD4PMunzPgEy6vMy6/PNYgDNbwAhDEMRAAQGBMXl1QEIAM1cAOEBQAAJ6+EBCAAJwRDpISxDERAg"
+   "AQQAzVwAITBDzf5CIQAAIgriIgziIyIO4s0KQiFVQxELAc2BQiFfQxGGAc2BQiF0QxHpAc2BQs3fQiEAACIK4s0KQq8yAeIy"
+   "BuIyCeI+AzIA4iGIAd0hAOAGBN11AN10AT6IzZNCI90j3SMQ7is+kM2TQiEBACIC4iIE4j4IMgjiMgfizetB+3bNDUEhB+I1"
+   "IPU6COIyB+LNMEEw6iFIQ83+QioM4u1bCuK37VIwB+1TDOLNUUIhg0MRawHNgULN30LDgkCvzdUAIeD//gEoFCEBAP4DKA0h"
+   "IAD+BSgGIf///gfAIgTiySoE4u1bAuIZfLUoBioE4iIC4joA4s2/Ql4jVus+iM2TQu1bAuIZzaFC/pgoDv4gKA237VI+kM2T"
+   "QjfJzaFBPpDNk0LrOgDiPDIA4s2/QnMjcjoG4rcoBT0yBuLJOgHizb9CXiNW6z4gzZNCIQHiNLfJ5ToK4sYBJzIK4joL4s4A"
+   "JzIL4s1RQjoA4iEB4pb+8DAIOgbixgMyBuIhCeI0fv4EOA02ADoI4v4EOAQ9MgjiITlDzf5CzetB4cnNykJ85gNn/gMo9bcg"
+   "BX3+QDjtzaFC/iAg5j6Yw5NCIQAYAQADPiDNVgAhIBgBIAA+gM1WACHgGgEgAD6AzVYAIUAABhURHwA+gM2TQhnNk0IjEPQh"
+   "jkMRAQDNgUIhlEMRGADNgUIhBwARCuLNYEIhGwARDOJ8xhhnza1CExrNbkIbGvUPDw8P5g/GMNOY8eYPxjDTmMnl63zGGGfN"
+   "rULhfrfI05gjGPjl9XzGGGfNrULx05jhyeV8xhhnzbJC4duYyXz2QBgDfOY/8/V905nx05n7ydVvJgApEQDgGdHJKg7ifB99"
+   "H6xnfR98H61vrGciDuLJzepCIPvN6kIo+8n7dioO4iN8tSABIyIO4q/N2AC3yX7+/8gjXiPlzZMA4Rjy7+/vAP7+/gA8fv//"
+   "//9+PDx+29v//348CBBs/v7+fChuITGBB54IAAkACgD/AFABAAgQCgALAAwEDQD/Bh8IAAoQCwAMKA0A/1MgTiBBIEsgRQBD"
+   "dXJzb3Iga2V5cyB0byBzdGVlcgBTcGFjZSB0byBzdGFydABHQU1FICBPVkVSAFNDT1JFAEhJAA==")))
+(defn msxapp-snake (f) (msxapp-put-in msxapp-snake-cart "snake: press Space"))

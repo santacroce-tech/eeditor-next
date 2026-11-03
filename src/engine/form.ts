@@ -7,6 +7,8 @@ import { formState, type StateValue } from "../core/form";
 import { clockDefs } from "../core/keybindings";
 import PRELUDE from "../forms/prelude.eelisp?raw";
 import SPECTRUM from "../spectrum/zx.eelisp?raw";
+import MSX from "../msx/msx.eelisp?raw";
+import CBIOS from "../msx/cbios.eelisp?raw";
 
 /** One row of a grid: the record's fields, and its id when it came from a table. */
 export type Row = Record<string, StateValue>;
@@ -72,6 +74,12 @@ export interface FormClient {
  * `(screen scrName …)` — which is how the printer always writes one.
  */
 const usesScreen = (src: string): boolean => /\(screen\s/.test(src);
+
+/**
+ * A form that calls `(msx-…)` gets the MSX too (src/msx/msx.eelisp, on the Spectrum's Z80) and
+ * C-BIOS, the free BIOS it boots (src/msx/cbios.eelisp) — 64 KB, so only for the forms that use it.
+ */
+const usesMsx = (src: string): boolean => /\(msx-/.test(src);
 
 const text = (v: JsonValue | undefined): string => (typeof v === "string" ? v : v == null ? "" : String(v));
 const asStr = (s: StateValue): string => (typeof s === "string" ? s : s == null ? "" : typeof s === "object" ? JSON.stringify(s) : String(s));
@@ -141,6 +149,7 @@ export function rowsOf(v: JsonValue): { rows: Row[]; columns?: string[] } {
 export function createFormClient(engine: EngineClient): FormClient {
   let preludeLoaded = false;
   let spectrumLoaded = false;
+  let msxLoaded = false;
 
   async function ev(src: string): Promise<{ result: JsonValue; output: string }> {
     const env = await engine.evalSrc(src);
@@ -160,6 +169,11 @@ export function createFormClient(engine: EngineClient): FormClient {
       if (usesScreen(src) && !spectrumLoaded) {
         await ev(SPECTRUM);
         spectrumLoaded = true;
+      }
+      if (usesMsx(src) && spectrumLoaded && !msxLoaded) {
+        await ev(MSX);
+        await ev(CBIOS);
+        msxLoaded = true;
       }
       await ev(`(set! ui-loading ${JSON.stringify(key)})`);
       try {

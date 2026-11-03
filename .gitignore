@@ -31,3 +31,6 @@ graphify-out/
 
 # the PIM sample workspace (npm run pim:sample)
 pim-sample/
+
+# the MSX tutorial's cartridges, built with npm run msx:asm
+docs/msx/snake/*.rom

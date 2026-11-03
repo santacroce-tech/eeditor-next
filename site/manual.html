@@ -47,7 +47,7 @@
         <li><a href="#outside">7. Files from outside</a></li>
         <li><a href="#agenda">8. The agenda</a></li>
         <li><a href="#sheets">9. Sheets</a></li>
-        <li><a href="#forms">10. Forms</a> · <a href="#form-examples">examples</a> · <a href="#export-html">export</a></li>
+        <li><a href="#forms">10. Forms</a> · <a href="#form-examples">examples</a> · <a href="#screens">screens</a> · <a href="#export-html">export</a></li>
         <li><a href="#repl">11. The REPL</a></li>
         <li><a href="#keybindings">12. Keybindings</a></li>
         <li><a href="#mobile">13. iPhone and iPad</a></li>
@@ -974,7 +974,7 @@ sequenceDiagram
 
     <h3 id="form-examples">Example forms</h3>
     <p>
-      Seven forms to download, run and take apart. Save one into your workspace — any folder — and it
+      Ten forms to download, run and take apart. Save one into your workspace — any folder — and it
       appears in the tree; press <strong>▶ run</strong>, then switch to <strong>code</strong> to see
       how it's done. Each file opens with a comment saying what it shows, and every handler has a
       line above it saying what it does. They write to your workspace's database, into tables of
@@ -1154,6 +1154,49 @@ sequenceDiagram
       own, so two copies of Books keep their own place. And a name in <code>ui-open</code> is found
       beside the form that asks, so the app's folder can go anywhere.
     </p>
+
+    <h4 id="screens">Display, Raycaster, MSX — screens: a picture, the keys, sound</h4>
+    <p>
+      A <code>screen</code> control is a picture the program draws. It evaluates its
+      <code>:frame</code> expression <code>:hz</code> times a second and paints the frame that comes
+      back — a dict saying what kind of picture it is and carrying its bytes. In the expression,
+      <code>ui-held</code> is the keys held down (<code>{"ArrowLeft" true}</code>, by key code) and
+      <code>ui-ms</code> the milliseconds since the screen started. Click a screen and it takes the
+      keys; <strong>⛶</strong> fills the window with it.
+    </p>
+<pre><code>(screen scrDemo :frame <span class="st">"(display-frame ui-held ui-ms)"</span> :hz 35 :at (16 44) :size (480 324))
+
+(defn display-frame (held ms)
+  …                                    <span class="cm">; move the square, draw the picture with bfill</span>
+  {<span class="st">"kind"</span> <span class="st">"indexed"</span> <span class="st">"w"</span> 160 <span class="st">"h"</span> 100 <span class="st">"order"</span> <span class="st">"columns"</span>
+   <span class="st">"pixels"</span> (bytes-&gt;base64 display-fb) <span class="st">"palette"</span> display-palette <span class="st">"border"</span> 0 …})</code></pre>
+    <p>
+      An <code>"indexed"</code> frame is a byte a pixel into a palette of up to 256 colours;
+      <code>"rgba"</code> is four bytes a pixel. A frame may also carry sound: <code>"tones"</code>,
+      notes for the browser to play (<code>{"hz" 440 "ms" 120 "wave" "square"}</code>), or
+      <code>"audio"</code>, 8-bit samples of its own. Sound starts at the first click on the screen,
+      and <strong>🔈</strong> mutes it.
+    </p>
+    <ul>
+      <li>
+        <a href="examples/Display.eeform" download>Display.eeform</a> ·
+        <a href="apps/Display.html">run it in your browser</a> · The one to read first: a sky and
+        ground drawn a column at a time, a square the arrow keys move, a note while Space is held.
+      </li>
+      <li>
+        <a href="examples/Raycaster.eeform" download>Raycaster.eeform</a> ·
+        <a href="apps/Raycaster.html">run it in your browser</a> · A first-person maze: rays cast
+        across a map, textured walls, sliding doors, lamps and barrels hidden behind the walls,
+        footsteps — in about 10 ms a frame.
+      </li>
+      <li>
+        <a href="examples/MSX.eeform" download>MSX.eeform</a> ·
+        <a href="apps/MSX.html">run it in your browser</a> · A whole MSX1 in EELisp: the Z80, the
+        TMS9918 video chip, the PSG sound chip, booting the free C-BIOS. <strong>Snake</strong> plays a
+        game, <strong>Load cartridge…</strong> takes a <code>.rom</code> of your own — and
+        <a href="msx.html">Make an MSX game</a> writes that snake from nothing, in Z80 assembly.
+      </li>
+    </ul>
 
     <h3 id="export-html">One file that runs anywhere</h3>
     <p>

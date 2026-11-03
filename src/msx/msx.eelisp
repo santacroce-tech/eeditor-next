@@ -1,0 +1,431 @@
+;; msx.eelisp — an MSX1, written in EELisp, on the Spectrum's Z80 (src/spectrum/zx.eelisp).
+;;
+;; What an MSX adds to the Z80 is here: its slots and their paging, the TMS9918A video chip's
+;; ports and memory, the PPI (slot select and keyboard) and the PSG's registers. The picture is
+;; the VDP's 16 KB of video memory and its eight registers, sent with each frame as a
+;; "tms9918" frame (docs/DISPLAY.md); the host draws it (src/display/tms9918.ts), as it draws the
+;; Spectrum's screen memory. See docs/msx/MSX.md.
+;;
+;; Public surface:
+;;   (msx-new main logo)       a machine with a BIOS: main (32 KB, 0x0000) and logo (16 KB,
+;;                             0x8000) in slot 0 — C-BIOS's (src/msx/cbios.eelisp) or another,
+;;                             as bytes or base64; 64 KB of RAM in slot 3
+;;   (msx-insert m rom)        a cartridge in slot 1 (bytes or base64, up to 32 KB); reset after
+;;   (msx-reset m)             back to the start: the BIOS boots, finds the cartridge, runs it
+;;   (msx-frame m held)        run one frame (59,736 T-states, 60 a second); held is ui-held, the
+;;                             PC keys down; returns {"kind" "tms9918" "vram" … "regs" … "frame" n
+;;                             "audio" {"rate" 22050 "pcm" …}} — the PSG's sound for that frame
+;;   (msx-vpeek m a)  (msx-vpoke m a v)   video memory
+;;
+;; Memory. The Z80 reads one flat 64 KB (zx-mem), which keeps its hot path the Spectrum's. Each
+;; slot keeps its own 64 KB; port 0xA8 says which slot each 16 KB page shows, and a change copies
+;; the page in (bcopy) — and a RAM page back out first. Only slot 3, the RAM, is writable: the
+;; Z80 core sends writes below zx-rom-top here (zx-low-write), and zx-rom-top is set just above
+;; the highest page that isn't RAM.
+
+;; ---------------------------------------------------------------------------
+;; State — offsets into the :st buffer
+;; ---------------------------------------------------------------------------
+(def msx-A8 0)        ; the primary slot register: two bits a page
+(def msx-PPIC 1)      ; the PPI's port C (0xAA): keyboard row in bits 0–3, key click in bit 7
+(def msx-VLATCH 2)    ; 1 when the VDP has the first byte of a two-byte command
+(def msx-VFIRST 3)    ; that first byte
+(def msx-VADDR 4)     ; the VRAM address, hi at 4, lo at 5
+(def msx-VBUF 6)      ; the read-ahead byte
+(def msx-VSTAT 7)     ; status: bit 7 the frame flag
+(def msx-VREG 8)      ; the eight registers, 8–15
+(def msx-PSGL 16)     ; the PSG's latched register
+(def msx-PSG 17)      ; its sixteen registers, 17–32
+(def msx-ST 40)
+
+(def msx-FRAME-T 59736)   ; 3,579,545 Hz / 59.92 frames a second
+
+;; The machine being run: msx-use points these at one machine's buffers, as zx-use does.
+(def msx-st nil)
+(def msx-vram nil)
+(def msx-slots nil)
+(def msx-mat nil)         ; the keyboard matrix: 11 rows, a 0 bit a key down
+(def msx-irq false)       ; the VDP's interrupt line: frame flag and interrupts on
+
+(defn msx-irq! ()
+  (set! msx-irq (and (!= 0 (band (bget msx-st msx-VSTAT) 0x80))
+                     (!= 0 (band (bget msx-st (+ msx-VREG 1)) 0x20)))))
+
+;; ---------------------------------------------------------------------------
+;; Slots and paging
+;; ---------------------------------------------------------------------------
+(defn msx-slot-of (page) (band (shr (bget msx-st msx-A8) (* 2 page)) 3))
+
+;; Show slot `s` in `page`: a RAM page goes back to slot 3 first, then the new one comes in.
+(defn msx-page! (page old new)
+  (let (at (* page 0x4000))
+    (do (when (= old 3) (bcopy (nth msx-slots 3) at zx-mem at 0x4000))
+        (bcopy zx-mem at (nth msx-slots new) at 0x4000))))
+
+(defn msx-rom-top! ()
+  (set! zx-rom-top
+        (loop (p 3)
+          (cond (< p 0) 0
+                (!= 3 (msx-slot-of p)) (* (+ p 1) 0x4000)
+                true (recur (- p 1))))))
+
+(defn msx-select! (v)
+  (let (was (bget msx-st msx-A8))
+    (do (bset msx-st msx-A8 v)
+        (loop (p 0)
+          (when (< p 4)
+            (let (old (band (shr was (* 2 p)) 3) new (band (shr v (* 2 p)) 3))
+              (do (when (!= old new) (msx-page! p old new))
+                  (recur (+ p 1))))))
+        (msx-rom-top!))))
+
+;; A write below zx-rom-top: kept when its page shows the RAM; a ROM's is lost.
+(defn msx-low-write (a v)
+  (if (= 3 (msx-slot-of (shr a 14))) (bset zx-mem a v) nil))
+
+;; ---------------------------------------------------------------------------
+;; The VDP — TMS9918A: 0x98 data, 0x99 commands and status
+;; ---------------------------------------------------------------------------
+(defn msx-vaddr () (bor (shl (bget msx-st msx-VADDR) 8) (bget msx-st (+ msx-VADDR 1))))
+(defn msx-vaddr! (a)
+  (let (a (band a 0x3fff))
+    (do (bset msx-st msx-VADDR (shr a 8)) (bset msx-st (+ msx-VADDR 1) a))))
+
+(defn msx-vdp-write (v)
+  (let (a (msx-vaddr))
+    (do (bset msx-vram a v) (bset msx-st msx-VBUF v) (msx-vaddr! (+ a 1))
+        (bset msx-st msx-VLATCH 0))))
+
+(defn msx-vdp-read ()
+  (let (a (msx-vaddr) v (bget msx-st msx-VBUF))
+    (do (bset msx-st msx-VBUF (bget msx-vram a)) (msx-vaddr! (+ a 1))
+        (bset msx-st msx-VLATCH 0)
+        v)))
+
+;; Two bytes: the first is data; the second says what — 10rrrrrr writes register r (three
+;; bits on a TMS9918), 01aaaaaa sets the address for writing, 00aaaaaa for reading (and reads
+;; ahead).
+(defn msx-vdp-command (v)
+  (if (= 0 (bget msx-st msx-VLATCH))
+      (do (bset msx-st msx-VFIRST v) (bset msx-st msx-VLATCH 1))
+      (let (first (bget msx-st msx-VFIRST))
+        (do (bset msx-st msx-VLATCH 0)
+            (cond (!= 0 (band v 0x80))
+                    (do (bset msx-st (+ msx-VREG (band v 7)) first)
+                        (when (= 1 (band v 7)) (msx-irq!)))
+                  true
+                    (do (msx-vaddr! (bor first (shl (band v 0x3f) 8)))
+                        (when (= 0 (band v 0x40))
+                          (let (a (msx-vaddr))
+                            (do (bset msx-st msx-VBUF (bget msx-vram a)) (msx-vaddr! (+ a 1)))))))))))
+
+;; Reading the status clears the frame flag, and with it the interrupt.
+(defn msx-vdp-status ()
+  (let (s (bget msx-st msx-VSTAT))
+    (do (bset msx-st msx-VSTAT (band s 0x1f)) (bset msx-st msx-VLATCH 0) (msx-irq!) s)))
+
+;; ---------------------------------------------------------------------------
+;; The PSG — AY-3-8910: its registers, and its sound (below, msx-psg-frame). Register 14 is the
+;; joystick port: nothing plugged in.
+;; ---------------------------------------------------------------------------
+(defn msx-psg-read ()
+  (let (r (bget msx-st msx-PSGL))
+    (cond (= r 14) 0x7f
+          (< r 16) (bget msx-st (+ msx-PSG r))
+          true 0xff)))
+
+;; ---------------------------------------------------------------------------
+;; Ports
+;; ---------------------------------------------------------------------------
+(defn msx-in (port)
+  (let (p (band port 0xff))
+    (cond (= p 0x98) (msx-vdp-read)
+          (= p 0x99) (msx-vdp-status)
+          (= p 0xa9) (let (row (band (bget msx-st msx-PPIC) 0x0f)) (if (< row 11) (bget msx-mat row) 0xff))
+          (= p 0xa8) (bget msx-st msx-A8)
+          (= p 0xaa) (bget msx-st msx-PPIC)
+          (= p 0xa2) (msx-psg-read)
+          true 0xff)))
+
+(defn msx-out (port v)
+  (let (p (band port 0xff))
+    (cond (= p 0x98) (msx-vdp-write v)
+          (= p 0x99) (msx-vdp-command v)
+          (= p 0xa8) (msx-select! v)
+          (= p 0xaa) (bset msx-st msx-PPIC v)
+          ;; 0xAB sets or clears one bit of port C: 0000bbbs
+          (= p 0xab) (when (= 0 (band v 0x80))
+                       (let (bit (shl 1 (band (shr v 1) 7)) c (bget msx-st msx-PPIC))
+                         (bset msx-st msx-PPIC (if (= 1 (band v 1)) (bor c bit) (band c (bxor bit 0xff))))))
+          (= p 0xa0) (bset msx-st msx-PSGL (band v 0x0f))
+          (= p 0xa1) (let (r (bget msx-st msx-PSGL))
+                       (do (bset msx-st (+ msx-PSG r) v)
+                           (when (= r 13) (msx-env-restart!))))
+          true nil)))
+
+;; ---------------------------------------------------------------------------
+;; The keyboard: the PC keys held, onto the MSX's matrix (the international layout)
+;; ---------------------------------------------------------------------------
+(def msx-keymap                 ; code → row × 8 + bit
+  {"Digit0" 0 "Digit1" 1 "Digit2" 2 "Digit3" 3 "Digit4" 4 "Digit5" 5
+   "Digit6" 6 "Digit7" 7 "Digit8" 8 "Digit9" 9 "Minus" 10 "Equal" 11
+   "Backslash" 12 "BracketLeft" 13 "BracketRight" 14 "Semicolon" 15
+   "Quote" 16 "Backquote" 17 "Comma" 18 "Period" 19 "Slash" 20
+   "KeyA" 22 "KeyB" 23 "KeyC" 24 "KeyD" 25 "KeyE" 26 "KeyF" 27 "KeyG" 28
+   "KeyH" 29 "KeyI" 30 "KeyJ" 31 "KeyK" 32 "KeyL" 33 "KeyM" 34 "KeyN" 35
+   "KeyO" 36 "KeyP" 37 "KeyQ" 38 "KeyR" 39 "KeyS" 40 "KeyT" 41 "KeyU" 42
+   "KeyV" 43 "KeyW" 44 "KeyX" 45 "KeyY" 46 "KeyZ" 47
+   "ShiftLeft" 48 "ShiftRight" 48 "ControlLeft" 49 "ControlRight" 49
+   "AltLeft" 50 "AltRight" 52
+   "Backspace" 61 "Enter" 63 "NumpadEnter" 63
+   "Space" 64 "ArrowLeft" 68 "ArrowUp" 69 "ArrowDown" 70 "ArrowRight" 71})
+
+(defn msx-keys! (held)
+  (do (bfill msx-mat 0 11 0xff)
+      (when held
+        (for-each k (dict-keys held)
+          (let (rb (dict-get msx-keymap k))
+            (when rb
+              (let (row (shr rb 3))
+                (bset msx-mat row (band (bget msx-mat row) (bxor (shl 1 (band rb 7)) 0xff))))))))))
+
+;; ---------------------------------------------------------------------------
+;; The PSG's sound: three square waves, a noise generator and an envelope, mixed into 8-bit
+;; samples at 22,050 a second for the frame's "audio" (docs/DISPLAY.md).
+;;
+;; It runs on the PSG's clock (the Z80's halved: 29,868 cycles a frame) from event to event — a
+;; tone's edge, a noise step, an envelope step — and between two events the output can't change,
+;; so each stretch is one bfill: a few dozen a frame for music, not 368 samples. A tone above what
+;; 22,050 a second can carry (period under 6) is held high, which is what it averages to; the
+;; noise and the envelope step at most once a sample.
+;; ---------------------------------------------------------------------------
+(def msx-RATE 22050)
+(def msx-PSG-CLOCK 1789772)
+(def msx-PSG-FRAME 29868)            ; PSG cycles a frame: msx-FRAME-T / 2
+(def msx-MIN-STEP 82)                ; PSG cycles a sample, rounded up
+(def msx-pcm (make-bytes 512))
+;; the 16 volume levels, logarithmic as the chip's DAC is, scaled so three at full stay in a byte
+(def msx-vol (list 0 1 1 1 2 2 3 5 7 11 14 18 23 27 34 40))
+
+;; The PSG's running state, per machine — offsets into :psg; counts are 32-bit
+(def msx-P-CA 0) (def msx-P-CB 4) (def msx-P-CC 8)   ; cycles to each tone's next edge
+(def msx-P-CN 12)                                      ; to the noise's next step
+(def msx-P-CE 16)                                      ; to the envelope's next step
+(def msx-P-LFSR 20)                                    ; the 17-bit noise register
+(def msx-P-REM 24)                                     ; where between two samples the frame starts
+(def msx-P-LA 28) (def msx-P-LB 29) (def msx-P-LC 30)  ; each tone high (1) or low (0)
+(def msx-P-ENV 31)                                     ; the envelope's level, 0–15
+(def msx-P-EDIR 32)                                    ; 1 rising
+(def msx-P-EHOLD 33)                                   ; 1 when it has stopped
+(def msx-P-SIZE 40)
+(def msx-psg nil)
+
+(defn msx-g32 (i)
+  (bor (shl (bget msx-psg i) 24) (shl (bget msx-psg (+ i 1)) 16) (shl (bget msx-psg (+ i 2)) 8) (bget msx-psg (+ i 3))))
+(defn msx-s32! (i v)
+  (do (bset msx-psg i (shr v 24)) (bset msx-psg (+ i 1) (shr v 16))
+      (bset msx-psg (+ i 2) (shr v 8)) (bset msx-psg (+ i 3) v)))
+(defn msx-reg (r) (bget msx-st (+ msx-PSG r)))
+
+;; Writing register 13 starts the envelope again: from 15 falling, or from 0 if it attacks.
+(defn msx-env-restart! ()
+  (let (att (band (msx-reg 13) 4))
+    (do (bset msx-psg msx-P-ENV (if (= att 0) 15 0))
+        (bset msx-psg msx-P-EDIR (if (= att 0) 0 1))
+        (bset msx-psg msx-P-EHOLD 0)
+        (msx-s32! msx-P-CE (* 16 (max 1 (bor (shl (msx-reg 12) 8) (msx-reg 11))))))))   ; a whole step first
+
+;; A tone's half period in PSG cycles; 0 when it is too high to hear, and held.
+(defn msx-tone-half (ch)
+  (let (tp (max 1 (bor (shl (band (msx-reg (+ (* ch 2) 1)) 15) 8) (msx-reg (* ch 2)))))
+    (if (< tp 6) 0 (* 8 tp))))
+
+;; One envelope step, following register 13's shape: CONTinue, ATTack, ALTernate, HOLD.
+(defn msx-env-step! ()
+  (when (= 0 (bget msx-psg msx-P-EHOLD))
+    (let (shape (msx-reg 13) up (= 1 (bget msx-psg msx-P-EDIR))
+          v (+ (bget msx-psg msx-P-ENV) (if up 1 -1)))
+      (if (and (>= v 0) (<= v 15))
+          (bset msx-psg msx-P-ENV v)
+          ;; the end of a ramp
+          (cond (= 0 (band shape 8)) (do (bset msx-psg msx-P-ENV 0) (bset msx-psg msx-P-EHOLD 1))
+                (!= 0 (band shape 1))
+                  (do (bset msx-psg msx-P-ENV (if (= (!= 0 (band shape 2)) up) 0 15))
+                      (bset msx-psg msx-P-EHOLD 1))
+                (!= 0 (band shape 2))
+                  (do (bset msx-psg msx-P-EDIR (if up 0 1)) (bset msx-psg msx-P-ENV (if up 15 0)))
+                true (bset msx-psg msx-P-ENV (if up 0 15)))))))
+
+;; The sample the three channels make now.
+(defn msx-psg-level (mixer noise)
+  (loop (ch 0 acc 128)
+    (if (= ch 3)
+        acc
+        (let (vr (msx-reg (+ 8 ch))
+              amp (nth msx-vol (if (= 0 (band vr 16)) (band vr 15) (bget msx-psg msx-P-ENV))))
+          (if (= amp 0)
+              (recur (+ ch 1) acc)
+              (let (tone-on (= 0 (band mixer (shl 1 ch)))
+                    noise-on (= 0 (band mixer (shl 8 ch)))
+                    out (and (or (not tone-on) (= 1 (bget msx-psg (+ msx-P-LA ch))))
+                             (or (not noise-on) (= 1 noise))))
+                (recur (+ ch 1) (if out (+ acc amp) (- acc amp)))))))))
+
+;; Whether anything can be heard: a channel with a volume, its tone or noise on.
+(defn msx-psg-audible? ()
+  (let (mixer (msx-reg 7))
+    (loop (ch 0)
+      (cond (= ch 3) false
+            ;; a volume of 0, or the envelope's once it has faded out and stopped, is silence
+            (and (!= 0 (msx-reg (+ 8 ch)))
+                 (or (= 0 (band (msx-reg (+ 8 ch)) 16))
+                     (= 0 (bget msx-psg msx-P-EHOLD))
+                     (!= 0 (bget msx-psg msx-P-ENV)))
+                 (or (= 0 (band mixer (shl 1 ch))) (= 0 (band mixer (shl 8 ch))))) true
+            true (recur (+ ch 1))))))
+
+;; This frame's samples, as base64 — or nil when the PSG is silent.
+(defn msx-psg-frame ()
+  (let (rem (msx-g32 msx-P-REM)
+        total (+ rem (* msx-PSG-FRAME msx-RATE))
+        n (floor (/ total msx-PSG-CLOCK))
+        mixer (msx-reg 7)
+        audible (msx-psg-audible?)
+        halves (list (msx-tone-half 0) (msx-tone-half 1) (msx-tone-half 2))
+        big 0x7fffffff
+        ;; the noise and the envelope step only when a channel listens to them
+        noisy (or (and (= 0 (band mixer 8)) (!= 0 (msx-reg 8)))
+                  (and (= 0 (band mixer 16)) (!= 0 (msx-reg 9)))
+                  (and (= 0 (band mixer 32)) (!= 0 (msx-reg 10))))
+        enveloped (or (!= 0 (band (msx-reg 8) 16)) (!= 0 (band (msx-reg 9) 16)) (!= 0 (band (msx-reg 10) 16)))
+        nstep (if noisy (max msx-MIN-STEP (* 16 (max 1 (band (msx-reg 6) 31)))) big)
+        estep (if enveloped (max msx-MIN-STEP (* 16 (max 1 (bor (shl (msx-reg 12) 8) (msx-reg 11))))) big))
+    (do
+      ;; a tone too high to hear is held high
+      (loop (ch 0)
+        (when (< ch 3)
+          (do (when (= 0 (nth halves ch)) (bset msx-psg (+ msx-P-LA ch) 1))
+              (recur (+ ch 1)))))
+      ;; silent: nothing to make, and nothing that matters moves on
+      (when audible
+      (loop (t 0 s 0
+             ca (msx-g32 msx-P-CA) cb (msx-g32 msx-P-CB) cc (msx-g32 msx-P-CC)
+             cn (min nstep (msx-g32 msx-P-CN)) ce (min estep (msx-g32 msx-P-CE)))
+        (let (ta (if (= 0 (nth halves 0)) big ca)
+              tb (if (= 0 (nth halves 1)) big cb)
+              tc (if (= 0 (nth halves 2)) big cc)
+              next (min ta tb tc cn ce (- msx-PSG-FRAME t))
+              t2 (+ t next)
+              s2 (min n (floor (/ (+ rem (* t2 msx-RATE)) msx-PSG-CLOCK))))
+          (do
+            (when (> s2 s)
+              (bfill msx-pcm s (- s2 s) (msx-psg-level mixer (band (msx-g32 msx-P-LFSR) 1))))
+            (if (>= t2 msx-PSG-FRAME)
+                ;; a count waiting on nothing (a held tone, a noise no one hears) stays at 0
+                (do (msx-s32! msx-P-CA (max 0 (- ca next))) (msx-s32! msx-P-CB (max 0 (- cb next)))
+                    (msx-s32! msx-P-CC (max 0 (- cc next)))
+                    (msx-s32! msx-P-CN (if noisy (max 0 (- cn next)) 0))
+                    (msx-s32! msx-P-CE (if enveloped (max 0 (- ce next)) 0)))
+                (do
+                  ;; whatever is due now steps, and starts its next wait
+                  (when (= ta next) (bset msx-psg msx-P-LA (- 1 (bget msx-psg msx-P-LA))))
+                  (when (= tb next) (bset msx-psg msx-P-LB (- 1 (bget msx-psg msx-P-LB))))
+                  (when (= tc next) (bset msx-psg msx-P-LC (- 1 (bget msx-psg msx-P-LC))))
+                  (when (= cn next)
+                    (let (l (msx-g32 msx-P-LFSR))
+                      (msx-s32! msx-P-LFSR (bor (shr l 1) (shl (band (bxor l (shr l 3)) 1) 16)))))
+                  (when (= ce next) (msx-env-step!))
+                  (recur t2 s2
+                         (if (= ta next) (nth halves 0) (max 0 (- ca next)))
+                         (if (= tb next) (nth halves 1) (max 0 (- cb next)))
+                         (if (= tc next) (nth halves 2) (max 0 (- cc next)))
+                         (if (= cn next) nstep (- cn next))
+                         (if (= ce next) estep (- ce next))))))))))
+      (msx-s32! msx-P-REM (mod total msx-PSG-CLOCK))
+      (when audible (bytes->base64 msx-pcm 0 n)))))
+
+;; ---------------------------------------------------------------------------
+;; The machine
+;; ---------------------------------------------------------------------------
+(defn msx-bytes (data) (if (string? data) (base64->bytes data) data))
+
+;; zx-rom-top is the Z80's, and a Spectrum in the same engine needs it back as it was: every
+;; entry point here that moves it puts it back when it's done.
+(defn msx-back (saved v) (do (set! zx-rom-top saved) v))
+
+(defn msx-use (m)
+  (do (zx-use m)
+      (set! msx-st (dict-get m :st))
+      (set! msx-vram (dict-get m :vram))
+      (set! msx-slots (dict-get m :slots))
+      (set! msx-mat (dict-get m :mat))
+      (set! msx-psg (dict-get m :psg))
+      (msx-rom-top!)
+      (msx-irq!)
+      m))
+
+(defn msx-new (main logo)
+  (let (bios (make-bytes 65536 0xff)
+        m {:mem (make-bytes 65536 0xff) :reg (make-bytes zx-REGS) :keys (make-bytes 8 0xff)
+           :st (make-bytes msx-ST) :vram (make-bytes 16384) :mat (make-bytes 11 0xff)
+           :psg (make-bytes msx-P-SIZE)
+           :slots (list bios (make-bytes 65536 0xff) (make-bytes 65536 0xff) (make-bytes 65536))
+           :in msx-in :out msx-out :low-write msx-low-write})
+    (do (when main (let (b (msx-bytes main)) (bcopy bios 0 b 0 (min 0x8000 (bytes-len b)))))
+        (when logo (let (b (msx-bytes logo)) (bcopy bios 0x8000 b 0 (min 0x4000 (bytes-len b)))))
+        (msx-reset m))))
+
+;; A cartridge in slot 1. Up to 32 KB, at 0x4000 — where nearly every one starts; one of 16 KB
+;; or less shows again at 0x8000, as a cartridge that decodes no more address lines does.
+;; (Bigger ones, with a mapper, are for later.)
+(defn msx-insert (m rom)
+  (let (b (msx-bytes rom) n (bytes-len b) cart (nth (dict-get m :slots) 1))
+    (do (bfill cart 0 65536 0xff)
+        (cond (> n 0x8000) (str "msx-insert: " n " bytes — a cartridge with a mapper isn't supported yet (32 KB at most)")
+              (> n 0x4000) (do (bcopy cart 0x4000 b 0 n) true)
+              true (loop (at 0x4000)
+                     (if (>= at 0xc000)
+                         true
+                         (do (bcopy cart at b 0 (min n 0x4000)) (recur (+ at (max n 0x2000))))))))))
+
+(defn msx-reset (m)
+  (let (saved zx-rom-top)
+  (do (zx-use m)
+      (let (st (dict-get m :st) reg (dict-get m :reg))
+        (do (bfill st 0 msx-ST 0)
+            (bfill reg 0 zx-REGS 0)
+            (bfill (dict-get m :vram) 0 16384 0)
+            (bfill (dict-get m :psg) 0 msx-P-SIZE 0)
+            (bfill (nth (dict-get m :slots) 3) 0 65536 0)
+            ;; every page on slot 0, the BIOS: it finds the RAM itself
+            (bcopy (dict-get m :mem) 0 (nth (dict-get m :slots) 0) 0 65536)
+            (msx-use m)
+            (msx-s32! msx-P-LFSR 1)
+            (bset msx-st (+ msx-PSG 7) 0xff)     ; the mixer: everything off
+            (zx-rr! zx-SP 0xf000) (zx-r! zx-A 0xff) (zx-r! zx-F 0xff)
+            (msx-back saved m)))))))
+
+(defn msx-frame (m held)
+  (let (saved zx-rom-top)
+  (do (msx-use m)
+      (msx-keys! held)
+      (let (end (loop (t (zx-r zx-TCARRY))
+                  (cond (>= t msx-FRAME-T) t
+                        ;; halted, with no interrupt to wake it: nothing more this frame
+                        (and (= 1 (zx-r zx-HALT)) (not msx-irq)) msx-FRAME-T
+                        true (recur (+ t (zx-exec msx-irq))))))
+        (do (zx-r! zx-TCARRY (- end msx-FRAME-T))
+            (zx-r! zx-FRAME (+ (zx-r zx-FRAME) 1))
+            ;; the frame is drawn: the VDP raises its flag, and the interrupt if it's on
+            (bset msx-st msx-VSTAT (bor (bget msx-st msx-VSTAT) 0x80))
+            (msx-irq!)
+            (let (pcm (msx-psg-frame))
+              (msx-back saved
+                {"kind" "tms9918"
+                 "vram" (bytes->base64 msx-vram)
+                 "regs" (bytes->base64 msx-st msx-VREG 8)
+                 "frame" (zx-r zx-FRAME)
+                 "audio" (when pcm {"rate" msx-RATE "pcm" pcm})}))))))))
+
+(defn msx-vpeek (m a) (bget (dict-get m :vram) (band a 0x3fff)))
+(defn msx-vpoke (m a v) (bset (dict-get m :vram) (band a 0x3fff) v))

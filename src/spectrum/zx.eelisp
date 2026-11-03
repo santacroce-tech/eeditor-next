@@ -52,6 +52,13 @@
 (def zx-keys nil)
 ;; Writes below this address are ignored — the 16K ROM. A test machine sets it to 0.
 (def zx-rom-top 0x4000)
+;; Another machine on this Z80 (src/msx/msx.eelisp) lends these, through zx-use: its ports, and
+;; what a write below zx-rom-top does — its paging, a cartridge's bank switch. nil is the Spectrum.
+;; They are looked at only on a port access or a write below zx-rom-top, so the Spectrum's hot
+;; path doesn't change.
+(def zx-io-in nil)
+(def zx-io-out nil)
+(def zx-low-write nil)
 
 ;; ---------------------------------------------------------------------------
 ;; Lookup tables
@@ -81,7 +88,10 @@
 
 (defn zx-rd (a) (bget zx-mem (band a 0xffff)))
 (defn zx-wr (a v)                                       ; the ROM ignores writes
-  (let (a (band a 0xffff)) (if (< a zx-rom-top) nil (bset zx-mem a v))))
+  (let (a (band a 0xffff))
+    (if (< a zx-rom-top)
+        (if zx-low-write (zx-low-write a v) nil)
+        (bset zx-mem a v))))
 (defn zx-rd16 (a) (bor (zx-rd a) (shl (zx-rd (+ a 1)) 8)))
 (defn zx-wr16 (a v) (do (zx-wr a v) (zx-wr (+ a 1) (shr v 8))))
 
@@ -204,18 +214,21 @@
 ;; The ULA: keyboard in, border and beeper out
 ;; ---------------------------------------------------------------------------
 (defn zx-in (port)
-  (if (= 0 (band port 1))
+  (cond
+    zx-io-in (zx-io-in port)
+    (= 0 (band port 1))
       (let (hi (shr port 8))              ; each 0 bit of the high byte selects a half-row
         (loop (i 0 acc 0x1f)
           (if (= i 8)
               (bor acc 0xa0)
               (recur (+ i 1) (if (= 0 (band hi (shl 1 i))) (band acc (bget zx-keys i)) acc)))))
-      0xff))
+    true 0xff))
 
 (defn zx-out (port v)
-  (if (= 0 (band port 1))
-      (do (zx-r! zx-BORDER (band v 7)) (zx-r! zx-BEEP (band v 0x10)))
-      nil))
+  (cond
+    zx-io-out (zx-io-out port v)
+    (= 0 (band port 1)) (do (zx-r! zx-BORDER (band v 7)) (zx-r! zx-BEEP (band v 0x10)))
+    true nil))
 
 ;; ---------------------------------------------------------------------------
 ;; The decoder. zx-decode returns the handler for one opcode, with HL meaning the pair at
@@ -579,6 +592,9 @@
   (do (set! zx-mem (dict-get m :mem))
       (set! zx-reg (dict-get m :reg))
       (set! zx-keys (dict-get m :keys))
+      (set! zx-io-in (dict-get m :in))
+      (set! zx-io-out (dict-get m :out))
+      (set! zx-low-write (dict-get m :low-write))
       m))
 
 (defn zx-new ()
@@ -590,6 +606,7 @@
 
 (defn zx-frame (m keys)
   (do (zx-use m)
+      (set! zx-rom-top 0x4000)           ; the 48K's map, whatever another machine left (src/msx)
       (zx-feed)
       (cond (string? keys) (bcopy zx-keys 0 (base64->bytes keys) 0 8)
             (nil? keys) nil

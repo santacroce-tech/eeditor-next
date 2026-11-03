@@ -24,7 +24,7 @@ Cost: **S** a day or less · **M** a few days · **L** a week or more. *Engine* 
 | 12 | [Refreshing with the app closed](#12-refreshing-with-the-app-closed) | app | L | **No** |
 | 13 | [A built-in stock price source](#13-a-built-in-stock-price-source) | — | — | **No** |
 | 14 | [Whole rows, and a formula knowing its own cell](#14-whole-rows-and-a-formula-knowing-its-own-cell) | engine | M | Not until asked |
-| 15 | [An easter egg: a raycaster in EELisp](#15-an-easter-egg-a-raycaster-in-eelisp) | app | M | Someday |
+| 15 | [An easter egg: a raycaster in EELisp](#15-an-easter-egg-a-raycaster-in-eelisp) | app | M | **Done** — `Raycaster.eeform` |
 | 16 | [Small engine fixes found by the book](#16-small-engine-fixes-found-by-the-book) | engine | S each | **Done** — eelisp-rs#22, #26 |
 
 What sheets in particular still lack — formatting, the grid, sheets as first-class files — has its
@@ -225,6 +225,11 @@ A Wolfenstein-style maze drawn by EELisp on the screen control the ZX Spectrum f
 hundred multiplications a column, which the engine can do at a playable rate; DOOM proper (BSP
 maps, WAD files) is out of reach for an interpreter. **Someday** — it's fun, it shows off the
 engine, and nothing depends on it.
+
+**Done** as an example rather than a hidden command: `workspace/examples/Raycaster.eeform`, on the
+screen control made general (`docs/DISPLAY.md`) — 320×200 indexed, not the Spectrum's resolution,
+with textured walls, sliding doors and sprites, at 35 frames a second; a frame costs the engine
+about 10 ms.
 
 ---
 
