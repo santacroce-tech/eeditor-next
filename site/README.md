@@ -7,6 +7,7 @@ index.html      home
 download.html   installers + first-run instructions
 manual.html     the full manual
 tutorial.html   guided first hour
+msx.html        make an MSX game (from docs/msx/TUTORIAL.md)
 privacy.html    privacy policy
 terms.html      terms of use
 assets/style.css   every page's styles — edit here, not in the pages
@@ -35,7 +36,16 @@ them after changing the examples or the runtime, and refresh the downloadable co
 npm run engine:wasm && npm run runtime:template
 npm run export-app -- workspace/examples/Office.eeform -o site/apps/Office.html
 npm run export-app -- workspace/examples/Functions.eeform -o site/apps/Functions.html
+for f in Display Raycaster MSX; do npm run export-app -- workspace/examples/$f.eeform -o site/apps/$f.html; done
 cp workspace/examples/*.eeform site/examples/
+```
+
+`msx.html` is made from `docs/msx/TUTORIAL.md`, and its downloads are copies of the tutorial's
+sources and the assembler. After changing any of them:
+
+```bash
+node scripts/site-msx-page.mjs
+```
 ```
 
 ## Deploying

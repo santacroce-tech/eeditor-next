@@ -90,4 +90,15 @@ end:    db "Hi", 'x', 1, -1
       expect([r.origin, r.bytes.length, r.bytes[0], r.bytes[1]], f).toEqual([0x4000, 0x4000, 0x41, 0x42]);
     }
   });
+
+  it("the MSX form's Snake button carries snake.asm as it is now", () => {
+    const form = readFileSync(fileURLToPath(new URL("../workspace/examples/MSX.eeform", import.meta.url)), "utf8");
+    const def = form.slice(form.indexOf("(def msxapp-snake-cart"));
+    const carried = [...def.slice(0, def.indexOf(")))")).matchAll(/"([A-Za-z0-9+/=]+)"/g)].map((m) => m[1]).join("");
+    const r = assemble(readFileSync(fileURLToPath(new URL("../docs/msx/snake/snake.asm", import.meta.url)), "utf8"));
+    let end = r.bytes.length;
+    while (r.bytes[end - 1] === 0xff) end--;
+    // if this fails: node dev/z80asm.mjs docs/msx/snake/snake.asm --base64, into the form
+    expect(carried).toBe(Buffer.from(r.bytes.subarray(0, end)).toString("base64"));
+  });
 });

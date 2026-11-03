@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Make an MSX game — EEditor</title>
+<meta name="description" content="A snake game for the MSX1 in Z80 assembly, in five steps — each a cartridge that runs in your browser, in EEditor's MSX.">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<!-- Made from docs/msx/TUTORIAL.md in the repository: change that, then make this again. -->
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="/">e<span class="lam">λ</span>e EEditor</a>
+    <div class="nav-links">
+      <a href="index.html#features">Features</a>
+      <a href="manual.html">Manual</a>
+      <a href="tutorial.html">Tutorial</a>
+      <a href="manual.html#form-examples">Examples</a>
+      <a href="index.html#try">Try it</a>
+      <a href="https://eelisp.app">EELisp</a>
+      <a href="download.html">Download</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" style="padding:56px 0 32px">
+  <div class="wrap">
+    <h1>Making an MSX game — a snake, step by step</h1>
+    <p class="lede">This tutorial builds a complete game for the MSX1 in Z80 assembly. It&#39;s a snake game: you steer
+with the cursor keys, eat apples, grow longer and speed up, and the game ends when you hit a wall
+or yourself. The result is an ordinary 16 KB cartridge. It runs in <code>MSX.eeform</code> and also on a real
+MSX or in openMSX.</p>
+    <p><a class="btn" href="apps/MSX.html">Play it first — MSX → Snake</a></p>
+  </div>
+</header>
+
+<div class="doc">
+
+<section id="the-five-steps">
+  <div class="wrap"><div class="prose">
+<h2>The five steps</h2>
+
+<p><img class="shot" width="512" src="assets/msx/snake.png" alt="The finished game"></p>
+<p>It takes five steps. Each one is a complete program in <a href="https://github.com/santacroce-tech/eeditor-next/tree/main/docs/msx/snake"><code>docs/msx/snake/</code></a> that you can
+build and run:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Step</th>
+<th>File</th>
+<th>What it adds</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td><a href="examples/msx/step1.asm" download><code>step1.asm</code></a></td>
+<td>A cartridge that boots and prints &quot;Hello, MSX!&quot;</td>
+</tr>
+<tr>
+<td>2</td>
+<td><a href="examples/msx/step2.asm" download><code>step2.asm</code></a></td>
+<td>Our own tiles: bricks, the snake, an apple; the playing field and the score</td>
+</tr>
+<tr>
+<td>3</td>
+<td><a href="examples/msx/step3.asm" download><code>step3.asm</code></a></td>
+<td>The snake moves, steers and crashes</td>
+</tr>
+<tr>
+<td>4</td>
+<td><a href="examples/msx/step4.asm" download><code>step4.asm</code></a></td>
+<td>Apples: eating, growing, the score, speeding up</td>
+</tr>
+<tr>
+<td>5</td>
+<td><a href="examples/msx/snake.asm" download><code>snake.asm</code></a></td>
+<td>Sound, a title screen, the best score, playing again</td>
+</tr>
+</tbody></table></div>
+  </div></div>
+</section>
+
+<section id="what-you-need" class="alt">
+  <div class="wrap"><div class="prose">
+<h2>What you need</h2>
+<ul>
+<li><p><strong>The MSX</strong>: <a href="apps/MSX.html">the MSX app</a>, right here in your browser — or <code>MSX.eeform</code> in
+EEditor (<a href="examples/MSX.eeform">download</a>). <strong>Load cartridge…</strong> takes a <code>.rom</code>; click the screen
+so it gets the keys. <strong>Snake</strong> plays the finished game.</p>
+</li>
+<li><p><strong>The assembler</strong>: <a href="examples/msx/z80asm.mjs">z80asm.mjs</a>, one file with nothing else needed but
+<a href="https://nodejs.org">Node.js</a>. It turns a <code>.asm</code> file into a <code>.rom</code>:</p>
+<pre><code>node z80asm.mjs step1.asm          → step1.rom
+node z80asm.mjs step1.asm -l       the same, and a listing: address, bytes, source
+</code></pre>
+<p>It takes the usual Z80 source syntax, close to sjasmplus&#39;s.</p>
+</li>
+<li><p><strong>The source</strong> of each step, below.</p>
+</li>
+</ul>
+<p>So the loop is: <strong>edit → <code>node z80asm.mjs</code> → Load cartridge…</strong>. After you rebuild, load the
+new <code>.rom</code> again; <strong>Reset</strong> restarts the cartridge that&#39;s already loaded.</p>
+  </div></div>
+</section>
+
+<section id="what-an-msx-is-in-brief">
+  <div class="wrap"><div class="prose">
+<h2>What an MSX is, in brief</h2>
+<p>It&#39;s a Z80 at 3.58 MHz with 64 KB of address space in four 16 KB pages:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Address</th>
+<th>What&#39;s there when our cartridge runs</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>0x0000–0x3FFF</code></td>
+<td>The <strong>BIOS</strong> ROM: routines we can <code>CALL</code> (clear the screen, read the keys, make sound…)</td>
+</tr>
+<tr>
+<td><code>0x4000–0x7FFF</code></td>
+<td><strong>Our cartridge</strong></td>
+</tr>
+<tr>
+<td><code>0x8000–0xBFFF</code></td>
+<td>Nothing we&#39;ll use</td>
+</tr>
+<tr>
+<td><code>0xC000–0xFFFF</code></td>
+<td><strong>RAM</strong>. The BIOS keeps its variables and the stack at the top (from <code>0xF380</code>); we use <code>0xE000–0xE20F</code></td>
+</tr>
+</tbody></table></div>
+<p>The picture comes from a separate chip, the <strong>TMS9918A VDP</strong>. It has 16 KB of video memory of its
+own, which the Z80 can&#39;t see directly. To reach it, the Z80 sends an address to I/O port <code>0x99</code>,
+then reads or writes bytes through port <code>0x98</code>. The address moves on by one after each byte.</p>
+<p>The sound comes from a third chip, the <strong>AY-3-8910 PSG</strong>. It has three tone channels, a noise
+generator and an envelope, all controlled by 14 registers.</p>
+  </div></div>
+</section>
+
+<section id="step-1-a-cartridge-that-says-hello" class="alt">
+  <div class="wrap"><div class="prose">
+<h2>Step 1 — a cartridge that says hello</h2>
+<p><a href="examples/msx/step1.asm" download><code>step1.asm</code></a></p>
+<h3>The header</h3>
+<p>When the MSX starts, the BIOS looks in each slot for the letters <code>AB</code>. If it finds them at
+<code>0x4000</code>, it calls the address stored right after them:</p>
+<pre><code>         org 0x4000             <span class="cm">; the bytes that follow go at 0x4000</span>
+         db "AB"
+         dw start               <span class="cm">; where our program starts</span>
+         ds 12                  <span class="cm">; the rest of the 16-byte header: unused</span>
+</code></pre>
+<h3>Calling the BIOS</h3>
+<p>The BIOS has an entry point for each routine at a fixed address, the same on every MSX. We give
+them names with <code>equ</code>:</p>
+<pre><code>CHGCLR   equ 0x0062     <span class="cm">; set the screen's colours from FORCLR, BAKCLR and BDRCLR</span>
+INIT32   equ 0x006F     <span class="cm">; SCREEN 1: 32×24 tiles of 8×8 pixels</span>
+FORCLR   equ 0xF3E9     <span class="cm">; the BIOS's colour variables, in RAM</span>
+</code></pre>
+<pre><code>start:   ld a,15                <span class="cm">; white letters</span>
+         ld (FORCLR),a
+         ld a,4                 <span class="cm">; on dark blue</span>
+         ld (BAKCLR),a
+         ld (BDRCLR),a
+         call CHGCLR
+         call INIT32            <span class="cm">; SCREEN 1, the font loaded, the screen cleared</span>
+</code></pre>
+<p>The MSX has 16 colours, numbered 0–15: 1 black, 4 dark blue, 15 white, and so on. You can see all
+16 in <code>TMS_PALETTE</code> in <code>src/display/tms9918.ts</code>.</p>
+<h3>SCREEN 1</h3>
+<p>The whole game uses <strong>SCREEN 1</strong>, &quot;Graphics I&quot; in the chip&#39;s own terms. The screen is a grid of
+32×24 cells, and each cell shows one of 256 tiles of 8×8 pixels. Three tables in video memory
+make the picture:</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Table</th>
+<th>Address</th>
+<th>Size</th>
+<th>What</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Patterns</td>
+<td><code>0x0000</code></td>
+<td>256 × 8 bytes</td>
+<td>Each tile&#39;s pixels: a byte per row, a 1 bit is ink</td>
+</tr>
+<tr>
+<td>Names</td>
+<td><code>0x1800</code></td>
+<td>32 × 24 bytes</td>
+<td>Which tile each cell shows, row by row</td>
+</tr>
+<tr>
+<td>Colours</td>
+<td><code>0x2000</code></td>
+<td>32 bytes</td>
+<td>The colours of each group of 8 tiles: ink × 16 + paper</td>
+</tr>
+</tbody></table></div>
+<p><code>INIT32</code> loads the font into the patterns, so tile 65 is a letter <code>A</code>. To put a letter on the
+screen, we write its code into the names table. The cell at column x, row y is at
+<code>0x1800 + y*32 + x</code>.</p>
+<h3>Writing to the video chip</h3>
+<pre><code>setwrite:
+         di
+         ld a,l
+         out (VDP_CTRL),a       <span class="cm">; the address's low byte…</span>
+         ld a,h
+         or 0x40                <span class="cm">; …then the high byte, with 01 in the top bits: for writing</span>
+         out (VDP_CTRL),a
+         ei
+         ret
+</code></pre>
+<p>After this, each <code>out (VDP_DATA),a</code> writes a byte and moves the address on. <code>print</code> uses it to
+write a string that ends in 0, starting at cell DE.</p>
+<p>Why <code>di</code>/<code>ei</code>? Sixty times a second the video chip interrupts the Z80, and the BIOS&#39;s interrupt
+handler reads the chip&#39;s status. That read resets the chip&#39;s &quot;first or second byte?&quot; latch. If
+the interrupt came between our two bytes, the chip would take our second byte as a first one.
+So the two <code>out</code>s go with interrupts off.</p>
+<h3>Doing nothing, properly</h3>
+<pre><code>forever: ei
+         halt                   <span class="cm">; wait for the next frame, for ever</span>
+         jr forever
+</code></pre>
+<p><code>halt</code> stops the Z80 until the next interrupt, which arrives at the start of every frame, 60 times
+a second. A game&#39;s main loop is exactly this, with work between the <code>halt</code>s. It&#39;s how the game
+keeps time.</p>
+<p>Build it, load it, and the screen says hello.</p>
+  </div></div>
+</section>
+
+<section id="step-2-tiles-of-our-own">
+  <div class="wrap"><div class="prose">
+<h2>Step 2 — tiles of our own</h2>
+<p><a href="examples/msx/step2.asm" download><code>step2.asm</code></a></p>
+<p>From this step on, the constants for the whole game are at the top of the file: every BIOS
+routine, the video tables, and our variables in RAM.</p>
+<h3>Drawing tiles</h3>
+<p>A tile is 8 bytes, one per row, with the leftmost pixel in the top bit. Here&#39;s the head:</p>
+<pre><code>         db 0b00111100          <span class="cm">;   ####</span>
+         db 0b01111110          <span class="cm">;  ######</span>
+         db 0b11011011          <span class="cm">; ## ## ##   the eyes are paper</span>
+         db 0b11011011
+         db 0b11111111
+         db 0b11111111
+         db 0b01111110
+         db 0b00111100
+</code></pre>
+<h3>Why the tiles are 0x80, 0x88, 0x90 and 0x98</h3>
+<p>In SCREEN 1, <strong>colours belong to groups of eight tiles</strong>. Tiles 0–7 share colour byte 0, tiles
+8–15 share byte 1, and so on. To give each of our tiles its own colours, each goes at the start
+of its own group:</p>
+<pre><code>EMPTY    equ ' '            <span class="cm">; the font's space</span>
+WALL     equ 0x80           <span class="cm">; group 16</span>
+BODY     equ 0x88           <span class="cm">; group 17</span>
+HEAD     equ 0x90           <span class="cm">; group 18</span>
+APPLE    equ 0x98           <span class="cm">; group 19</span>
+
+colours: db 0x6E            <span class="cm">; wall: ink 6 (dark red), paper 14 (grey)</span>
+         db 0x21            <span class="cm">; body: green on black</span>
+         db 0x31            <span class="cm">; head: light green</span>
+         db 0x81            <span class="cm">; apple: red</span>
+</code></pre>
+<p>Tiles 0x80–0x9F are font characters we don&#39;t need, so we draw over them. <code>LDIRVM</code> is the BIOS&#39;s
+&quot;copy memory to video memory&quot;: it copies BC bytes from HL to DE. One call per tile puts the
+pixels in (that&#39;s the <code>.tile</code> loop), and one call puts the four colours at <code>0x2000 + 0x80/8</code>.</p>
+<h3>The field</h3>
+<p><code>field</code> fills the screen with spaces (<code>FILVRM</code>), then draws the walls: two full rows with
+<code>FILVRM</code> and the two sides cell by cell with <code>put</code>. <code>put</code> puts tile A on cell HL. Then it writes
+<code>SCORE</code> and <code>HI</code>.</p>
+<h3>Numbers on the screen: BCD</h3>
+<p>The score is kept in <strong>BCD</strong>, binary-coded decimal: each 4 bits hold one decimal digit, so the
+score 1234 is the two bytes <code>0x34 0x12</code>. That makes printing easy, because each nibble plus <code>&#39;0&#39;</code>
+is a digit, with no division needed (<code>bcd</code>). Adding to a BCD number is easy too, as step 4 shows.</p>
+<p>A label that starts with <code>.</code>, like <code>.two</code> in <code>bcd</code> or <code>.side</code> in <code>field</code>, is <strong>local</strong>: it
+belongs to the label above it, so every routine can have its own <code>.loop</code> without a clash.</p>
+  </div></div>
+</section>
+
+<section id="step-3-the-snake-moves" class="alt">
+  <div class="wrap"><div class="prose">
+<h2>Step 3 — the snake moves</h2>
+<p><a href="examples/msx/step3.asm" download><code>step3.asm</code></a></p>
+<h3>Where the snake is: a ring</h3>
+<p>The snake is a list of cells, from its tail to its head. Each step, a new cell goes on at the
+head and one comes off at the tail. A <strong>ring buffer</strong> does this without moving anything: 256
+entries of 2 bytes at <code>RING</code>, and two one-byte indexes. <code>HEADI</code> is the head&#39;s entry and <code>TAILI</code>
+the tail&#39;s. Moving means <code>inc</code> on each index, and because they&#39;re bytes, 255 wraps round to 0 by
+itself. <code>ringat</code> turns an index into the entry&#39;s address.</p>
+<p>A cell is a number from 0 to 767 (<code>y*32 + x</code>). That makes moving a single addition: +1 is right,
+−1 left, +32 down, −32 up. <code>DIR</code> holds the one we&#39;re going in.</p>
+<h3>Time</h3>
+<p>The main loop runs once per frame. The snake moves only once every <code>SPEED</code> frames, counted down in
+<code>TIMER</code>. With 8 frames per step that&#39;s 7.5 cells a second:</p>
+<pre><code>play:    ei
+         halt                   <span class="cm">; the next frame</span>
+         call steer             <span class="cm">; read the keys every frame…</span>
+         ld hl,TIMER
+         dec (hl)
+         jr nz,play             <span class="cm">; …but move only when the timer runs out</span>
+         ld a,(SPEED)
+         ld (TIMER),a
+         call step
+         jr nc,play             <span class="cm">; no carry: still alive</span>
+</code></pre>
+<h3>Steering</h3>
+<p><code>GTSTCK</code> with A=0 reads the cursor keys as a direction: 1 up, 3 right, 5 down, 7 left (and the
+diagonals in between). <code>steer</code> turns that into a step and keeps it in <code>WANT</code>. It doesn&#39;t go into
+<code>DIR</code> straight away: <code>step</code> takes it only if it isn&#39;t the exact opposite of <code>DIR</code>, which would
+send the snake into its own neck. A direction plus its opposite is 0, so that&#39;s the test:</p>
+<pre><code>step:    ld hl,(WANT)
+         ld de,(DIR)
+         add hl,de              <span class="cm">; a direction and its opposite add up to 0</span>
+         ld a,h
+         or l
+         jr z,.ahead            <span class="cm">; straight back: ignore it</span>
+</code></pre>
+<h3>Moving, and crashing</h3>
+<p>Each step:</p>
+<ol>
+<li>The head&#39;s cell becomes <code>BODY</code>.</li>
+<li>The next cell is the head&#39;s cell + <code>DIR</code>.</li>
+<li><code>get</code> reads the tile on that cell from the names table (<code>setread</code>, then <code>in a,(VDP_DATA)</code>).
+The screen is our map: if the cell isn&#39;t <code>EMPTY</code>, we&#39;ve hit a wall or ourselves. We return
+with the carry flag set.</li>
+<li>Otherwise <code>HEAD</code> goes on the new cell, and the cell is added at <code>HEADI</code>.</li>
+<li>The tail&#39;s cell becomes <code>EMPTY</code>, and <code>TAILI</code> moves on.</li>
+</ol>
+<p>When <code>step</code> returns with the carry set, the main loop prints <code>GAME OVER</code> and stops.</p>
+  </div></div>
+</section>
+
+<section id="step-4-apples">
+  <div class="wrap"><div class="prose">
+<h2>Step 4 — apples</h2>
+<p><a href="examples/msx/step4.asm" download><code>step4.asm</code></a></p>
+<h3>Random numbers</h3>
+<p>The Z80 has no random-number instruction. <code>random</code> is a 16-bit <strong>xorshift</strong>: a few shifts and
+XORs that walk through all 65,535 non-zero values in a scrambled order. In this step <code>SEED</code> always
+starts at 1, so every game has the same apples. Step 5 fixes that.</p>
+<h3>Putting an apple down</h3>
+<p><code>apple</code> picks a random cell and keeps trying until the cell is empty and on the field:</p>
+<pre><code>apple:   call random
+         ld a,h
+         and 3
+         ld h,a                 <span class="cm">; 0–1023</span>
+         cp 3
+         jr z,apple             <span class="cm">; 768 and over: off the screen</span>
+         …                      <span class="cm">; rows 0 and 1 (the score, the top wall): try again</span>
+.on      call get
+         cp EMPTY
+         jr nz,apple            <span class="cm">; something's there: try again</span>
+         ld a,APPLE
+         jp put
+</code></pre>
+<h3>Eating</h3>
+<p>In <code>step</code>, if the next cell holds <code>APPLE</code>, we call <code>eat</code> before moving on:</p>
+<ul>
+<li><p><strong>A point</strong>, added in BCD. <code>daa</code> (&quot;decimal adjust&quot;) fixes the digits after a binary add, and the
+carry takes a 1 from the units and tens into the hundreds:</p>
+<pre><code>       ld a,(SCORE)
+       add a,1
+       daa                    <span class="cm">; 0x09 + 1 = 0x0A → 0x10</span>
+       ld (SCORE),a
+       ld a,(SCORE+1)
+       adc a,0                <span class="cm">; the carry</span>
+       daa
+       ld (SCORE+1),a
+</code></pre>
+</li>
+<li><p><strong>Three cells longer.</strong> <code>GROW</code> counts steps on which the tail stays put. The check on the length
+keeps the snake under 240 cells, so the 256-entry ring never fills.</p>
+</li>
+<li><p><strong>Faster</strong>: every fourth apple takes one frame off <code>SPEED</code>, down to 3, which is 20 cells a
+second.</p>
+</li>
+<li><p><strong>A new apple.</strong></p>
+</li>
+</ul>
+  </div></div>
+</section>
+
+<section id="step-5-sound-a-title-the-best-score-again" class="alt">
+  <div class="wrap"><div class="prose">
+<h2>Step 5 — sound, a title, the best score, again</h2>
+<p><a href="examples/msx/snake.asm" download><code>snake.asm</code></a></p>
+<h3>Sound</h3>
+<p>The PSG is set through its registers: <code>WRTPSG</code> writes E into register A. <code>psg</code> writes a list of
+register and value pairs that ends with <code>0xFF</code>, so each sound is a line of data:</p>
+<pre><code>quiet:   db 7,0b10011110, 8,0, 9,0, 10,0, 0xFF
+chomp:   db 0,80, 1,0, 8,16, 10,0, 11,0, 12,4, 13,0, 0xFF
+crash:   db 6,31, 8,0, 10,16, 11,0, 12,40, 13,0, 0xFF
+</code></pre>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Register</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>0–1</td>
+<td>Channel A&#39;s pitch: the chip&#39;s 1,789,772 Hz ÷ 16 ÷ this. 80 gives about 1,400 Hz, a &quot;blip&quot;</td>
+</tr>
+<tr>
+<td>6</td>
+<td>The noise&#39;s pitch: 31 is the lowest, a rumble</td>
+</tr>
+<tr>
+<td>7</td>
+<td>The mixer. A <strong>0</strong> bit turns something on: bits 0–2 tone A/B/C, bits 3–5 noise A/B/C. Bits 6–7 must be <code>10</code> on an MSX</td>
+</tr>
+<tr>
+<td>8–10</td>
+<td>Volumes of A, B, C: 0–15, or <strong>16 to follow the envelope</strong></td>
+</tr>
+<tr>
+<td>11–12</td>
+<td>The envelope&#39;s length</td>
+</tr>
+<tr>
+<td>13</td>
+<td>The envelope&#39;s shape. 0 fades out once; <strong>writing it restarts the envelope</strong></td>
+</tr>
+</tbody></table></div>
+<p>The envelope makes each sound fade out by itself. The game starts a sound and never has to stop
+it, so there&#39;s no sound code in the main loop. The eating blip is channel A&#39;s tone with a short
+envelope. The crash is noise on channel C with a long one.</p>
+<h3>The title, and random apples at last</h3>
+<p>Before the first game, the program draws the field with the title over it and calls <code>waitspace</code>.
+<code>waitspace</code> waits for Space to be let go, then pressed (<code>GTTRIG</code> with A=0 is the space bar). It
+calls <code>frame</code> once per frame, and <code>frame</code> also adds 1 to <code>SEED</code>. How long the player takes to
+press Space decides where the apples fall, so no two games are the same.</p>
+<h3>The best score</h3>
+<p>BCD numbers compare just like ordinary ones, so finding a new best is a 16-bit subtraction:</p>
+<pre><code>         ld hl,(HISCORE)
+         ld de,(SCORE)
+         or a                   <span class="cm">; clear the carry…</span>
+         sbc hl,de              <span class="cm">; …HISCORE − SCORE: a carry means SCORE is higher</span>
+         jr nc,.over
+         ld (HISCORE),de
+</code></pre>
+<p>Then <code>GAME OVER</code>, <code>waitspace</code>, and <code>jp newgame</code>. The game goes on as long as you want to play.</p>
+  </div></div>
+</section>
+
+<section id="where-next">
+  <div class="wrap"><div class="prose">
+<h2>Where next</h2>
+<p>Some ideas, roughly from easy to harder:</p>
+<ul>
+<li><strong>Levels.</strong> Draw some walls inside the field in <code>field</code> after a number of apples.
+<code>get</code> sees them without any other change.</li>
+<li><strong>A pause.</strong> Check another key with <code>SNSMAT</code> (<code>0x0141</code>, A = keyboard row, returns its bits,
+with a 0 bit for a key held). P is row 4, bit 5.</li>
+<li><strong>A smoother head.</strong> Draw the head as a <strong>sprite</strong>: sprite patterns at <code>0x3800</code>, position and
+colour at <code>0x1B00</code> (y, x, pattern, colour, with y = 208 ending the list). Move it a pixel at a
+time between steps. The demo cartridge in <code>MSX.eeform</code> moves a sprite; its listing is in the form.</li>
+<li><strong>Two players.</strong> A second snake with its own ring, steered with WASD through <code>SNSMAT</code>.</li>
+<li><strong>Music.</strong> Channels B and C are free: a tune is a table of pitches, and the frame loop changes
+the note every few frames.</li>
+</ul>
+  </div></div>
+</section>
+
+<section id="when-something-goes-wrong" class="alt">
+  <div class="wrap"><div class="prose">
+<h2>When something goes wrong</h2>
+<ul>
+<li><strong>A BIOS call changed my registers.</strong> Most BIOS routines change AF, BC, DE and HL. Keep what you
+need with <code>push</code>/<code>pop</code> around the call, as <code>psg</code> does around <code>WRTPSG</code>.</li>
+<li><strong>&quot;the jump is … out of reach&quot;.</strong> <code>JR</code> and <code>DJNZ</code> reach only 127 bytes either way. Use <code>JP</code>.</li>
+<li><strong>The screen is garbled.</strong> The two bytes to <code>VDP_CTRL</code> were split by the interrupt (keep them in
+<code>di</code>/<code>ei</code>), or a tile went past the screen (cell over 767).</li>
+<li><strong>Nothing happens at all.</strong> Check the header: <code>&quot;AB&quot;</code> at <code>0x4000</code> and the <code>dw start</code> after it.
+Build with <code>-l</code> and look at the listing.</li>
+<li><strong>The program freezes.</strong> Look for a <code>halt</code> with interrupts off. <code>ei</code> before each <code>halt</code>.</li>
+<li><strong>The <code>.rom</code> is too big.</strong> The final <code>ds 0x8000 - $</code> says &quot;the code before it is too long&quot; if
+the program grows past 16 KB. Without a mapper a cartridge can be 32 KB: <code>ds 0xC000 - $</code>
+(<code>docs/msx/MSX.md</code>).</li>
+</ul>
+  </div></div>
+</section>
+
+<section id="reference">
+  <div class="wrap"><div class="prose">
+<h2>Reference</h2>
+<h3>The BIOS calls used here</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Address</th>
+<th>In</th>
+<th>Out</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>CHGCLR</code></td>
+<td><code>0x0062</code></td>
+<td><code>FORCLR</code>, <code>BAKCLR</code>, <code>BDRCLR</code> (<code>0xF3E9–B</code>)</td>
+<td>The colours set</td>
+</tr>
+<tr>
+<td><code>INIT32</code></td>
+<td><code>0x006F</code></td>
+<td></td>
+<td>SCREEN 1, cleared, the font loaded</td>
+</tr>
+<tr>
+<td><code>FILVRM</code></td>
+<td><code>0x0056</code></td>
+<td>HL video address, BC count, A byte</td>
+<td></td>
+</tr>
+<tr>
+<td><code>LDIRVM</code></td>
+<td><code>0x005C</code></td>
+<td>HL memory, DE video address, BC count</td>
+<td></td>
+</tr>
+<tr>
+<td><code>WRTPSG</code></td>
+<td><code>0x0093</code></td>
+<td>A register, E value</td>
+<td></td>
+</tr>
+<tr>
+<td><code>GTSTCK</code></td>
+<td><code>0x00D5</code></td>
+<td>A = 0 (cursor keys)</td>
+<td>A = 0–8: 0 none, 1 up, then clockwise</td>
+</tr>
+<tr>
+<td><code>GTTRIG</code></td>
+<td><code>0x00D8</code></td>
+<td>A = 0 (space bar)</td>
+<td>A = <code>0xFF</code> held, 0 not</td>
+</tr>
+<tr>
+<td><code>SNSMAT</code></td>
+<td><code>0x0141</code></td>
+<td>A = keyboard row</td>
+<td>A = its keys, a 0 bit is held</td>
+</tr>
+</tbody></table></div>
+<h3>The assembler</h3>
+<pre><code>SIZE    equ 32*24               <span class="cm">; a constant</span>
+label:  ld a,(hl)               <span class="cm">; a label starts in column 1; the colon is optional</span>
+.loop   djnz .loop              <span class="cm">; a local label, belonging to the label above</span>
+        org 0x4000              <span class="cm">; where the following bytes go</span>
+        db 1, "text", 'c', 0x1F, $1F, 1Fh, 0b101, %101
+        dw label                <span class="cm">; a word, low byte first</span>
+        ds 16, 0xFF             <span class="cm">; 16 bytes of 0xFF</span>
+        ld a,HIGH(label)        <span class="cm">; and LOW()</span>
+</code></pre>
+<p>Expressions can use <code>+ - * / % &amp; | ^ &lt;&lt; &gt;&gt; ~</code>, parentheses, and <code>$</code> for the current address. The
+assembler knows all the documented Z80 instructions, IX and IY included. The source file says
+the rest: <a href="examples/msx/z80asm.mjs" download><code>dev/z80asm.mjs</code></a>.</p>
+  </div></div>
+</section>
+
+</div>
+
+<footer>
+  <div class="wrap foot-cols">
+    <div><p><strong>EEditor</strong><br><span class="muted">A notes editor with a database and a Lisp inside.</span></p></div>
+    <div><p><a href="index.html">Home</a><br><a href="download.html">Download</a><br><a href="manual.html">Manual</a></p></div>
+    <div><p><a href="https://eelisp.app">EELisp — the engine</a><br><a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></p></div>
+  </div>
+  <div class="wrap" style="margin-top:22px"><p id="mitline"><small>EEditor and EELisp are free software under the <a href="https://github.com/santacroce-tech/eeditor-next/blob/main/LICENSE">MIT licence</a>. © 2026 Roberto Santacroce Martins. The MSX runs <a href="https://cbios.sourceforge.net">C-BIOS</a>, under its own BSD licence.</small></p></div>
+</footer>
+
+</body>
+</html>

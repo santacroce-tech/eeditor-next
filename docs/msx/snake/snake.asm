@@ -1,6 +1,7 @@
 ; snake.asm — a snake game for the MSX1: the finished program of docs/msx/TUTORIAL.md.
 ;
-;   npm run msx:asm -- docs/msx/snake/snake.asm      makes docs/msx/snake/snake.rom
+;   npm run msx:asm -- docs/msx/snake/snake.asm      makes docs/msx/snake/snake.rom (in the repository)
+;   node z80asm.mjs snake.asm                        the same, with the assembler from eeditor.app
 ;   then in MSX.eeform: Load cartridge… → snake.rom
 ;
 ; Steer with the cursor keys, eat the apples, don't hit the walls or yourself.

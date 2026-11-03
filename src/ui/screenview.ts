@@ -155,7 +155,10 @@ export function createScreenView(host: HTMLElement, o: ScreenViewOptions): Scree
           o.onError(e instanceof Error ? e.message : String(e));
         },
       )
-      .finally(step);
+      // through a timer, never straight on: the engine in the page (an exported app's) answers
+      // at once, and a frame slower than its period would otherwise chain the next one without
+      // the browser ever painting or taking a key
+      .finally(() => later(0));
   }
   later(0);
 

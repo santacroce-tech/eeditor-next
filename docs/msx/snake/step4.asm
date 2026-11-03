@@ -1,6 +1,7 @@
 ; step4.asm — the MSX tutorial (docs/msx/TUTORIAL.md), step 4: apples — eating, growing, the score, speeding up.
 ;
-;   npm run msx:asm -- docs/msx/snake/step4.asm      makes docs/msx/snake/step4.rom
+;   npm run msx:asm -- docs/msx/snake/step4.asm      makes docs/msx/snake/step4.rom (in the repository)
+;   node z80asm.mjs step4.asm                        the same, with the assembler from eeditor.app
 
 ; ---------------------------------------------------------------------------
 ; The BIOS: routines in the MSX's ROM that every cartridge can call

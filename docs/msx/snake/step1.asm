@@ -1,6 +1,7 @@
 ; step1.asm — the MSX tutorial (docs/msx/TUTORIAL.md), step 1: a cartridge that says hello.
 ;
-;   npm run msx:asm -- docs/msx/snake/step1.asm      makes docs/msx/snake/step1.rom
+;   npm run msx:asm -- docs/msx/snake/step1.asm      makes docs/msx/snake/step1.rom (in the repository)
+;   node z80asm.mjs step1.asm                        the same, with the assembler from eeditor.app
 
 ; The BIOS: routines in the MSX's ROM that every cartridge can call
 CHGCLR   equ 0x0062     ; set the screen's colours from FORCLR, BAKCLR and BDRCLR

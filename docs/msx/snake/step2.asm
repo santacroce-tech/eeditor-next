@@ -1,6 +1,7 @@
 ; step2.asm — the MSX tutorial (docs/msx/TUTORIAL.md), step 2: our own tiles, and the playing field.
 ;
-;   npm run msx:asm -- docs/msx/snake/step2.asm      makes docs/msx/snake/step2.rom
+;   npm run msx:asm -- docs/msx/snake/step2.asm      makes docs/msx/snake/step2.rom (in the repository)
+;   node z80asm.mjs step2.asm                        the same, with the assembler from eeditor.app
 
 ; ---------------------------------------------------------------------------
 ; The BIOS: routines in the MSX's ROM that every cartridge can call

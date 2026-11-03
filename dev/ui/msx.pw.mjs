@@ -45,6 +45,16 @@ test("C-BIOS boots, the demo cartridge runs, and the cursor keys move its sprite
   await expect.poll(async () => Number((await screen(form).getAttribute("data-sounds")) ?? 0), { timeout: 5000 }).toBeGreaterThan(3);
   await page.keyboard.up("Space");
 
+  // Snake: the tutorial's game — its title, then Space starts it on a field of bricks
+  await form.locator("button", { hasText: "Snake" }).click();
+  await expect(form.getByText("snake: press Space")).toBeVisible();
+  const BRICK = [212, 82, 77]; // colour 6, the wall's bricks
+  await expect.poll(() => pixel(page, 2, 9), { timeout: 15_000 }).toEqual(BRICK);
+  await screen(form).click();
+  await page.keyboard.press("Space");
+  // the snake's head starts at cell (11, 12) and heads right
+  await expect.poll(() => pixel(page, 13 * 8 + 4, 12 * 8 + 4), { timeout: 5000 }).not.toEqual([0, 0, 0]);
+
   const a = await frames(form);
   const t0 = Date.now();
   await page.waitForTimeout(2000);

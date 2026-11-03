@@ -4,6 +4,8 @@
 //   node dev/z80asm.mjs game.asm            writes game.rom (the bytes from the first ORG on)
 //   node dev/z80asm.mjs game.asm -o x.bin   names the output
 //   node dev/z80asm.mjs game.asm -l         also prints a listing
+//   node dev/z80asm.mjs game.asm --base64   prints the bytes as base64 instead, without the
+//                                           0xFF filling at the end (for a form to carry)
 //   npm run msx:asm -- game.asm             the same
 //
 // The source, as most Z80 assemblers take it (sjasmplus, pasmo):
@@ -466,6 +468,12 @@ function main(argv) {
     if (!(e instanceof AsmError)) throw e;
     console.error(e.message);
     process.exit(1);
+  }
+  if (argv.includes("--base64")) {
+    let end = r.bytes.length;
+    while (end > 0 && r.bytes[end - 1] === 0xff) end--;
+    console.log(Buffer.from(r.bytes.subarray(0, end)).toString("base64"));
+    return;
   }
   if (argv.includes("-l"))
     for (const l of r.listing)

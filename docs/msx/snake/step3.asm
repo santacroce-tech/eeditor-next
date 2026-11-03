@@ -1,6 +1,7 @@
 ; step3.asm — the MSX tutorial (docs/msx/TUTORIAL.md), step 3: the snake — moving, steering, crashing.
 ;
-;   npm run msx:asm -- docs/msx/snake/step3.asm      makes docs/msx/snake/step3.rom
+;   npm run msx:asm -- docs/msx/snake/step3.asm      makes docs/msx/snake/step3.rom (in the repository)
+;   node z80asm.mjs step3.asm                        the same, with the assembler from eeditor.app
 
 ; ---------------------------------------------------------------------------
 ; The BIOS: routines in the MSX's ROM that every cartridge can call

@@ -8,19 +8,21 @@
 ;; ("tms9918" in docs/DISPLAY.md).
 ;;
 ;; C-BIOS runs cartridges — it has no BASIC. Without one it says so. Demo puts in a small
-;; cartridge written for this form (below) — hold Space in it for a note from the PSG; Load
-;; cartridge… takes a .rom of up to 32 KB. Sound plays from the first click on the screen.
+;; cartridge written for this form (below) — hold Space in it for a note from the PSG; Snake is
+;; the game docs/msx/TUTORIAL.md builds; Load cartridge… takes a .rom of up to 32 KB. Sound plays
+;; from the first click on the screen.
 ;;
 ;; Keys: the PC's letters, digits and punctuation are the MSX's (its international layout); Shift
 ;; is SHIFT, Ctrl is CTRL, Alt is GRAPH, the arrows are the cursor keys, Space and Enter are
 ;; theirs. Click the screen first.
 
 (form "MSX" :size (560 480) :on-load msxapp-load
-  (button btnCart :text "Load cartridge…" :at (16 12) :size (124 24) :on-click msxapp-pick-cart)
-  (button btnDemo :text "Demo" :at (148 12) :size (64 24) :on-click msxapp-demo)
-  (button btnReset :text "Reset" :at (220 12) :size (64 24) :on-click msxapp-do-reset)
-  (button btnPause :text "Pause" :at (292 12) :size (64 24) :on-click msxapp-pause)
-  (label lblStatus :at (368 16) :size (176 24))
+  (button btnCart :text "Load cartridge…" :at (16 12) :size (120 24) :on-click msxapp-pick-cart)
+  (button btnDemo :text "Demo" :at (144 12) :size (56 24) :on-click msxapp-demo)
+  (button btnSnake :text "Snake" :at (208 12) :size (56 24) :on-click msxapp-snake)
+  (button btnReset :text "Reset" :at (272 12) :size (56 24) :on-click msxapp-do-reset)
+  (button btnPause :text "Pause" :at (336 12) :size (64 24) :on-click msxapp-pause)
+  (label lblStatus :at (408 16) :size (136 24))
   (screen scrMSX :frame "(msx-frame msx ui-held)" :hz 60 :at (16 48) :size (528 416)))
 
 (def msx (msx-new msx-cbios-main msx-cbios-logo))
@@ -179,3 +181,24 @@
 )))
 
 (defn msxapp-demo (f) (msxapp-put-in msxapp-demo-cart "demo"))
+
+;; Snake: the game the tutorial builds (docs/msx/TUTORIAL.md), docs/msx/snake/snake.asm assembled
+;; — its bytes up to the filling at the end, as base64. After changing the source:
+;;   node dev/z80asm.mjs docs/msx/snake/snake.asm --base64
+;; (dev/z80asm.test.mjs checks the two agree.)
+(def msxapp-snake-cart
+  (str
+   "QUIQQAAAAAAAAAAAAAAAAD4PMunzPgEy6vMy6/PNYgDNbwAhDEMRAAQGBMXl1QEIAM1cAOEBQAAJ6+EBCAAJwRDpISxDERAg"
+   "AQQAzVwAITBDzf5CIQAAIgriIgziIyIO4s0KQiFVQxELAc2BQiFfQxGGAc2BQiF0QxHpAc2BQs3fQiEAACIK4s0KQq8yAeIy"
+   "BuIyCeI+AzIA4iGIAd0hAOAGBN11AN10AT6IzZNCI90j3SMQ7is+kM2TQiEBACIC4iIE4j4IMgjiMgfizetB+3bNDUEhB+I1"
+   "IPU6COIyB+LNMEEw6iFIQ83+QioM4u1bCuK37VIwB+1TDOLNUUIhg0MRawHNgULN30LDgkCvzdUAIeD//gEoFCEBAP4DKA0h"
+   "IAD+BSgGIf///gfAIgTiySoE4u1bAuIZfLUoBioE4iIC4joA4s2/Ql4jVus+iM2TQu1bAuIZzaFC/pgoDv4gKA237VI+kM2T"
+   "QjfJzaFBPpDNk0LrOgDiPDIA4s2/QnMjcjoG4rcoBT0yBuLJOgHizb9CXiNW6z4gzZNCIQHiNLfJ5ToK4sYBJzIK4joL4s4A"
+   "JzIL4s1RQjoA4iEB4pb+8DAIOgbixgMyBuIhCeI0fv4EOA02ADoI4v4EOAQ9MgjiITlDzf5CzetB4cnNykJ85gNn/gMo9bcg"
+   "BX3+QDjtzaFC/iAg5j6Yw5NCIQAYAQADPiDNVgAhIBgBIAA+gM1WACHgGgEgAD6AzVYAIUAABhURHwA+gM2TQhnNk0IjEPQh"
+   "jkMRAQDNgUIhlEMRGADNgUIhBwARCuLNYEIhGwARDOJ8xhhnza1CExrNbkIbGvUPDw8P5g/GMNOY8eYPxjDTmMnl63zGGGfN"
+   "rULhfrfI05gjGPjl9XzGGGfNrULx05jhyeV8xhhnzbJC4duYyXz2QBgDfOY/8/V905nx05n7ydVvJgApEQDgGdHJKg7ifB99"
+   "H6xnfR98H61vrGciDuLJzepCIPvN6kIo+8n7dioO4iN8tSABIyIO4q/N2AC3yX7+/8gjXiPlzZMA4Rjy7+/vAP7+/gA8fv//"
+   "//9+PDx+29v//348CBBs/v7+fChuITGBB54IAAkACgD/AFABAAgQCgALAAwEDQD/Bh8IAAoQCwAMKA0A/1MgTiBBIEsgRQBD"
+   "dXJzb3Iga2V5cyB0byBzdGVlcgBTcGFjZSB0byBzdGFydABHQU1FICBPVkVSAFNDT1JFAEhJAA==")))
+(defn msxapp-snake (f) (msxapp-put-in msxapp-snake-cart "snake: press Space"))
