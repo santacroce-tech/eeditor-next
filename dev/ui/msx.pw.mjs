@@ -1,6 +1,6 @@
 // The MSX (workspace/examples/MSX.eeform) in a real browser over the real engine: C-BIOS boots
-// with no cartridge, Demo puts one in, and its sprite moves on the cursor keys — drawn by the host
-// from the video chip's memory ("tms9918").
+// with no cartridge, Demo puts one in, its sprite moves on the cursor keys — drawn by the host
+// from the video chip's memory ("tms9918") — and Space plays a note on the PSG.
 
 import { expect, test } from "@playwright/test";
 
@@ -38,6 +38,12 @@ test("C-BIOS boots, the demo cartridge runs, and the cursor keys move its sprite
   await page.keyboard.down("ArrowRight");
   await expect.poll(() => pixel(page, 127, 121), { timeout: 5000 }).not.toEqual(YELLOW);
   await page.keyboard.up("ArrowRight");
+
+  // Space: the cartridge plays a note on the PSG, and the frames carry its samples
+  expect(await screen(form).getAttribute("data-sounds")).toBeNull();
+  await page.keyboard.down("Space");
+  await expect.poll(async () => Number((await screen(form).getAttribute("data-sounds")) ?? 0), { timeout: 5000 }).toBeGreaterThan(3);
+  await page.keyboard.up("Space");
 
   const a = await frames(form);
   const t0 = Date.now();

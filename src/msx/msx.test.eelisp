@@ -79,6 +79,33 @@
 ;; "No cartridge" in the text screen's names
 (check "C-BIOS says it has no cartridge" (> (find-bytes '(78 111 32 99 97 114 116 114 105 100 103 101)) -1) true)
 
+;; ── the PSG's sound ──
+(def snd (msx-new (make-bytes 0x8000 0x76) nil))     ; a BIOS of HALTs: the Z80 does nothing
+(defn psg! (r v) (do (msx-use snd) (msx-out 0xa0 r) (msx-out 0xa1 v)))
+(defn samples (f) (let (a (dict-get f "audio")) (if a (bytes->list (base64->bytes (dict-get a "pcm"))) nil)))
+(defn edges (xs) (loop (xs (tail xs) prev (first xs) n 0)
+                   (if (empty? xs) n (recur (tail xs) (first xs) (if (= (first xs) prev) n (+ n 1))))))
+(check "a silent PSG sends no sound" (dict-get (msx-frame snd {}) "audio") nil)
+(psg! 0 254) (psg! 1 0) (psg! 7 0xbe) (psg! 8 15)    ; A: 440 Hz, tone only, full volume
+(def a440 (samples (msx-frame snd {})))
+(check "a frame of sound at 22,050 a second" (> (length a440) 366) true)
+(check "a frame's samples follow on: 368 and 367" (< (length a440) 369) true)
+(check "the rate" (dict-get (dict-get (msx-frame snd {}) "audio") "rate") 22050)
+(check "440 Hz is about 15 edges in a 60th of a second" (let (e (edges (samples (msx-frame snd {})))) (and (>= e 13) (<= e 16))) true)
+(check "full volume swings 40 either side of 128" (list (apply min a440) (apply max a440)) (list 88 168))
+(psg! 8 0)
+(check "volume 0 is silence again" (dict-get (msx-frame snd {}) "audio") nil)
+;; the envelope: shape 0 falls from 15 to 0 once and stays there
+(psg! 8 16) (psg! 11 0) (psg! 12 4) (psg! 13 0)       ; A follows the envelope, 16·1024 cycles a step
+(def falling (samples (msx-frame snd {})))
+(check "the envelope starts loud" (apply max falling) 168)
+(loop (i 0) (when (< i 40) (do (msx-frame snd {}) (recur (+ i 1)))))
+(check "and has fallen silent" (edges (samples (msx-frame snd {}))) 0)
+(check "at 128" (first (samples (msx-frame snd {}))) 128)
+;; noise alone on A
+(psg! 8 15) (psg! 7 0xb7) (psg! 6 1)
+(check "noise is noise: many edges" (> (edges (samples (msx-frame snd {}))) 30) true)
+
 ;; ── a Spectrum in the same engine keeps its memory map ──
 (def zx (zx-new))
 (msx-frame cb {})

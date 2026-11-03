@@ -7,7 +7,7 @@ host draws the picture from the video chip's memory.
 | Part | Where | What |
 |---|---|---|
 | Z80 | `src/spectrum/zx.eelisp` | The Spectrum's, unchanged in speed; it now lets another machine lend its ports (`zx-io-in`, `zx-io-out`) and what a write to a ROM page does (`zx-low-write`) |
-| The machine | `src/msx/msx.eelisp` | Slots and paging, the TMS9918A's ports and 16 KB of video memory, the PPI (slot select, keyboard), the PSG's registers, the 60 Hz frame and its interrupt |
+| The machine | `src/msx/msx.eelisp` | Slots and paging, the TMS9918A's ports and 16 KB of video memory, the PPI (slot select, keyboard), the PSG and its sound, the 60 Hz frame and its interrupt |
 | BIOS | `src/msx/cbios.eelisp` | C-BIOS 0.29a, the free BIOS, as base64 — so the MSX boots with nothing to download ([licence](CBIOS-LICENSE.txt)) |
 | The picture | `src/display/tms9918.ts` | Graphics I and II, text, multicolour, sprites — drawn from the frame's `"vram"` and `"regs"` |
 | Tests | `src/msx/msx.test.eelisp` (`npm run msx:test`), `src/display/tms9918.test.ts`, `dev/ui/msx.pw.mjs` | |
@@ -26,11 +26,11 @@ A form that calls `(msx-…)` gets the MSX loaded, after the Z80 (`src/engine/fo
 `msx-frame` runs one frame — 59,736 T-states — with the PC keys in `ui-held` on the MSX's
 keyboard matrix (the international layout: letters, digits and punctuation where they are; Shift,
 Ctrl, Alt as GRAPH, the arrows, Space, Enter, Backspace), then raises the VDP's frame flag and
-returns `{"kind" "tms9918" "vram" … "regs" … "frame" n}`.
+returns `{"kind" "tms9918" "vram" … "regs" … "frame" n "audio" …}`.
 
 C-BIOS runs cartridges and has no BASIC. With none it says so; the form's **Demo** puts in a
-285-byte cartridge written for it (its listing is in the form), and **Load cartridge…** takes a
-`.rom`.
+335-byte cartridge written for it (its listing is in the form) — the cursor keys move a sprite,
+Space plays a note — and **Load cartridge…** takes a `.rom`.
 
 ## How it's built
 
@@ -52,6 +52,16 @@ MSX entry point puts `zx-rom-top` back when it's done, `zx-frame` sets the 48K's
 takes the hooks from the machine (the Spectrum has none). Both can run in one engine — two forms
 open at once.
 
+**The PSG.** Port 0xA0 picks a register, 0xA1 writes it, 0xA2 reads it. Its sound — three
+square waves, a noise generator, an envelope with its sixteen shapes, the mixer, and the chip's
+logarithmic volume — becomes the frame's `"audio"`: 8-bit samples at 22,050 a second
+(`docs/DISPLAY.md`). It runs on the PSG's clock from event to event: a tone's edge, a noise step,
+an envelope step. Between two events the output can't change, so each stretch is one `bfill` — a
+few dozen a frame for music rather than 368 samples. A tone too high for 22,050 a second to carry
+(a period under 6) is held high, as it averages; the noise and the envelope step at most once a
+sample. A frame that is silent sends no `"audio"` and costs nothing. Each frame's samples carry on
+from the last's, the remainder kept, so the sound neither drifts nor clicks.
+
 ## Speed
 
 A busy Spectrum runs at about real time in the native engine (`npm run spectrum:bench`, 20 ms a
@@ -65,8 +75,8 @@ frame halted, waiting for the interrupt, and run at 60 frames a second (`npm run
 
 - **Bigger cartridges.** Over 32 KB a cartridge has a mapper (ASCII 8, ASCII 16, Konami, Konami
   SCC): writes to the ROM switch banks. `msx-low-write` is where they go, as `bcopy`s of 8 or 16 KB.
-- **Sound.** The PSG's registers are kept; its three tones and noise into `"audio"`
-  (`docs/DISPLAY.md`) are next — the key click (port 0xAA, bit 7) too.
+- **The key click** (port 0xAA, bit 7), and samples played by changing a channel's volume very
+  fast — a frame's sound is made at its end, from the registers as they are then.
 - **Sprite collision and the fifth-sprite flag** in the status register; the host draws the
   sprites, four to a line, but the program can't ask about them yet.
 - **Joysticks.** PSG register 14 reads as nothing plugged in; the cursor keys and Space, which most

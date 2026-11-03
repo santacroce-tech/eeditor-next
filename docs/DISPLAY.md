@@ -125,7 +125,7 @@ sharp. The control's size is the form's; the picture's is the program's.
 |---|---|---|---|
 | ZX Spectrum 48K | Z80, in `zx.eelisp` | `"screen"` | Done — `docs/spectrum/` |
 | A raycaster (ROADMAP 15) | — | `"indexed"`, `"columns"`, 320×200 | Done — `Raycaster.eeform`. The Doom-like route goes on: sectors, then WAD lumps |
-| MSX1 | Z80 — the Spectrum's core | `"tms9918"` | Done, cartridges up to 32 KB — `docs/msx/MSX.md`; C-BIOS ships with it. Mappers and the PSG's sound next |
+| MSX1 | Z80 — the Spectrum's core | `"tms9918"` | Done, cartridges up to 32 KB, the PSG's sound — `docs/msx/MSX.md`; C-BIOS ships with it. Mappers next |
 | Commodore 64 | 6502/6510, new | `"indexed"`, 320×200 + border, 16 colours | The VIC-II's raster tricks need drawing line by line; its ROMs are the user's to load |
 
 What a machine adds lives in EELisp, as the Spectrum's does: its CPU, its memory map, its ports,
