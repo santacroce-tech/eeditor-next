@@ -233,9 +233,13 @@ sequenceDiagram
     <h2>4. Tabs</h2>
     <p>
       Opening a second note puts it in a new tab rather than replacing what you had. Click a tab to
-      switch, click its <strong>×</strong> to close. <kbd>⌘⌥→</kbd> and <kbd>⌘⌥←</kbd> move between
-      tabs if you bind them — see <a href="#keybindings">keybindings</a> for the
-      <code>next-tab</code>, <code>prev-tab</code> and <code>close-tab</code> commands.
+      switch, click its <strong>×</strong> to close. From the keyboard, <kbd>⌃Tab</kbd> and
+      <kbd>⌃⇧Tab</kbd> go to the next and previous tab, <kbd>⌘1</kbd>…<kbd>⌘8</kbd> to the first
+      eight and <kbd>⌘9</kbd> to the last (<kbd>Ctrl+1</kbd>… on Windows and Linux). These are built
+      in; a <code>(bind …)</code> of your own on the same key replaces it — see
+      <a href="#keybindings">keybindings</a> for the <code>next-tab</code>, <code>prev-tab</code>,
+      <code>tab-1</code>…<code>tab-8</code>, <code>last-tab</code> and <code>close-tab</code> commands.
+      Inside a running form with windows of its own, <kbd>⌃Tab</kbd> cycles those instead.
     </p>
     <p>
       A tab marked <strong>↗</strong> is a file from outside the workspace; see
@@ -1383,6 +1387,7 @@ zzalinhar — function
       <tr><td><code>agenda-setup</code></td><td>categories and rules panel</td></tr>
       <tr><td><code>agenda-refresh</code></td><td>re-read the agenda panel — after a script changed items behind its back</td></tr>
       <tr><td><code>close-tab</code> / <code>next-tab</code> / <code>prev-tab</code></td><td>tab management</td></tr>
+      <tr><td><code>tab-1</code> … <code>tab-8</code> / <code>last-tab</code></td><td>go to that tab — <kbd>⌘1</kbd>…<kbd>⌘8</kbd>, <kbd>⌘9</kbd> the last</td></tr>
       <tr><td><code>new-window</code></td><td>open another folder in a window of its own</td></tr>
     </table></div>
 

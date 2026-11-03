@@ -6,7 +6,7 @@
 // Dispatch runs on the document in the *capture* phase, so a bound key wins over CodeMirror's own
 // bindings — and unbinding a key in the config hands it straight back to CodeMirror.
 
-import { parseKeybindings, headerButtons, eventKeyId, lispString, clockDefs, EMPTY_BODY, type Binding, type Button, type Panel, type StartHook } from "../core/keybindings";
+import { parseKeybindings, headerButtons, builtinBindings, eventKeyId, lispString, clockDefs, EMPTY_BODY, type Binding, type Button, type Panel, type StartHook } from "../core/keybindings";
 import type { EngineClient } from "../engine/client";
 import type { WorkspaceClient } from "../engine/workspace";
 import type { JsonValue } from "../engine/types";
@@ -153,6 +153,7 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
     const parsed = parseKeybindings(src);
     const { bindings, errors } = parsed;
     map = new Map(bindings.map((b) => [b.id, b]));
+    for (const b of builtinBindings(new Set(map.keys()))) map.set(b.id, b);
     start = parsed.start;
     ticks = parsed.tick;
     buttons = headerButtons(parsed.buttons, src === DEFAULT_CONFIG ? [] : DEFAULT_BUTTONS);
@@ -416,6 +417,8 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
       if ((e.target as Element | null)?.closest?.(".formrun-screen")) return;
       const binding = map.get(eventKeyId(e));
       if (!binding) return;
+      // A running form that has windows to cycle keeps ⌃Tab for them (formrun.ts marks it).
+      if (binding.builtin && e.key === "Tab" && (e.target as Element | null)?.closest?.(".formrun[data-cycles]")) return;
       // claim the key even when we won't act on it, so it never falls through to CodeMirror
       e.preventDefault();
       e.stopPropagation();

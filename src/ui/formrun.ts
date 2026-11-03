@@ -427,6 +427,7 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
   function dropFrames(): void {
     for (const fr of frames.values()) for (const ch of [...fr.children]) ch.destroy();
     frames = new Map();
+    markCycles();
   }
   /** Show the controls on open pages, hide the rest — `:visible false` still wins. */
   const showPages = () => {
@@ -468,12 +469,20 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
   // ⌃Tab / ⌃⇧Tab: the next or previous form in the frame — the first frame that has more than one.
   root.addEventListener("keydown", (e) => {
     if (e.key !== "Tab" || !e.ctrlKey || e.metaKey || e.altKey) return;
-    const fr = [...frames.values()].find((f) => f.children.length > 1);
+    const fr = cycling();
     if (!fr) return;
     e.preventDefault();
     e.stopPropagation();
     cycle(fr, e.shiftKey ? -1 : 1);
   });
+
+  /** The frame ⌃Tab cycles: the first with more than one form in it. */
+  const cycling = () => [...frames.values()].find((f) => f.children.length > 1);
+  /** Tell the app's own ⌃Tab (next editor tab) to leave the key to this form while it has one. */
+  const markCycles = () => {
+    if (cycling()) root.dataset.cycles = "";
+    else delete root.dataset.cycles;
+  };
 
   function state(): Record<string, StateValue> {
     const out: Record<string, StateValue> = {};
@@ -1293,6 +1302,7 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
       ch.el.classList.add("in-frame");
       fr.body.append(ch.el);
       fr.children.push(ch);
+      markCycles();
       if (fr.mode === "windows") floatInFrame(fr, ch);
       show(fr, ch, true);
       return true;
@@ -1309,6 +1319,7 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
         const ch = fr.children.find((x) => x.id === childId);
         if (!ch) continue;
         fr.children = fr.children.filter((x) => x !== ch);
+        markCycles();
         fr.recent = fr.recent.filter((x) => x !== ch);
         ch.el.remove();
         // back to the one shown before it

@@ -71,10 +71,11 @@ export const COMMAND_TITLES: Record<string, string> = {
   "close-tab": "Close the tab",
   "next-tab": "Next tab",
   "prev-tab": "Previous tab",
+  "last-tab": "Last tab",
 };
 
-/** Not offered: they'd open this list, or another one in its place. */
-const HIDDEN = new Set(["quick-open", "command-palette"]);
+/** Not offered: they'd open this list, or another one in its place — or, tab-1…tab-8, are only worth their key. */
+const HIDDEN = new Set(["quick-open", "command-palette", ...[1, 2, 3, 4, 5, 6, 7, 8].map((n) => `tab-${n}`)]);
 
 const humanize = (name: string): string => name.charAt(0).toUpperCase() + name.slice(1).replace(/-/g, " ");
 
