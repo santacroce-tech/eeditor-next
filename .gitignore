@@ -34,3 +34,6 @@ pim-sample/
 
 # the MSX tutorial's cartridges, built with npm run msx:asm
 docs/msx/snake/*.rom
+
+# a personal catch-up file, as memory.md is
+memory-eeditor.md
