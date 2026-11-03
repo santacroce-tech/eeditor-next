@@ -38,10 +38,8 @@ Where things stand after 2.5.0 (2026-11-03), and what comes next, in the order i
 do it. The numbered items above are the engine and sheets work the book found; these are the
 screen, the machines and the site.
 
-**Now — finishing 2.5.0**
-
-1. **Publish the 2.5.0 release.** The draft has every installer and its notes; publishing switches
-   eeditor.app's download buttons and makes the "Full notes" link work.
+2.5.0 is published (2026-11-03), with every installer and its notes, so the download buttons and
+the "Full notes" link are live.
 
 **Next — the machines** (`docs/DISPLAY.md`, `docs/msx/MSX.md`)
 
