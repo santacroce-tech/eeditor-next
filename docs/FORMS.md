@@ -92,7 +92,8 @@ unless said — while enabled, with the keys held on the screen in `ui-keys` (th
 8-byte key matrix in base64) and `ui-held` (the PC keys down, by `KeyboardEvent.code`:
 `{"ArrowLeft" true}`), and the time in `ui-ms`. Its value is painted: a ZX Spectrum screen,
 `{"kind" "screen" "pixels" … "border" … "frame" …}`, or any picture — `"indexed"`, a byte a pixel
-through a palette, or `"rgba"` — as `docs/DISPLAY.md` sets out; `Display.eeform` draws one. The
+through a palette, or `"rgba"` — as `docs/DISPLAY.md` sets out; `Display.eeform` draws one. A frame may carry sound too, notes
+(`"tones"`) or samples (`"audio"`), played from the first click or key on the screen. The
 keys held on a Spectrum's screen are the Spectrum's — a typed symbol presses the Spectrum's
 own combination for it — and `:keyboard true` (or ⌨ in its corner) shows the Spectrum's keyboard
 under it, to click. `:on-paste` runs with text pasted on it in `(ui-get f "$text")`. Its corner has ⛶ — full screen, the picture scaled to fit, Esc back — and, in the app, ⧉: the screen in a window of its own (`screen.html`), resizable, over the same engine and so the same machine, while the form's screen waits. A form with one gets the Spectrum machine, `src/spectrum/zx.eelisp`, loaded
@@ -290,8 +291,8 @@ tree, open from disk with the network off, reload).
 | `Books.eeform` | One record at a time, dBASE-style: \|◀ ◀ ▶ ▶\|, *Record n of m*, find, and New / Edit / Save / Cancel / Delete with the boxes locked while browsing (`:enabled` from the handlers). |
 | `Tables.eeform` | Any table: pick it from `(tables)`, a WHERE / order / limit that shows the `(query …)` it ran, cells edited in place, new row, delete, pack. The table is named by an expression — `(query (str name))`. |
 | `Orders.eeform` | Master–detail: customers, the picked one's orders (`:where "customer = ?"`), a worked-out amount column and a total. |
-| `Display.eeform` | A screen that isn't a Spectrum: an `"indexed"` frame of 160×100 drawn by EELisp a column at a time (`bfill`), at 35 frames a second, a square moved by the keys in `ui-held` and stripes moved by the clock in `ui-ms`. |
-| `Raycaster.eeform` | A Wolfenstein-style maze on the same display: 320×200, one ray a column through the map grid (the DDA), textured walls drawn a run of one tone at a time, darker with distance, sliding doors (Space), barrels and lamps as sprites hidden behind nearer walls, a minimap, walking and turning on the held keys — 35 frames a second, about 10 ms a frame in the engine. No sin or cos: the view turns by rotating two vectors. |
+| `Display.eeform` | A screen that isn't a Spectrum: an `"indexed"` frame of 160×100 drawn by EELisp a column at a time (`bfill`), at 35 frames a second, a square moved by the keys in `ui-held` and stripes moved by the clock in `ui-ms`; hold Space for a note made of samples (`"audio"`) whose pitch follows the square. |
+| `Raycaster.eeform` | A Wolfenstein-style maze on the same display: 320×200, one ray a column through the map grid (the DDA), textured walls drawn a run of one tone at a time, darker with distance, sliding doors (Space), barrels and lamps as sprites hidden behind nearer walls, sound as `"tones"` (doors, footsteps, a bump), a minimap, walking and turning on the held keys — 35 frames a second, about 10 ms a frame in the engine. No sin or cos: the view turns by rotating two vectors. |
 | `Office.eeform` | The others as one app: a `:main` form with a screens frame, their menus merged into its bar, and the last screen remembered in a `:persist` public variable. |
 | `docs/pim/Agenda.eeform` | The PIM as one window (installed as `pim/Agenda.eeform`; ⤢ on the sidebar's agenda opens it maximized): seven tabs — setup check and every key, the agenda big, the notes' unlinked tasks, capture, the clock, the tracker, the review. Anchors throughout, so it uses a maximized window. |
 | `Agenda.eeform` | The agenda PIM through most of the controls: tabs, menu, datagrid, date, radio, dropdowns, checkbox, timer. Items by due date, an editor for one (`item->dict` reads it), quick add with a `smart-parse` preview, categories, rules, saved views. |

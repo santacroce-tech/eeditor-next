@@ -10,10 +10,11 @@
 ;;   ui-ms    milliseconds since the screen started: the clock
 ;;
 ;; Click the screen, then move the square with the arrow keys or W A S D. The stripes move on
-;; their own, from ui-ms.
+;; their own, from ui-ms. Hold Space for a note whose pitch follows the square up and down: its
+;; samples are made here, a square wave of bytes, and go with the frame as "audio".
 
 (form "Display" :size (512 384)
-  (label lblHelp :text "Click the screen, then use the arrow keys or W A S D." :at (16 12) :size (480 24))
+  (label lblHelp :text "Click the screen, then use the arrow keys or W A S D; hold Space for a note." :at (16 12) :size (480 24))
   (screen scrDemo :frame "(display-frame ui-held ui-ms)" :hz 35 :at (16 44) :size (480 324)))
 
 (def display-w 160)
@@ -40,6 +41,26 @@
 
 (defn display-held? (held a b) (or (dict-get held a) (dict-get held b)))
 
+;; ── Sound: unsigned 8-bit samples, 128 silence, 22050 a second ───────────────────────────────
+(def display-rate 22050)
+(def display-pcm (make-bytes 4096))
+(def display-last nil)   ; ui-ms of the frame before: this frame makes the samples since
+(def display-ph 0.0)     ; how far into the current half of the wave the last frame stopped
+(def display-lvl 0)
+
+;; n samples of a square wave at hz, picking up where the last frame left off so it doesn't
+;; click; a run of one level is one bfill.
+(defn display-note (n hz)
+  (let (half (/ display-rate (* 2.0 hz)))
+    (loop (i 0 ph display-ph lvl display-lvl)
+      (if (>= i n)
+          (do (set! display-ph ph) (set! display-lvl lvl) (bytes->base64 display-pcm 0 n))
+          (let (k (min (- n i) (max 1 (floor (- half ph)))))
+            (do (bfill display-pcm i k (if (= lvl 1) 168 88))
+                (if (>= (+ ph k) half)
+                    (recur (+ i k) (- (+ ph k) half) (- 1 lvl))
+                    (recur (+ i k) (+ ph k) lvl))))))))
+
 ;; One frame: move the square by the keys held, draw sky and ground a column at a time, then the
 ;; square, and hand the bytes over.
 (defn display-frame (held ms)
@@ -59,5 +80,10 @@
       (when (< c 16)
         (do (bfill display-fb (+ (* (+ display-x c) display-h) display-y) 16 255)
             (recur (+ c 1)))))
-    {"kind" "indexed" "w" display-w "h" display-h "order" "columns"
-     "pixels" (bytes->base64 display-fb) "palette" display-palette "border" 0}))
+    (let (n (if (nil? display-last) 0 (min 4096 (floor (* display-rate (/ (- ms display-last) 1000.0))))))
+      (do (set! display-last ms)
+          {"kind" "indexed" "w" display-w "h" display-h "order" "columns"
+           "pixels" (bytes->base64 display-fb) "palette" display-palette "border" 0
+           ;; higher up, higher: 220 Hz at the bottom to about 880 at the top
+           "audio" (when (and (dict-get held "Space") (> n 0))
+                     {"rate" display-rate "pcm" (display-note n (+ 220 (* 8 (- display-h 16 display-y))))})}))))

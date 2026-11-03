@@ -8,13 +8,18 @@
 //     ui-held   the PC keys held down, by KeyboardEvent.code: {"KeyW" true "ArrowUp" true}
 //     ui-ms     milliseconds since the screen started — the clock
 //
+//   A frame may carry sound too ("tones", "audio" — src/display/sound.ts); it plays from the first
+//   click or key on the screen, as browsers ask.
+//
 //   ⌨  the Spectrum's keyboard, on screen (shown while the frames are a Spectrum's)
+//   🔈 sound on or off (shown once a frame has carried any)
 //   ⛶  full screen — the picture fills the window, and the window the display; Esc comes back
 //   ⧉  its own window, when the host can open one — the machine is the same, the form keeps going
 
 import { dictGet, isDict, type JsonValue } from "../engine/types";
 import { inTauri } from "../engine/workspace";
 import { decodeFrame, newFrameState } from "../display/frame";
+import { decodeSound, SoundOut } from "../display/sound";
 import { H, KeyMatrix, W, type Key } from "../spectrum/screen";
 import { createZxKeyboard } from "./zxkeyboard";
 
@@ -100,6 +105,8 @@ export function createScreenView(host: HTMLElement, o: ScreenViewOptions): Scree
   let wait: ReturnType<typeof setTimeout> | undefined;
   let due = 0;
   let painted = 0;
+  let sounded = 0;
+  const sound = new SoundOut();
 
   /** The keys held, as an EELisp dict literal: `{"KeyW" true}`. */
   const heldDict = () => `{${[...held].map((c) => `${JSON.stringify(c)} true`).join(" ")}}`;
@@ -116,6 +123,14 @@ export function createScreenView(host: HTMLElement, o: ScreenViewOptions): Scree
     o.frame(`(let (ui-keys ${JSON.stringify(keys.base64())} ui-held ${heldDict()} ui-ms ${ms}) ${expr})`)
       .then(
         (v) => {
+          if (isDict(v) && !stopped) {
+            const s = decodeSound((k) => dictGet(v, k));
+            if (s.tones.length || s.pcm) {
+              sound.play(s);
+              view.dataset.sounds = String(++sounded); // how many frames carried sound: tests read it
+              if (soundToggle.hidden) soundToggle.hidden = false;
+            }
+          }
           const f = isDict(v) ? decodeFrame((k) => dictGet(v, k), decoded) : null;
           if (!f || stopped || !image) return;
           if (f.w !== view.width || f.h !== view.height) {
@@ -179,7 +194,8 @@ export function createScreenView(host: HTMLElement, o: ScreenViewOptions): Scree
     e.preventDefault();
     release(e.code);
   });
-  view.addEventListener("pointerdown", () => view.focus());
+  view.addEventListener("pointerdown", () => (view.focus(), sound.unlock()));
+  view.addEventListener("keydown", () => sound.unlock());
 
   // ── paste: a canvas isn't editable, and a webview may not send it a paste event, so after
   //    ⌘V/Ctrl+V with none the clipboard is read ──
@@ -217,6 +233,13 @@ export function createScreenView(host: HTMLElement, o: ScreenViewOptions): Scree
   board.el.classList.add("formrun-zxkb");
   board.el.hidden = true;
   const kbToggle = button("formrun-screen-kbtoggle", "⌨", "The Spectrum's keyboard", () => showKeyboard(board.el.hidden));
+  const soundToggle = button("zx-sound", "🔈", "Sound on or off", () => {
+    sound.setMuted(!sound.muted);
+    soundToggle.textContent = sound.muted ? "🔇" : "🔈";
+    soundToggle.classList.toggle("on", sound.muted);
+    sound.unlock();
+  });
+  soundToggle.hidden = true;
   const fsToggle = button("zx-fullscreen", "⛶", "Full screen (Esc to come back)", () => expand(!host.classList.contains("zx-expanded")));
   const popButton = o.popOut ? button("zx-popout", "⧉", "Open in a window of its own", () => popOut()) : null;
   stage.append(bar);
@@ -297,6 +320,7 @@ export function createScreenView(host: HTMLElement, o: ScreenViewOptions): Scree
     destroy: () => {
       stopped = true;
       clearTimeout(wait);
+      sound.close();
       document.removeEventListener("fullscreenchange", onFullscreenChange);
       if (host.classList.contains("zx-expanded")) void expand(false);
       away?.close();

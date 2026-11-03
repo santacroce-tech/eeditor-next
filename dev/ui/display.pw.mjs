@@ -1,6 +1,6 @@
 // A screen that isn't a Spectrum (workspace/examples/Display.eeform), in a real browser over the
 // real engine: an indexed frame paints at its own size, in its palette, column order; the held
-// keys reach the program in ui-held, and the clock in ui-ms.
+// keys reach the program in ui-held, and the clock in ui-ms; held Space, samples go with the frames.
 
 import { expect, test } from "@playwright/test";
 
@@ -41,6 +41,17 @@ test("an indexed frame paints at its own size, and the keys held move what it dr
   await expect.poll(() => pixel(page, 8, 78), { timeout: 10_000 }).toEqual(YELLOW);
   await page.keyboard.up("ArrowLeft");
   expect(await pixel(page, 80, 78)).not.toEqual(YELLOW);
+
+  // silent until Space: then frames carry samples, and the screen offers its sound button
+  const sound = form.locator(".zx-sound");
+  await expect(sound).toBeHidden();
+  expect(await screen(form).getAttribute("data-sounds")).toBeNull();
+  await page.keyboard.down("Space");
+  await expect.poll(async () => Number((await screen(form).getAttribute("data-sounds")) ?? 0)).toBeGreaterThan(3);
+  await page.keyboard.up("Space");
+  await expect(sound).toBeVisible();
+  await sound.click();
+  await expect(sound).toHaveText("🔇");
 
   const a = await frames(form);
   const t0 = Date.now();

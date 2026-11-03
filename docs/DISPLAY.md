@@ -15,6 +15,7 @@ framebuffer, input, a clock, memory and storage. Here they are:
 | Clock | `:hz`, how often a frame is asked for; `ui-ms`, the time |
 | Memory | Byte buffers — `make-bytes`, `bget`, `bset`, `bfill`, `bcopy` (eelisp-rs) |
 | Storage | `ui-pick` and `base64->bytes`: a ROM, a snapshot, a WAD is bytes the user picks |
+| Sound (beyond the five) | `"tones"` and `"audio"` in the frame (below) |
 
 ## The loop
 
@@ -78,6 +79,30 @@ The Spectrum's display memory as it is: the host unscrambles the bitmap and appl
 attributes (`docs/spectrum/ZXSPECTRUM.md`). The ⌨ button, the Spectrum's keyboard, shows only
 while the frames are this kind.
 
+## Sound
+
+Any frame may carry sound beside its picture, in either of two ways or both:
+
+```clojure
+"tones" (list {"hz" 90 "to" 60 "ms" 450 "wave" "sawtooth" "vol" 0.25}   ; notes for the host to make
+              {"hz" 260 "ms" 45 "wave" "noise"})
+"audio" {"rate" 22050 "pcm" (bytes->base64 buf 0 n)}                   ; samples the program made
+```
+
+- **`"tones"`** start when the frame arrives. `"wave"` is `"square"` (the default), `"triangle"`,
+  `"sine"`, `"sawtooth"` or `"noise"`; `"vol"` is 0–1 (0.3 unless said); `"to"` slides the pitch
+  over the note. Up to 16 a frame, 5 s each. A game's sound effects cost it nothing:
+  `Raycaster.eeform` has doors, footsteps and bumps.
+- **`"audio"`** is unsigned 8-bit samples, 128 silence, at 3000–96000 a second. Each frame's are
+  played straight after the last frame's, so a program sends what its time since the last frame
+  holds — `rate × (ui-ms − the last ui-ms) / 1000` samples — keeping its wave's phase across
+  frames. An emulated beeper, AY or SID makes these. If the frames stall, sound more than a quarter
+  of a second ahead of the picture is dropped rather than left to lag. `Display.eeform` makes a
+  square wave a run at a time (`bfill`) while Space is held.
+
+Browsers start sound only after the user has done something, so it plays from the first click or
+key on the screen. 🔈 on the screen's bar, there once a frame has carried any, turns it off.
+
 ## The canvas
 
 The canvas takes the frame's size and the control scales it to fit, keeping its shape, pixels
@@ -98,8 +123,8 @@ paints.
 
 ## Not yet
 
-- **Sound.** A frame could carry samples (`"audio"`: bytes of 8-bit PCM at a stated rate) for
-  WebAudio. The Spectrum's beeper, the MSX's AY and the C64's SID all need it.
+- **The Spectrum's beeper.** `zx.eelisp` could gather port 0xFE's bit 4 into `"audio"`; the sound
+  is there to carry it.
 - **Key events.** `ui-held` says what is down at the frame, not what was pressed and let go in
   between; a typing program may want the events too.
 - **A frame that is only the change.** Every frame is the whole picture; at 320×200 indexed and

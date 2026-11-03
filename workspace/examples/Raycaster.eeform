@@ -14,6 +14,8 @@
 ;; Barrels and lamps are sprites — pictures that always face you — drawn after the walls, a column
 ;; at a time, and only where they are nearer than the wall already drawn in that column.
 ;;
+;; Sound is "tones" in the frame, notes the host makes: a door's rumble, footsteps, a bump.
+;;
 ;; Click the screen, then: ↑ ↓ or W S to walk, ← → to turn, A D to step sideways, Space or E to
 ;; open a door in front of you.
 
@@ -199,6 +201,14 @@
 (def ray-cy 0.66)
 (def ray-last nil)
 
+;; ── Sound: the notes this frame asks for ─────────────────────────────────────────────────────
+(def ray-tones '())
+(defn ray-sound! (t) (set! ray-tones (cons t ray-tones)))
+(def ray-walked 0.0)   ; distance since the last footstep
+(def ray-bumped 0)     ; when the last bump sounded, so a wall leant on isn't a drum roll
+(defn ray-door-sound! (opening)
+  (ray-sound! {"hz" (if opening 90 70) "to" (if opening 60 45) "ms" 450 "wave" "sawtooth" "vol" 0.25}))
+
 ;; Turn by a radians: rotate the direction and the plane together.
 (defn ray-turn! (a)
   (let (a2 (* a a)
@@ -217,12 +227,14 @@
          (empty? (filter (fn (s) (< (+ (abs (- x (nth s 0))) (abs (- y (nth s 1)))) 0.5)) ray-sprites)))))
 
 ;; Move by (mx, my), one axis at a time so the player slides along a wall instead of sticking.
+;; Gives how far it went.
 (defn ray-move! (mx my)
-  (let (r 0.2)
-    (do (when (ray-free? (+ ray-px mx (if (< mx 0) (- r) r)) ray-py)
-          (set! ray-px (+ ray-px mx)))
-        (when (ray-free? ray-px (+ ray-py my (if (< my 0) (- r) r)))
-          (set! ray-py (+ ray-py my))))))
+  (let (r 0.2
+        ok-x (ray-free? (+ ray-px mx (if (< mx 0) (- r) r)) ray-py)
+        ok-y (ray-free? (+ ray-px (if ok-x mx 0)) (+ ray-py my (if (< my 0) (- r) r))))
+    (do (when ok-x (set! ray-px (+ ray-px mx)))
+        (when ok-y (set! ray-py (+ ray-py my)))
+        (+ (if ok-x (abs mx) 0) (if ok-y (abs my) 0)))))
 
 (defn ray-held? (held a b) (or (dict-get held a) (dict-get held b)))
 
@@ -234,12 +246,25 @@
     (do (set! ray-last ms)
         (when (not (= turn 0)) (ray-turn! turn))
         ;; sideways is along the camera plane, which points to the right of the view
-        (ray-move! (+ (* ray-dx walk) (* ray-cx side 1.5)) (+ (* ray-dy walk) (* ray-cy side 1.5)))
+        (let (mx (+ (* ray-dx walk) (* ray-cx side 1.5))
+              my (+ (* ray-dy walk) (* ray-cy side 1.5))
+              want (+ (abs mx) (abs my))
+              went (ray-move! mx my))
+          (do (set! ray-walked (+ ray-walked went))
+              (when (> ray-walked 0.8)
+                (do (set! ray-walked 0.0)
+                    (ray-sound! {"hz" 260 "to" 120 "ms" 45 "wave" "noise" "vol" 0.12})))
+              ;; pushing on and getting nowhere: a thud, three times a second at most
+              (when (and (> want 0) (< went (* want 0.2)) (> (- ms ray-bumped) 330))
+                (do (set! ray-bumped ms)
+                    (ray-sound! {"hz" 70 "to" 40 "ms" 90 "wave" "triangle" "vol" 0.5})))))
         ;; Space or E opens the door in front, for about four seconds
         (when (ray-held? held "Space" "KeyE")
           (let (fx (floor (+ ray-px (* ray-dx 1.2))) fy (floor (+ ray-py (* ray-dy 1.2))))
             (when (= 5 (ray-cell fx fy))
-              (bset ray-door-time (+ (* fy ray-map-w) fx) 150)))))))
+              (let (i (+ (* fy ray-map-w) fx))
+                (do (when (and (= 0 (bget ray-door-time i)) (< (bget ray-door-open i) 32)) (ray-door-sound! true))
+                    (bset ray-door-time i 150)))))))))
 
 ;; A door with time left slides open, two 32nds a frame; with none it slides shut — unless the
 ;; player is standing in it.
@@ -248,7 +273,9 @@
     (for-each i ray-doors
       (let (t (bget ray-door-time i) o (bget ray-door-open i))
         (cond (= i here) (bset ray-door-time i (max t 1))
-              (> t 0) (do (bset ray-door-time i (- t 1)) (bset ray-door-open i (min 32 (+ o 2))))
+              (> t 0) (do (bset ray-door-time i (- t 1))
+                          (bset ray-door-open i (min 32 (+ o 2)))
+                          (when (= t 1) (ray-door-sound! false)))
               (> o 0) (bset ray-door-open i (max 0 (- o 2))))))))
 
 ;; ── Drawing a texture column ────────────────────────────────────────────────────────────────
@@ -382,12 +409,15 @@
           (bfill ray-fb (+ (* (+ px (floor (* ray-dx 3))) ray-h) py (floor (* ray-dy 3))) 1 255)))))
 
 ;; One frame: read the keys, move the doors, draw every column, the sprites and the map, hand the
-;; bytes over.
+;; bytes over with the notes the frame made.
 (defn ray-frame (held ms)
   (do (ray-input! held ms)
       (ray-doors!)
       (loop (x 0) (when (< x ray-w) (do (ray-column x) (recur (+ x 1)))))
       (ray-sprites!)
       (ray-minimap)
-      {"kind" "indexed" "w" ray-w "h" ray-h "order" "columns"
-       "pixels" (bytes->base64 ray-fb) "palette" ray-palette "border" 192}))
+      (let (tones ray-tones)
+        (do (set! ray-tones '())
+            {"kind" "indexed" "w" ray-w "h" ray-h "order" "columns"
+             "pixels" (bytes->base64 ray-fb) "palette" ray-palette "border" 192
+             "tones" tones}))))

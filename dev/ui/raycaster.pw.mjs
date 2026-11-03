@@ -51,6 +51,8 @@ test("the raycaster draws its maze, and the keys held turn and move the view", a
   // walking forward moves the dot on the minimap off where it started
   await page.keyboard.down("ArrowUp");
   await expect.poll(() => pixel(page, 14, 29), { timeout: 5000 }).not.toEqual([255, 255, 255]);
+  // walking makes footsteps (or a bump, at a wall) — notes for the host, in the frames
+  await expect.poll(async () => Number((await screen(form).getAttribute("data-sounds")) ?? 0), { timeout: 5000 }).toBeGreaterThan(0);
   await page.keyboard.up("ArrowUp");
 
   const a = await frames(form);
