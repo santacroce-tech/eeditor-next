@@ -1,0 +1,63 @@
+;; Display.eeform — a screen that isn't a Spectrum: a picture EELisp draws, byte by byte.
+;;
+;; The screen control evaluates :frame :hz times a second — 35 here, Doom's tic rate — and paints
+;; the frame that comes back. This one is an "indexed" frame (docs/DISPLAY.md): 160×100 bytes, each
+;; an entry in a 256-colour palette, written a column at a time — a whole column of one colour is
+;; a single bfill, which is how a raycaster would draw a wall.
+;;
+;; In each frame the program has:
+;;   ui-held  the PC keys held down, by KeyboardEvent.code — {"ArrowLeft" true "KeyW" true}
+;;   ui-ms    milliseconds since the screen started: the clock
+;;
+;; Click the screen, then move the square with the arrow keys or W A S D. The stripes move on
+;; their own, from ui-ms.
+
+(form "Display" :size (512 384)
+  (label lblHelp :text "Click the screen, then use the arrow keys or W A S D." :at (16 12) :size (480 24))
+  (screen scrDemo :frame "(display-frame ui-held ui-ms)" :hz 35 :at (16 44) :size (480 324)))
+
+(def display-w 160)
+(def display-h 100)
+(def display-horizon 60)
+;; The picture, a column after another: pixel (x, y) is byte x*h + y.
+(def display-fb (make-bytes (* display-w display-h)))
+(def display-x 72)
+(def display-y 70)
+
+;; 0–63 sky blues, 64–127 browns for the ground, 254 white, 255 yellow — three bytes a colour.
+(def display-palette
+  (bytes->base64
+    (list->bytes
+      (loop (i 0 acc '())
+        (if (= i 256)
+            acc
+            (recur (+ i 1)
+                   (append acc
+                     (cond (< i 64)  (list i (+ 40 (* i 2)) (+ 120 (* i 2)))
+                           (< i 128) (list (+ 60 (* (- i 64) 2)) (+ 40 (- i 64)) 20)
+                           (= i 255) (list 255 220 0)
+                           true      (list 255 255 255)))))))))
+
+(defn display-held? (held a b) (or (dict-get held a) (dict-get held b)))
+
+;; One frame: move the square by the keys held, draw sky and ground a column at a time, then the
+;; square, and hand the bytes over.
+(defn display-frame (held ms)
+  (do
+    (let (dx (- (if (display-held? held "ArrowRight" "KeyD") 2 0) (if (display-held? held "ArrowLeft" "KeyA") 2 0))
+          dy (- (if (display-held? held "ArrowDown" "KeyS") 2 0) (if (display-held? held "ArrowUp" "KeyW") 2 0)))
+      (do (set! display-x (max 0 (min (- display-w 16) (+ display-x dx))))
+          (set! display-y (max 0 (min (- display-h 16) (+ display-y dy))))))
+    (let (shift (floor (/ ms 40)))
+      (loop (x 0)
+        (when (< x display-w)
+          (do (bfill display-fb (* x display-h) display-horizon (mod (+ x shift) 64))
+              (bfill display-fb (+ (* x display-h) display-horizon) (- display-h display-horizon)
+                     (+ 64 (floor (/ (* x 63) display-w))))
+              (recur (+ x 1))))))
+    (loop (c 0)
+      (when (< c 16)
+        (do (bfill display-fb (+ (* (+ display-x c) display-h) display-y) 16 255)
+            (recur (+ c 1)))))
+    {"kind" "indexed" "w" display-w "h" display-h "order" "columns"
+     "pixels" (bytes->base64 display-fb) "palette" display-palette "border" 0}))

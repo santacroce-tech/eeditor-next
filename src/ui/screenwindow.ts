@@ -6,8 +6,8 @@ import type { ScreenWindow } from "./screenview";
 
 let opened = 0;
 
-export function openScreenWindow(expr: string, title: string): ScreenWindow {
-  const url = `screen.html?${new URLSearchParams({ expr, title })}`;
+export function openScreenWindow(expr: string, title: string, hz = 50): ScreenWindow {
+  const url = `screen.html?${new URLSearchParams({ expr, title, hz: String(hz) })}`;
   if (inTauri()) return nativeWindow(url, title);
   const w = window.open(url, `screen-${++opened}`, "popup,width=820,height=660");
   if (!w) return { closed: Promise.resolve(), close: () => {}, focus: () => {} };

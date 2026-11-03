@@ -18,6 +18,7 @@ problem.hidden = true;
 
 const view = createScreenView(host, {
   expr,
+  hz: Number(q.get("hz")) || undefined,
   running: true,
   fill: true,
   frame: async (src) => {

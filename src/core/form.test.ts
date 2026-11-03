@@ -160,6 +160,11 @@ describe("the layout", () => {
     expect(screened.controls[0].props).toEqual({ frame: "(zx-frame zx ui-keys)" });
     expect(printFormSpec(screened)).toContain('(screen scrZX :frame "(zx-frame zx ui-keys)" :at (8 8) :size (320 240))');
     expect(nextName("screen", [])).toBe("scr1");
+    // :hz is written only when it isn't the Spectrum's 50
+    const [hz] = readAll('(form (screen scrD :frame "(f)" :hz 35 :at (8 8) :size (320 240)))');
+    const paced = parseFormSpec(hz) as FormSpec;
+    expect(paced.controls[0].props.hz).toBe(35);
+    expect(printFormSpec(paced)).toContain(":hz 35");
     expect(nextName("radio", [])).toBe("opt1");
     expect(nextName("date", ["dtp1"])).toBe("dtp2");
   });

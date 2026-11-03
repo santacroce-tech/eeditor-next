@@ -421,8 +421,9 @@ export const CONTROLS: Record<ControlType, ControlDef> = {
     events: [],
     initial: {},
   },
-  // A screen the program draws: each animation frame the runner evaluates :frame — with the keys
-  // held down in `ui-keys` — and paints the ZX Spectrum screen it returns (src/spectrum).
+  // A screen the program draws: :hz times a second the runner evaluates :frame — with the keys held
+  // down in `ui-keys` (the Spectrum's matrix) and `ui-held`, and the time in `ui-ms` — and paints
+  // the frame it returns: a ZX Spectrum's (src/spectrum), or any picture (docs/DISPLAY.md).
   screen: {
     label: "Screen",
     prefix: "scr",
@@ -431,6 +432,7 @@ export const CONTROLS: Record<ControlType, ControlDef> = {
     props: [
       { key: "frame", kind: "text", label: "Each frame", default: "" },
       { key: "keyboard", kind: "bool", label: "Keyboard on screen", default: false },
+      { key: "hz", kind: "number", label: "Frames a second", default: 50 },
     ],
     // :on-paste — text pasted on the screen, in (ui-get f "$text")
     events: ["paste"],
