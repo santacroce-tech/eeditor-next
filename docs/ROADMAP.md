@@ -254,3 +254,22 @@ explain.
 **Decision: do next** — a to f in santacroce-tech/eelisp-rs#26, g in #22. Each makes the book
 shorter.
 
+
+## Could stand on their own
+
+Several pieces built here don't need EEditor, and may one day be projects of their own, with
+their own repository, releases and users. Each is kept self-contained with that in mind: its own
+file or folder, its own tests and its own documentation, and no reach into the editor's
+internals.
+
+| Piece | Where | What it would be on its own |
+|---|---|---|
+| The Z80 assembler | `dev/z80asm.mjs` | A Z80 assembler in one file with nothing to install: `npx z80asm game.asm` |
+| The Z80 | `src/spectrum/zx.eelisp` | A complete Z80 in EELisp (FUSE's tests pass), for any machine built on it |
+| The ZX Spectrum and the MSX | `src/spectrum/`, `src/msx/` | Emulators that run in a form, in the browser or anywhere EELisp runs |
+| The video chips and the screen | `src/display/` | Drawing the TMS9918A and the Spectrum's screen from their memory; the frame protocol (`docs/DISPLAY.md`) |
+| The raycaster | `workspace/examples/Raycaster.eeform` | A small engine for first-person mazes in EELisp |
+| The MSX tutorial | `docs/msx/TUTORIAL.md`, `docs/msx/snake/` | A course in writing MSX games |
+| The catalog | santacroce-tech/eeditor-docs | A documentation site built from source repositories |
+
+EELisp already is one: santacroce-tech/eelisp-rs.
