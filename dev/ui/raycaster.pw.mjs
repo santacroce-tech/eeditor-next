@@ -1,5 +1,5 @@
 // The raycaster (workspace/examples/Raycaster.eeform) in a real browser over the real engine:
-// 320×200 indexed frames, textured walls, a minimap, and the held keys turning and moving the view.
+// 320×200 indexed frames, textured walls, sprites, a minimap, and the held keys turning and moving the view.
 
 import { expect, test } from "@playwright/test";
 
@@ -34,6 +34,8 @@ test("the raycaster draws its maze, and the keys held turn and move the view", a
   // the minimap: the corner cell is brick at its brightest tone, the player a white dot at (3.5, 8.5)
   await expect.poll(() => pixel(page, 5, 5)).toEqual([200, 82, 59]);
   expect(await pixel(page, 14, 29)).toEqual([255, 255, 255]);
+  // a sprite: the lamp at the far end of the corridor, its globe glowing in the middle column
+  expect(await pixel(page, 160, 91)).toEqual([255, 244, 200]);
 
   // standing still, the view stays the same
   const still = await view(page);

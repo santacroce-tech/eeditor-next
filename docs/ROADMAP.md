@@ -228,7 +228,8 @@ engine, and nothing depends on it.
 
 **Done** as an example rather than a hidden command: `workspace/examples/Raycaster.eeform`, on the
 screen control made general (`docs/DISPLAY.md`) — 320×200 indexed, not the Spectrum's resolution,
-with textured walls, at 35 frames a second; a frame costs the engine about 9 ms.
+with textured walls, sliding doors and sprites, at 35 frames a second; a frame costs the engine
+about 10 ms.
 
 ---
 
