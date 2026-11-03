@@ -276,7 +276,11 @@
   (let (mixer (msx-reg 7))
     (loop (ch 0)
       (cond (= ch 3) false
+            ;; a volume of 0, or the envelope's once it has faded out and stopped, is silence
             (and (!= 0 (msx-reg (+ 8 ch)))
+                 (or (= 0 (band (msx-reg (+ 8 ch)) 16))
+                     (= 0 (bget msx-psg msx-P-EHOLD))
+                     (!= 0 (bget msx-psg msx-P-ENV)))
                  (or (= 0 (band mixer (shl 1 ch))) (= 0 (band mixer (shl 8 ch))))) true
             true (recur (+ ch 1))))))
 

@@ -100,8 +100,7 @@
 (def falling (samples (msx-frame snd {})))
 (check "the envelope starts loud" (apply max falling) 168)
 (loop (i 0) (when (< i 40) (do (msx-frame snd {}) (recur (+ i 1)))))
-(check "and has fallen silent" (edges (samples (msx-frame snd {}))) 0)
-(check "at 128" (first (samples (msx-frame snd {}))) 128)
+(check "and once it has faded out the frame sends no sound" (dict-get (msx-frame snd {}) "audio") nil)
 ;; noise alone on A
 (psg! 8 15) (psg! 7 0xb7) (psg! 6 1)
 (check "noise is noise: many edges" (> (edges (samples (msx-frame snd {}))) 30) true)

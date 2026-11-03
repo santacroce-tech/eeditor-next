@@ -32,6 +32,12 @@ C-BIOS runs cartridges and has no BASIC. With none it says so; the form's **Demo
 335-byte cartridge written for it (its listing is in the form) — the cursor keys move a sprite,
 Space plays a note — and **Load cartridge…** takes a `.rom`.
 
+## Writing a game
+
+[TUTORIAL.md](TUTORIAL.md) builds a snake game in Z80 assembly in five steps, each a cartridge
+that runs, with the source in [`snake/`](snake/). The assembler is in the repository
+(`npm run msx:asm -- game.asm` → `game.rom`, `dev/z80asm.mjs`), so there's nothing to install.
+
 ## How it's built
 
 **Memory.** The Z80 reads one flat 64 KB, as the Spectrum's does, so the hot path is unchanged.
