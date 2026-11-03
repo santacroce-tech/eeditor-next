@@ -88,7 +88,7 @@ sharp. The control's size is the form's; the picture's is the program's.
 | | CPU | Picture | Notes |
 |---|---|---|---|
 | ZX Spectrum 48K | Z80, in `zx.eelisp` | `"screen"` | Done — `docs/spectrum/` |
-| A raycaster (ROADMAP 15) | — | `"indexed"`, `"columns"` | The Doom-like route: a grid, then sectors, then WAD lumps |
+| A raycaster (ROADMAP 15) | — | `"indexed"`, `"columns"`, 320×200 | Done — `Raycaster.eeform`. The Doom-like route goes on: sectors, then WAD lumps |
 | MSX | Z80 — the Spectrum's core | `"indexed"`, 256×192, the TMS9918's 16 colours | The video chip is the work; C-BIOS is a free BIOS, so it can ship |
 | Commodore 64 | 6502/6510, new | `"indexed"`, 320×200 + border, 16 colours | The VIC-II's raster tricks need drawing line by line; its ROMs are the user's to load |
 

@@ -1,0 +1,240 @@
+;; Raycaster.eeform — a Wolfenstein-style maze, drawn by EELisp a column at a time.
+;;
+;; The screen control asks for a frame 35 times a second, Doom's tic rate (docs/DISPLAY.md). Each
+;; frame casts one ray for each of the 320 columns, walks the map grid cell by cell until the ray
+;; hits a wall (the DDA), and draws that wall's slice: textured, darker with distance and on the
+;; north/south faces. The picture is 320×200 bytes into a 256-colour palette — Doom's own format —
+;; stored a column after another, so a column is one stretch of the buffer.
+;;
+;; No sin or cos: the view is a direction and a camera plane, two vectors, and a turn rotates them
+;; by a small angle whose cosine and sine are a few terms of their series. Wolfenstein 3D used
+;; tables; so did Doom (finesine).
+;;
+;; Click the screen, then: ↑ ↓ or W S to walk, ← → to turn, A D to step sideways.
+
+(form "Raycaster" :size (672 460)
+  (label lblHelp :text "Click the screen. ↑ ↓ / W S walk, ← → turn, A D step aside." :at (16 12) :size (640 24))
+  (screen scrRay :frame "(ray-frame ui-held ui-ms)" :hz 35 :at (16 44) :size (640 400)))
+
+(def ray-w 320)
+(def ray-h 200)
+(def ray-fb (make-bytes (* ray-w ray-h)))   ; pixel (x, y) is byte x*h + y
+
+;; ── The map: 16×16 cells, 0 open, 1–4 a wall of that material ─────────────────────────────────
+(def ray-map-w 16)
+(def ray-map-h 16)
+(def ray-map
+  (list->bytes
+    (list 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 2
+          1 0 0 0 0 0 0 1 2 0 0 0 0 0 0 2
+          1 0 3 3 0 0 0 0 0 0 0 0 4 4 0 2
+          1 0 3 0 0 0 0 1 2 0 0 0 0 4 0 2
+          1 0 0 0 0 0 0 1 2 0 0 0 0 0 0 2
+          1 1 0 1 1 1 1 1 2 2 2 0 2 2 2 2
+          1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2
+          1 0 4 0 4 0 4 0 0 3 0 3 0 3 0 2
+          1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2
+          1 0 4 0 4 0 4 0 0 3 0 3 0 3 0 2
+          1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2
+          3 3 3 0 3 3 3 3 4 4 4 4 0 4 4 4
+          3 0 0 0 0 0 0 3 4 0 0 0 0 0 0 4
+          3 0 0 0 1 1 0 0 0 0 0 2 2 0 0 4
+          3 0 0 0 0 0 0 3 4 0 0 0 0 0 0 4
+          3 3 3 3 3 3 3 3 4 4 4 4 4 4 4 4)))
+
+(defn ray-cell (x y)
+  (if (and (>= x 0) (>= y 0) (< x ray-map-w) (< y ray-map-h))
+      (bget ray-map (+ (* y ray-map-w) x))
+      1))
+
+;; ── The palette ───────────────────────────────────────────────────────────────────────────────
+;; Four materials × six light levels × eight tones = 192 colours: index m*48 + light*8 + tone.
+;; Then 32 ceiling shades (192–223), 31 floor shades (224–254) and white (255). Darkening is choosing a light
+;; level — what Doom's COLORMAP does with a table.
+(def ray-materials
+  (list (list 176 72 52)     ; 1 brick
+        (list 120 128 148)   ; 2 stone
+        (list 150 100 54)    ; 3 wood
+        (list 56 150 140)))  ; 4 metal
+
+(def ray-pal (make-bytes 768))
+(defn ray-rgb! (i r g b)
+  (do (bset ray-pal (* i 3) (max 0 (min 255 (floor r))))
+      (bset ray-pal (+ (* i 3) 1) (max 0 (min 255 (floor g))))
+      (bset ray-pal (+ (* i 3) 2) (max 0 (min 255 (floor b))))))
+(loop (m 0)
+  (when (< m 4)
+    (let (c (nth ray-materials m))
+      (do (loop (l 0)
+            (when (< l 6)
+              (do (loop (tone 0)
+                    (when (< tone 8)
+                      (let (k (* (+ 0.3 (* tone 0.12)) (- 1.0 (* l 0.14))))
+                        (do (ray-rgb! (+ (* m 48) (* l 8) tone) (* (nth c 0) k) (* (nth c 1) k) (* (nth c 2) k))
+                            (recur (+ tone 1))))))
+                  (recur (+ l 1)))))
+          (recur (+ m 1))))))
+(loop (i 0)
+  (when (< i 32)
+    (do (ray-rgb! (+ 192 i) (+ 10 i) (+ 12 i) (+ 30 (* i 2)))
+        (ray-rgb! (+ 224 i) (+ 20 (* i 2)) (+ 18 (* i 2)) (+ 14 i))
+        (recur (+ i 1)))))
+(ray-rgb! 255 255 255 255)
+(def ray-palette (bytes->base64 ray-pal))
+
+;; ── Textures: 32×32 tones for each material, a column after another, made up here ───────────────
+(def ray-tex (make-bytes (* 4 1024)))
+(defn ray-noise (x y) (mod (+ (* x 7919) (* y 104729) (* x y 31)) 3))
+(defn ray-texel (m x y)
+  (cond
+    ;; brick: rows of 8, every other row shifted half a brick, light mortar
+    (= m 0) (if (or (= (mod y 8) 0) (= (mod (+ x (if (= (mod (floor (/ y 8)) 2) 0) 0 8)) 16) 0))
+                6
+                (+ 2 (ray-noise x y)))
+    ;; stone: 16×16 blocks, lit top-left edge, shadowed bottom-right
+    (= m 1) (let (bx (mod x 16) by (mod y 16))
+              (cond (or (= bx 0) (= by 0)) 7
+                    (or (= bx 15) (= by 15)) 1
+                    true (+ 3 (ray-noise x y))))
+    ;; wood: planks 8 wide, grain running down them
+    (= m 2) (if (= (mod x 8) 0) 1 (+ 3 (mod (+ (* x 3) (floor (/ y 5))) 3)))
+    ;; metal: a panel with a frame and four rivets
+    true (let (ex (or (< x 2) (> x 29)) ey (or (< y 2) (> y 29))
+               rivet (and (or (= x 5) (= x 26)) (or (= y 5) (= y 26))))
+           (cond (or ex ey) 2
+                 rivet 7
+                 true (+ 4 (mod (floor (/ y 4)) 2))))))
+(loop (m 0)
+  (when (< m 4)
+    (do (loop (x 0)
+          (when (< x 32)
+            (do (loop (y 0)
+                  (when (< y 32)
+                    (do (bset ray-tex (+ (* m 1024) (* x 32) y) (ray-texel m x y))
+                        (recur (+ y 1)))))
+                (recur (+ x 1)))))
+        (recur (+ m 1)))))
+
+;; The column under every wall: ceiling darkening to the horizon, floor lightening toward you.
+(def ray-bg (make-bytes ray-h))
+(loop (y 0)
+  (when (< y ray-h)
+    (do (bset ray-bg y
+          (if (< y (/ ray-h 2))
+              (+ 192 (- 31 (floor (/ (* y 32) (/ ray-h 2)))))
+              (+ 224 (min 30 (floor (/ (* (- y (/ ray-h 2)) 32) (/ ray-h 2)))))))
+        (recur (+ y 1)))))
+
+;; ── The player: where, which way, and the camera plane (its width is the field of view) ──────────
+(def ray-px 3.5)
+(def ray-py 8.5)
+(def ray-dx 1.0)
+(def ray-dy 0.0)
+(def ray-cx 0.0)
+(def ray-cy 0.66)
+(def ray-last nil)
+
+;; Turn by a radians: rotate the direction and the plane together.
+(defn ray-turn! (a)
+  (let (a2 (* a a)
+        c (+ 1.0 (* a2 -0.5) (/ (* a2 a2) 24.0))
+        s (* a (+ 1.0 (/ a2 -6.0) (/ (* a2 a2) 120.0)))
+        dx ray-dx cx ray-cx)
+    (do (set! ray-dx (- (* dx c) (* ray-dy s)))
+        (set! ray-dy (+ (* dx s) (* ray-dy c)))
+        (set! ray-cx (- (* cx c) (* ray-cy s)))
+        (set! ray-cy (+ (* cx s) (* ray-cy c))))))
+
+;; Move by (mx, my), one axis at a time so the player slides along a wall instead of sticking.
+(defn ray-move! (mx my)
+  (let (r 0.2)
+    (do (when (= 0 (ray-cell (floor (+ ray-px mx (if (< mx 0) (- r) r))) (floor ray-py)))
+          (set! ray-px (+ ray-px mx)))
+        (when (= 0 (ray-cell (floor ray-px) (floor (+ ray-py my (if (< my 0) (- r) r)))))
+          (set! ray-py (+ ray-py my))))))
+
+(defn ray-held? (held a b) (or (dict-get held a) (dict-get held b)))
+
+(defn ray-input! (held ms)
+  (let (dt (if (nil? ray-last) 0 (min 0.1 (/ (- ms ray-last) 1000.0)))
+        walk (* dt (- (if (ray-held? held "ArrowUp" "KeyW") 3.0 0) (if (ray-held? held "ArrowDown" "KeyS") 3.0 0)))
+        side (* dt (- (if (dict-get held "KeyD") 2.5 0) (if (dict-get held "KeyA") 2.5 0)))
+        turn (* dt (- (if (dict-get held "ArrowRight") 2.2 0) (if (dict-get held "ArrowLeft") 2.2 0))))
+    (do (set! ray-last ms)
+        (when (not (= turn 0)) (ray-turn! turn))
+        ;; sideways is along the camera plane, which points to the right of the view
+        (ray-move! (+ (* ray-dx walk) (* ray-cx side 1.5)) (+ (* ray-dy walk) (* ray-cy side 1.5))))))
+
+;; ── One column: cast, find the wall, draw its slice ───────────────────────────────────────────
+(defn ray-column (x)
+  (let (cam (- (/ (* 2.0 x) ray-w) 1.0)
+        rx (+ ray-dx (* ray-cx cam))
+        ry (+ ray-dy (* ray-cy cam))
+        ddx (if (= rx 0) 1e30 (abs (/ 1.0 rx)))
+        ddy (if (= ry 0) 1e30 (abs (/ 1.0 ry)))
+        mx0 (floor ray-px)
+        my0 (floor ray-py)
+        sx (if (< rx 0) -1 1)
+        sy (if (< ry 0) -1 1)
+        col (* x ray-h))
+    (do
+      (bcopy ray-fb col ray-bg 0 ray-h)
+      ;; the DDA: step to whichever grid line the ray crosses next until a cell is a wall
+      (loop (mx mx0 my my0
+             tx (if (< rx 0) (* (- ray-px mx0) ddx) (* (- (+ mx0 1.0) ray-px) ddx))
+             ty (if (< ry 0) (* (- ray-py my0) ddy) (* (- (+ my0 1.0) ray-py) ddy))
+             side 0 n 0)
+        (let (c (ray-cell mx my))
+          (if (or (> c 0) (> n 64))
+              (let (perp (max 0.05 (if (= side 0) (- tx ddx) (- ty ddy)))  ; distance along the view, no fisheye
+                    lh (floor (/ ray-h perp))
+                    top (floor (/ (- ray-h lh) 2))
+                    y0 (max 0 top)
+                    y1 (min ray-h (+ top lh))
+                    hit (if (= side 0) (+ ray-py (* perp ry)) (+ ray-px (* perp rx)))
+                    u (floor (* (- hit (floor hit)) 32))
+                    u (if (or (and (= side 0) (> rx 0)) (and (= side 1) (< ry 0))) (- 31 u) u)
+                    toff (+ (* (- (max c 1) 1) 1024) (* u 32))
+                    light (min 5 (+ side (floor (* perp 0.7))))
+                    base (+ (* (- (max c 1) 1) 48) (* light 8)))
+                ;; down the texture column a run of one tone at a time: texel row j covers screen
+                ;; rows top + j*lh/32 onwards, so a run is one bfill, however tall the wall
+                (loop (j 1 from 0 tone (bget ray-tex toff))
+                  (if (or (= j 32) (not (= tone (bget ray-tex (+ toff j)))))
+                      (let (a (max y0 (+ top (floor (/ (* from lh) 32))))
+                            b (min y1 (+ top (floor (/ (* j lh) 32)))))
+                        (do (when (> b a) (bfill ray-fb (+ col a) (- b a) (+ base tone)))
+                            (when (< j 32) (recur (+ j 1) j (bget ray-tex (+ toff j))))))
+                      (recur (+ j 1) from tone))))
+              (if (< tx ty)
+                  (recur (+ mx sx) my (+ tx ddx) ty 0 (+ n 1))
+                  (recur mx (+ my sy) tx (+ ty ddy) 1 (+ n 1)))))))))
+
+;; A small map in the corner: walls in their material's brightest tone, the player white.
+(defn ray-minimap ()
+  (do
+    (loop (cx 0)
+      (when (< cx ray-map-w)
+        (do (loop (cy 0)
+              (when (< cy ray-map-h)
+                (let (c (ray-cell cx cy))
+                  (do (when (> c 0)
+                        (loop (k 0)
+                          (when (< k 3)
+                            (do (bfill ray-fb (+ (* (+ 4 (* cx 3) k) ray-h) 4 (* cy 3)) 3 (+ (* (- c 1) 48) 7))
+                                (recur (+ k 1))))))
+                      (recur (+ cy 1))))))
+            (recur (+ cx 1)))))
+    (let (px (+ 4 (floor (* ray-px 3))) py (+ 4 (floor (* ray-py 3))))
+      (do (bfill ray-fb (+ (* px ray-h) py -1) 3 255)
+          (bfill ray-fb (+ (* (- px 1) ray-h) py) 1 255)
+          (bfill ray-fb (+ (* (+ px 1) ray-h) py) 1 255)
+          (bfill ray-fb (+ (* (+ px (floor (* ray-dx 3))) ray-h) py (floor (* ray-dy 3))) 1 255)))))
+
+;; One frame: read the keys, draw every column and the map, hand the bytes over.
+(defn ray-frame (held ms)
+  (do (ray-input! held ms)
+      (loop (x 0) (when (< x ray-w) (do (ray-column x) (recur (+ x 1)))))
+      (ray-minimap)
+      {"kind" "indexed" "w" ray-w "h" ray-h "order" "columns"
+       "pixels" (bytes->base64 ray-fb) "palette" ray-palette "border" 192}))
