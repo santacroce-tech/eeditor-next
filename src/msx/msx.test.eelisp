@@ -1,0 +1,91 @@
+;; msx.test.eelisp — the MSX around the Z80: slots and paging, the VDP's ports, the frame's
+;; interrupt, the keyboard matrix, and C-BIOS booting. Run with: npm run msx:test
+
+(def msx-failures 0)
+(defn check (name got want)
+  (if (= got want)
+      (println "ok   " name)
+      (do (set! msx-failures (+ msx-failures 1))
+          (println "FAIL " name " — got " got ", want " want))))
+
+;; a BIOS whose every byte is 0xB1, so it can be told from RAM (0) and an empty slot (0xFF)
+(def m (msx-new (make-bytes 0x8000 0xb1) nil))
+(msx-use m)
+
+;; ── slots ──
+(check "at reset every page shows slot 0" (list (zx-rd 0x0000) (zx-rd 0x8000) (zx-rd 0xc000)) (list 0xb1 0xff 0xff))
+(check "nothing is writable on a ROM" (do (zx-wr 0x1000 7) (zx-rd 0x1000)) 0xb1)
+(msx-out 0xa8 0xc0)                                  ; page 3 → slot 3, the RAM
+(check "page 3 on the RAM reads it" (zx-rd 0xc000) 0)
+(check "and writes it" (do (zx-wr 0xc000 0x42) (zx-rd 0xc000)) 0x42)
+(check "zx-rom-top sits just under the RAM" zx-rom-top 0xc000)
+(msx-out 0xa8 0x00)                                  ; page 3 back to the BIOS slot
+(check "away from the RAM, page 3 is the slot's" (zx-rd 0xc000) 0xff)
+(msx-out 0xa8 0xf0)                                  ; pages 2 and 3 on the RAM
+(check "back on the RAM, what was written is there" (zx-rd 0xc000) 0x42)
+(check "port 0xA8 reads back" (msx-in 0xa8) 0xf0)
+(msx-out 0xa8 0xff)                                  ; all RAM
+(check "all RAM: nothing is a ROM" zx-rom-top 0)
+(check "the bottom page writes too" (do (zx-wr 0x0010 9) (zx-rd 0x0010)) 9)
+(msx-out 0xa8 0xf0)
+(check "the BIOS comes back under it" (zx-rd 0x0010) 0xb1)
+
+;; ── the cartridge slot ──
+(msx-insert m (list->bytes '(0x41 0x42 0x10 0x40)))
+(msx-use m)
+(msx-out 0xa8 0xf4)                                  ; page 1 → slot 1
+(check "a cartridge shows in slot 1 at 0x4000" (list (zx-rd 0x4000) (zx-rd 0x4001)) (list 0x41 0x42))
+(check "a small one again at 0x6000" (zx-rd 0x6000) 0x41)
+(check "one too big for no mapper is refused" (string? (msx-insert m (make-bytes 0x10000))) true)
+
+;; ── the VDP ──
+(msx-out 0x99 0x34) (msx-out 0x99 0x52)              ; write at 0x1234
+(msx-out 0x98 0xaa) (msx-out 0x98 0xbb)
+(check "data goes to VRAM and the address moves on" (list (msx-vpeek m 0x1234) (msx-vpeek m 0x1235)) (list 0xaa 0xbb))
+(msx-out 0x99 0x34) (msx-out 0x99 0x12)              ; read from 0x1234: read ahead
+(check "reads come from the read-ahead" (list (msx-in 0x98) (msx-in 0x98)) (list 0xaa 0xbb))
+(msx-out 0x99 0xf4) (msx-out 0x99 0x87)              ; register 7 = 0xF4
+(check "a register write" (bget msx-st (+ msx-VREG 7)) 0xf4)
+
+;; ── the frame and its interrupt ──
+(msx-out 0x99 0xe0) (msx-out 0x99 0x81)              ; r1: display and interrupts on
+(bset msx-st msx-VSTAT 0x80) (msx-irq!)
+(check "the frame flag with interrupts on asks for one" msx-irq true)
+(check "reading the status gives the flag" (msx-in 0x99) 0x80)
+(check "and clears it, and the interrupt" (list (bget msx-st msx-VSTAT) msx-irq) (list 0 false))
+
+;; ── the keyboard ──
+(msx-keys! {"KeyA" true "ArrowUp" true})
+(msx-out 0xaa 0x02)                                  ; row 2
+(check "A is row 2, bit 6" (msx-in 0xa9) 0xbf)
+(msx-out 0xab 0x07)                                  ; port C was row 2; bit 3 set: row 10
+(msx-out 0xab 0x02)                                  ; bit 1 cleared: row 8
+(check "0xAB sets or clears one bit of port C" (band (msx-in 0xaa) 0x0f) 0x08)
+(msx-out 0xaa 0x08)
+(check "↑ is row 8, bit 5" (msx-in 0xa9) 0xdf)
+(msx-keys! {})
+(check "let go, the row is all 1s" (msx-in 0xa9) 0xff)
+
+;; ── C-BIOS boots, and with no cartridge says so ──
+(def cb (msx-new msx-cbios-main msx-cbios-logo))
+(loop (i 0) (when (< i 240) (do (msx-frame cb {}) (recur (+ i 1)))))
+(def vram (dict-get cb :vram))
+(defn find-bytes (want)
+  (let (n (length want))
+    (loop (a 0)
+      (cond (> a (- 16384 n)) -1
+            (= want (map (fn (i) (bget vram (+ a i))) (range n))) a
+            true (recur (+ a 1))))))
+;; "No cartridge" in the text screen's names
+(check "C-BIOS says it has no cartridge" (> (find-bytes '(78 111 32 99 97 114 116 114 105 100 103 101)) -1) true)
+
+;; ── a Spectrum in the same engine keeps its memory map ──
+(def zx (zx-new))
+(msx-frame cb {})
+(zx-load zx 0x8000 (list->bytes '(0x3e 0x55 0x32 0x00 0x40 0x76)))   ; LD A,0x55 / LD (0x4000),A / HALT
+(zx-set-reg zx "pc" 0x8000)
+(zx-frame zx nil)
+(check "after an MSX frame, the Spectrum still writes its screen" (zx-peek zx 0x4000) 0x55)
+
+(println)
+(println (if (= msx-failures 0) "all passed" (str msx-failures " failed")))

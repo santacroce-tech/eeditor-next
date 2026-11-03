@@ -10,7 +10,7 @@ framebuffer, input, a clock, memory and storage. Here they are:
 
 | Need | Here |
 |---|---|
-| Framebuffer | The frame `:frame` returns — `"indexed"`, `"rgba"` or the Spectrum's `"screen"` (below) |
+| Framebuffer | The frame `:frame` returns — `"indexed"`, `"rgba"`, the Spectrum's `"screen"` or the MSX's `"tms9918"` (below) |
 | Input | `ui-held`, the PC keys down; `ui-keys`, the Spectrum's matrix |
 | Clock | `:hz`, how often a frame is asked for; `ui-ms`, the time |
 | Memory | Byte buffers — `make-bytes`, `bget`, `bset`, `bfill`, `bcopy` (eelisp-rs) |
@@ -79,6 +79,17 @@ The Spectrum's display memory as it is: the host unscrambles the bitmap and appl
 attributes (`docs/spectrum/ZXSPECTRUM.md`). The ⌨ button, the Spectrum's keyboard, shows only
 while the frames are this kind.
 
+### `"tms9918"` — an MSX1's video chip
+
+```clojure
+{"kind" "tms9918" "vram" "<base64 of its 16384 bytes>" "regs" "<base64 of its 8 registers>" "frame" 1234}
+```
+
+The TMS9918A's memory and registers as they are: the host draws the 256×192 picture the chip would
+— Graphics I and II, text, multicolour, sprites four to a line — with the backdrop colour as the
+border (`src/display/tms9918.ts`). Drawing it in EELisp would be some 50,000 `bset`s a frame; like
+the Spectrum's screen memory, it's the host's to unscramble. `docs/msx/MSX.md`.
+
 ## Sound
 
 Any frame may carry sound beside its picture, in either of two ways or both:
@@ -114,12 +125,13 @@ sharp. The control's size is the form's; the picture's is the program's.
 |---|---|---|---|
 | ZX Spectrum 48K | Z80, in `zx.eelisp` | `"screen"` | Done — `docs/spectrum/` |
 | A raycaster (ROADMAP 15) | — | `"indexed"`, `"columns"`, 320×200 | Done — `Raycaster.eeform`. The Doom-like route goes on: sectors, then WAD lumps |
-| MSX | Z80 — the Spectrum's core | `"indexed"`, 256×192, the TMS9918's 16 colours | The video chip is the work; C-BIOS is a free BIOS, so it can ship |
+| MSX1 | Z80 — the Spectrum's core | `"tms9918"` | Done, cartridges up to 32 KB — `docs/msx/MSX.md`; C-BIOS ships with it. Mappers and the PSG's sound next |
 | Commodore 64 | 6502/6510, new | `"indexed"`, 320×200 + border, 16 colours | The VIC-II's raster tricks need drawing line by line; its ROMs are the user's to load |
 
-What a machine adds lives in EELisp, as the Spectrum's does: its CPU, its memory map, its video
-chip drawing into a byte buffer, and its keyboard matrix built from `ui-held`. The host only
-paints.
+What a machine adds lives in EELisp, as the Spectrum's does: its CPU, its memory map, its ports,
+and its keyboard matrix built from `ui-held`. Its picture is a byte buffer it draws, or — when the
+chip's memory is the picture, as the Spectrum's and the MSX's are — that memory, which the host
+draws: a frame kind for the chip.
 
 ## Not yet
 

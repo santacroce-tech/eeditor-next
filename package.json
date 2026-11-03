@@ -20,6 +20,8 @@
     "sheets:test": "node dev/sheetfns.mjs",
     "spectrum:bench": "node dev/spectrum.mjs bench",
     "spectrum:fuse": "node dev/spectrum-fuse.mjs",
+    "msx:test": "node dev/msx.mjs",
+    "msx:bench": "node dev/msx.mjs bench",
     "test:ui": "playwright test",
     "engine:wasm": "scripts/build-wasm-engine.sh",
     "runtime:template": "node scripts/build-runtime-template.mjs",

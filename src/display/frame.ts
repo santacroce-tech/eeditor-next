@@ -6,17 +6,19 @@
 //   {"kind" "indexed" "w" 320 "h" 200 "pixels" … ["palette" …] ["order" "columns"] ["border" i]}
 //                                                               a byte a pixel, each a palette index
 //   {"kind" "rgba"    "w" 320 "h" 200 "pixels" …}              four bytes a pixel: red, green, blue, alpha
+//   {"kind" "tms9918" "vram" … "regs" …}                        an MSX1's video chip: 16 KB and 8 registers
 //
 // Bytes come as base64 (`bytes->base64`), the only way they cross the engine's JSON.
 
 import { b64ToBytes, borderCss, frameOf, H as ZX_H, screenRgba, W as ZX_W } from "../spectrum/screen";
+import { TMS_H, TMS_W, tmsCss, tmsRgba } from "./tms9918";
 
 /** The largest picture a frame may ask for, either way: a frame past it is not painted. */
 export const MAX_SIDE = 1024;
 
 /** A frame, ready to put on the canvas. */
 export interface Picture {
-  kind: "screen" | "indexed" | "rgba";
+  kind: "screen" | "indexed" | "rgba" | "tms9918";
   w: number;
   h: number;
   /** w × h × 4 bytes. */
@@ -63,6 +65,18 @@ export function decodeFrame(get: (key: string) => unknown, st: FrameState): Pict
     const f = frameOf(get);
     if (!f) return null;
     return { kind, w: ZX_W, h: ZX_H, rgba: screenRgba(f, buffer(st, ZX_W, ZX_H)), border: borderCss(f.border) };
+  }
+
+  if (kind === "tms9918") {
+    const vram = get("vram");
+    const regs = get("regs");
+    if (typeof vram !== "string" || typeof regs !== "string") return null;
+    const v = b64ToBytes(vram);
+    const r = b64ToBytes(regs);
+    if (v.length !== 16384 || r.length < 8) return null;
+    const out = buffer(st, TMS_W, TMS_H);
+    tmsRgba(v, r, out);
+    return { kind, w: TMS_W, h: TMS_H, rgba: out, border: tmsCss(r[7]) };
   }
 
   if (kind !== "indexed" && kind !== "rgba") return null;
