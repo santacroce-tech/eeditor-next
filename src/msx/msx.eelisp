@@ -36,6 +36,9 @@
 (def msx-VREG 8)      ; the eight registers, 8–15
 (def msx-PSGL 16)     ; the PSG's latched register
 (def msx-PSG 17)      ; its sixteen registers, 17–32
+(def msx-MAPPER 33)   ; the cartridge's mapper: 0 none, else 1 + its place in msx-MAPPERS
+(def msx-BANKS 34)    ; the bank in each 8 KB region of 0x4000–0xBFFF, 34–37
+(def msx-SCCON 38)    ; 1 while the SCC shows at 0x9800 (Konami SCC)
 (def msx-ST 40)
 
 (def msx-FRAME-T 59736)   ; 3,579,545 Hz / 59.92 frames a second
@@ -81,7 +84,162 @@
 
 ;; A write below zx-rom-top: kept when its page shows the RAM; a ROM's is lost.
 (defn msx-low-write (a v)
-  (if (= 3 (msx-slot-of (shr a 14))) (bset zx-mem a v) nil))
+  (let (slot (msx-slot-of (shr a 14)))
+    (cond (= slot 3) (bset zx-mem a v)
+          (and (= slot 1) (!= 0 (bget msx-st msx-MAPPER))) (msx-mapper-write a v)
+          true nil)))
+
+;; ---------------------------------------------------------------------------
+;; Cartridges with mappers. Over 32 KB a cartridge shows a bank of its ROM in each 8 KB region
+;; of 0x4000–0xBFFF, and the program picks the banks by writing to addresses in the cartridge.
+;; There are four common ways:
+;;
+;;   "ascii8"      writes to 0x6000, 0x6800, 0x7000, 0x7800 pick the four regions' banks
+;;   "ascii16"     0x6000 picks 16 KB at 0x4000, 0x7000 16 KB at 0x8000
+;;   "konami"      0x4000 is always bank 0; 0x6000, 0x8000, 0xA000 pick the other three
+;;   "konami-scc"  0x5000, 0x7000, 0x9000, 0xB000 pick the four; bank 0x3F at 0x8000 also
+;;                 shows the SCC, Konami's sound chip, at 0x9800
+;;
+;; A switch copies the bank into slot 1's 64 KB, and into the Z80's memory when that page shows
+;; slot 1 — so reading stays the plain read it is for everything else. The ROM itself is kept in
+;; msx-roms, by machine, since a machine's dict doesn't change once made.
+;; ---------------------------------------------------------------------------
+(def msx-MAPPERS (list "ascii8" "ascii16" "konami" "konami-scc"))
+(def msx-roms {})          ; machine id → its cartridge's ROM, a power of two of 8 KB banks
+(def msx-rom nil)          ; the running machine's
+(def msx-scc nil)          ; and its SCC (below)
+(def msx-next-id 0)
+
+;; 1 + where a mapper's name is in msx-MAPPERS, or 0 for a name that isn't there
+(defn msx-mapper-code (name)
+  (loop (i 0 l msx-MAPPERS)
+    (cond (empty? l) 0 (= (first l) name) (+ i 1) true (recur (+ i 1) (cdr l)))))
+
+(defn msx-mapper () (let (k (bget msx-st msx-MAPPER)) (if (= k 0) nil (nth msx-MAPPERS (- k 1)))))
+
+;; Bank `bank` into region r (0–3: 0x4000, 0x6000, 0x8000, 0xA000).
+(defn msx-bank! (r bank)
+  (let (n (shr (bytes-len msx-rom) 13)
+        from (* (mod bank n) 0x2000)
+        at (+ 0x4000 (* r 0x2000)))
+    (do (bset msx-st (+ msx-BANKS r) (band bank 0xff))
+        (bcopy (nth msx-slots 1) at msx-rom from 0x2000)
+        (when (= 1 (msx-slot-of (shr at 14))) (bcopy zx-mem at msx-rom from 0x2000)))))
+
+(defn msx-mapper-reset! ()
+  (let (m (msx-mapper))
+    (when m
+      (do (bset msx-st msx-SCCON 0)
+          (bfill msx-scc 0 msx-SCC-SIZE 0)
+          (loop (r 0)
+            (when (< r 4)
+              (do (msx-bank! r (cond (or (= m "konami") (= m "konami-scc")) r
+                                     (= m "ascii16") (band r 1)
+                                     true 0))
+                  (recur (+ r 1)))))))))
+
+(defn msx-mapper-write (a v)
+  (let (m (msx-mapper))
+    (cond (or (< a 0x4000) (>= a 0xc000)) nil
+          (= m "ascii8")
+            (when (and (>= a 0x6000) (< a 0x8000)) (msx-bank! (band (shr a 11) 3) v))
+          (= m "ascii16")
+            (let (page (cond (and (>= a 0x6000) (< a 0x6800)) 0 (and (>= a 0x7000) (< a 0x7800)) 1 true -1))
+              (when (>= page 0)
+                (do (msx-bank! (* 2 page) (* 2 v)) (msx-bank! (+ 1 (* 2 page)) (+ 1 (* 2 v))))))
+          (= m "konami")
+            (when (>= a 0x6000) (msx-bank! (- (shr a 13) 2) v))
+          (= m "konami-scc")
+            (cond (and (>= a 0x9800) (< a 0xa000) (= 1 (bget msx-st msx-SCCON))) (msx-scc-write a v)
+                  (= 0x1000 (band a 0x1800))
+                    (let (r (- (shr a 13) 2))
+                      (do (msx-bank! r v)
+                          (when (= r 2)
+                            (do (bset msx-st msx-SCCON (if (= 0x3f (band v 0x3f)) 1 0))
+                                (when (= 1 (bget msx-st msx-SCCON)) (msx-scc-show!))))))
+                  true nil)
+          true nil)))
+
+;; Which mapper a ROM has, from where its program writes: the addresses each one switches with,
+;; counted over every LD (nnnn),A in it — the guess most emulators make.
+(defn msx-guess-mapper (b)
+  (let (n (- (bytes-len b) 2))
+    (loop (i 0 a8 0 a16 0 k 0 ks 0)
+      (if (>= i n)
+          (cond (and (> ks 0) (>= ks k) (>= ks a8) (>= ks a16)) "konami-scc"
+                (and (> k 0) (>= k a8) (>= k a16)) "konami"
+                (> a16 a8) "ascii16"
+                true "ascii8")
+          (if (!= 0x32 (bget b i))
+              (recur (+ i 1) a8 a16 k ks)
+              (let (at (bor (bget b (+ i 1)) (shl (bget b (+ i 2)) 8)))
+                (cond (or (= at 0x5000) (= at 0x9000) (= at 0xb000)) (recur (+ i 3) a8 a16 k (+ ks 1))
+                      (or (= at 0x4000) (= at 0x8000) (= at 0xa000)) (recur (+ i 3) a8 a16 (+ k 1) ks)
+                      (or (= at 0x6800) (= at 0x7800)) (recur (+ i 3) (+ a8 1) a16 k ks)
+                      (= at 0x6000) (recur (+ i 3) (+ a8 1) (+ a16 1) (+ k 1) ks)
+                      (= at 0x7000) (recur (+ i 3) (+ a8 1) (+ a16 1) k (+ ks 1))
+                      (= at 0x77ff) (recur (+ i 3) a8 (+ a16 1) k ks)
+                      true (recur (+ i 1) a8 a16 k ks))))))))
+
+;; ---------------------------------------------------------------------------
+;; The SCC: five channels, each a 32-byte waveform played at its own pitch — Konami's sound
+;; chip, in its cartridges. At 0x9800 while bank 0x3F is at 0x8000:
+;;   0x00–0x7F  the waveforms of channels 1–4 (the fifth plays the fourth's), signed bytes
+;;   0x80–0x89  the five pitches, 12 bits each, low byte first: 3,579,545 / 32 / (p + 1) Hz
+;;   0x8A–0x8E  the five volumes, 0–15
+;;   0x8F       which channels are on, a bit each
+;; (0x90–0x9F repeat 0x80–0x8F; the whole repeats every 256 bytes up to 0x9FFF.)
+;; Its samples are added to the PSG's in each frame's audio.
+;; ---------------------------------------------------------------------------
+(def msx-SCC-SIZE 0xb0)     ; the registers, 0–0x8F; each channel's place in its wave, 32 bits from 0x90
+(def msx-SCC-CLOCK 3579545)
+
+;; The waveforms show where the program can read them back.
+(defn msx-scc-show! ()
+  (do (bcopy (nth msx-slots 1) 0x9800 msx-scc 0 0x80)
+      (when (= 1 (msx-slot-of 2)) (bcopy zx-mem 0x9800 msx-scc 0 0x80))))
+
+(defn msx-scc-write (a v)
+  (let (o (band (- a 0x9800) 0xff))
+    (cond (< o 0x80)
+            (do (bset msx-scc o v)
+                (bset (nth msx-slots 1) a v)
+                (when (= 1 (msx-slot-of 2)) (bset zx-mem a v)))
+          (< o 0xa0) (bset msx-scc (+ 0x80 (band o 0x0f)) v)
+          true nil)))
+
+(defn msx-scc-audible? ()
+  (and (= "konami-scc" (msx-mapper))
+       (loop (ch 0)
+         (cond (= ch 5) false
+               (and (!= 0 (band (bget msx-scc 0x8f) (shl 1 ch)))
+                    (!= 0 (band (bget msx-scc (+ 0x8a ch)) 15))) true
+               true (recur (+ ch 1))))))
+
+(defn msx-scc-g32 (o) (bor (shl (bget msx-scc o) 24) (shl (bget msx-scc (+ o 1)) 16) (shl (bget msx-scc (+ o 2)) 8) (bget msx-scc (+ o 3))))
+(defn msx-scc-s32! (o v)
+  (do (bset msx-scc o (band (shr v 24) 0xff)) (bset msx-scc (+ o 1) (band (shr v 16) 0xff))
+      (bset msx-scc (+ o 2) (band (shr v 8) 0xff)) (bset msx-scc (+ o 3) (band v 0xff))))
+
+;; The SCC's n samples added onto msx-pcm. A place in the wave is 16 bits: five for which of the
+;; 32 bytes, eleven for between them.
+(defn msx-scc-mix! (n)
+  (loop (ch 0)
+    (when (< ch 5)
+      (let (vol (band (bget msx-scc (+ 0x8a ch)) 15)
+            p (band (bor (bget msx-scc (+ 0x80 (* 2 ch))) (shl (bget msx-scc (+ 0x81 (* 2 ch))) 8)) 0xfff)
+            wave (* 32 (min ch 3))
+            at (+ 0x90 (* 4 ch)))
+        (do (when (and (!= 0 (band (bget msx-scc 0x8f) (shl 1 ch))) (> vol 0) (> p 8))
+              (let (step (floor (/ (* msx-SCC-CLOCK 2048.0) (* (+ p 1) msx-RATE))))
+                (loop (i 0 ph (msx-scc-g32 at))
+                  (if (>= i n)
+                      (msx-scc-s32! at ph)
+                      (let (s (bget msx-scc (+ wave (shr ph 11)))
+                            out (+ (bget msx-pcm i) (floor (/ (* (if (> s 127) (- s 256) s) vol) 128))))
+                        (do (bset msx-pcm i (max 0 (min 255 out)))
+                            (recur (+ i 1) (band (+ ph step) 0xffff))))))))
+            (recur (+ ch 1)))))))
 
 ;; ---------------------------------------------------------------------------
 ;; The VDP — TMS9918A: 0x98 data, 0x99 commands and status
@@ -342,7 +500,11 @@
                          (if (= cn next) nstep (- cn next))
                          (if (= ce next) estep (- ce next))))))))))
       (msx-s32! msx-P-REM (mod total msx-PSG-CLOCK))
-      (when audible (bytes->base64 msx-pcm 0 n)))))
+      (let (scc (msx-scc-audible?))
+        (do (when scc
+              (do (when (not audible) (bfill msx-pcm 0 n 128))
+                  (msx-scc-mix! n)))
+            (when (or audible scc) (bytes->base64 msx-pcm 0 n)))))))
 
 ;; ---------------------------------------------------------------------------
 ;; The machine
@@ -360,6 +522,8 @@
       (set! msx-slots (dict-get m :slots))
       (set! msx-mat (dict-get m :mat))
       (set! msx-psg (dict-get m :psg))
+      (set! msx-scc (dict-get m :scc))
+      (set! msx-rom (dict-get msx-roms (str (dict-get m :id))))
       (msx-rom-top!)
       (msx-irq!)
       m))
@@ -368,31 +532,54 @@
   (let (bios (make-bytes 65536 0xff)
         m {:mem (make-bytes 65536 0xff) :reg (make-bytes zx-REGS) :keys (make-bytes 8 0xff)
            :st (make-bytes msx-ST) :vram (make-bytes 16384) :mat (make-bytes 11 0xff)
-           :psg (make-bytes msx-P-SIZE)
+           :psg (make-bytes msx-P-SIZE) :scc (make-bytes msx-SCC-SIZE) :id msx-next-id
            :slots (list bios (make-bytes 65536 0xff) (make-bytes 65536 0xff) (make-bytes 65536))
            :in msx-in :out msx-out :low-write msx-low-write})
-    (do (when main (let (b (msx-bytes main)) (bcopy bios 0 b 0 (min 0x8000 (bytes-len b)))))
+    (do (set! msx-next-id (+ msx-next-id 1))
+        (when main (let (b (msx-bytes main)) (bcopy bios 0 b 0 (min 0x8000 (bytes-len b)))))
         (when logo (let (b (msx-bytes logo)) (bcopy bios 0x8000 b 0 (min 0x4000 (bytes-len b)))))
         (msx-reset m))))
 
-;; A cartridge in slot 1. Up to 32 KB, at 0x4000 — where nearly every one starts; one of 16 KB
-;; or less shows again at 0x8000, as a cartridge that decodes no more address lines does.
-;; (Bigger ones, with a mapper, are for later.)
-(defn msx-insert (m rom)
-  (let (b (msx-bytes rom) n (bytes-len b) cart (nth (dict-get m :slots) 1))
-    (do (bfill cart 0 65536 0xff)
-        (cond (> n 0x8000) (str "msx-insert: " n " bytes — a cartridge with a mapper isn't supported yet (32 KB at most)")
-              (> n 0x4000) (do (bcopy cart 0x4000 b 0 n) true)
-              true (loop (at 0x4000)
-                     (if (>= at 0xc000)
-                         true
-                         (do (bcopy cart at b 0 (min n 0x4000)) (recur (+ at (max n 0x2000))))))))))
+(defn msx-insert (m rom) (msx-insert-as m rom nil))
+
+;; A cartridge in slot 1, with its mapper (one of msx-MAPPERS) or nil to say none or guess:
+;; up to 32 KB is plain ROM at 0x4000 — where nearly every one starts — and one of 16 KB or less
+;; shows again at 0x8000, as a cartridge that decodes no more address lines does; over 32 KB the
+;; mapper is guessed (msx-guess-mapper). Up to 2 MB. Reset after. Returns true, or a message.
+(defn msx-insert-as (m rom mapper)
+  (let (b (msx-bytes rom) n (bytes-len b) cart (nth (dict-get m :slots) 1) st (dict-get m :st)
+        kind (cond (and (nil? mapper) (<= n 0x8000)) nil
+                   (nil? mapper) (msx-guess-mapper b)
+                   true mapper))
+    (cond (> n 0x200000) (str "msx-insert: " n " bytes — 2 MB is the most a mapper takes")
+          (and kind (= 0 (msx-mapper-code kind))) (str "msx-insert: no mapper called " kind " — one of " msx-MAPPERS)
+          (nil? kind)
+            (do (bfill cart 0 65536 0xff)
+                (bset st msx-MAPPER 0)
+                (set! msx-roms (dict-set msx-roms (str (dict-get m :id)) false))
+                (if (> n 0x4000)
+                    (bcopy cart 0x4000 b 0 n)
+                    (loop (at 0x4000)
+                      (when (< at 0xc000)
+                        (do (bcopy cart at b 0 (min n 0x4000)) (recur (+ at (max n 0x2000)))))))
+                true)
+          true
+            (let (size (loop (s 0x2000) (if (>= s n) s (recur (* s 2))))
+                  whole (make-bytes size 0xff))
+              (do (bcopy whole 0 b 0 n)
+                  (bfill cart 0 65536 0xff)
+                  (bset st msx-MAPPER (msx-mapper-code kind))
+                  (set! msx-roms (dict-set msx-roms (str (dict-get m :id)) whole))
+                  true)))))
+
+;; The mapper the cartridge in has, or nil.
+(defn msx-cart-mapper (m) (let (k (bget (dict-get m :st) msx-MAPPER)) (if (= k 0) nil (nth msx-MAPPERS (- k 1)))))
 
 (defn msx-reset (m)
   (let (saved zx-rom-top)
   (do (zx-use m)
       (let (st (dict-get m :st) reg (dict-get m :reg))
-        (do (bfill st 0 msx-ST 0)
+        (do (let (mapper (bget st msx-MAPPER)) (do (bfill st 0 msx-ST 0) (bset st msx-MAPPER mapper)))
             (bfill reg 0 zx-REGS 0)
             (bfill (dict-get m :vram) 0 16384 0)
             (bfill (dict-get m :psg) 0 msx-P-SIZE 0)
@@ -401,6 +588,7 @@
             (bcopy (dict-get m :mem) 0 (nth (dict-get m :slots) 0) 0 65536)
             (msx-use m)
             (msx-s32! msx-P-LFSR 1)
+            (msx-mapper-reset!)
             (bset msx-st (+ msx-PSG 7) 0xff)     ; the mixer: everything off
             (zx-rr! zx-SP 0xf000) (zx-r! zx-A 0xff) (zx-r! zx-F 0xff)
             (msx-back saved m)))))))

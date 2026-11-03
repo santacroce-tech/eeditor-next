@@ -9,24 +9,29 @@
 ;;
 ;; C-BIOS runs cartridges — it has no BASIC. Without one it says so. Demo puts in a small
 ;; cartridge written for this form (below) — hold Space in it for a note from the PSG; Snake is
-;; the game docs/msx/TUTORIAL.md builds; Load cartridge… takes a .rom of up to 32 KB. Sound plays
-;; from the first click on the screen.
+;; the game docs/msx/TUTORIAL.md builds; Load cartridge… takes a .rom of up to 2 MB — over 32 KB
+;; it has a mapper, guessed unless Mapper says which. Sound plays from the first click on the
+;; screen.
 ;;
 ;; Keys: the PC's letters, digits and punctuation are the MSX's (its international layout); Shift
 ;; is SHIFT, Ctrl is CTRL, Alt is GRAPH, the arrows are the cursor keys, Space and Enter are
 ;; theirs. Click the screen first.
 
-(form "MSX" :size (560 480) :on-load msxapp-load
+(form "MSX" :size (560 512) :on-load msxapp-load
   (button btnCart :text "Load cartridge…" :at (16 12) :size (120 24) :on-click msxapp-pick-cart)
   (button btnDemo :text "Demo" :at (144 12) :size (56 24) :on-click msxapp-demo)
   (button btnSnake :text "Snake" :at (208 12) :size (56 24) :on-click msxapp-snake)
   (button btnReset :text "Reset" :at (272 12) :size (56 24) :on-click msxapp-do-reset)
   (button btnPause :text "Pause" :at (336 12) :size (64 24) :on-click msxapp-pause)
-  (label lblStatus :at (408 16) :size (136 24))
-  (screen scrMSX :frame "(msx-frame msx ui-held)" :hz 60 :at (16 48) :size (528 416)))
+  (label lblMapper :text "Mapper" :at (16 50) :size (56 24))
+  (dropdown cboMapper :items ("guess" "ascii8" "ascii16" "konami" "konami-scc") :value "guess" :at (72 46) :size (128 28) :on-change msxapp-mapper)
+  (label lblStatus :at (216 50) :size (328 24))
+  (screen scrMSX :frame "(msx-frame msx ui-held)" :hz 60 :at (16 80) :size (528 416)))
 
 (def msx (msx-new msx-cbios-main msx-cbios-logo))
 (def msxapp-cart nil)          ; the cartridge in, so Reset boots it again
+(def msxapp-name "")           ; and what it's called
+(def msxapp-mapper-is nil)     ; the mapper chosen, or nil: guess it
 (def msxapp-paused false)
 
 (defn msxapp-say (text) (ui-set "lblStatus" :text text))
@@ -39,10 +44,20 @@
       (ui-focus "scrMSX")))
 
 (defn msxapp-put-in (rom name)
-  (let (ok (msx-insert msx rom))
+  (let (ok (msx-insert-as msx rom msxapp-mapper-is))
     (if (= ok true)
-        (do (set! msxapp-cart rom) (msx-reset msx) (msxapp-say name) (ui-focus "scrMSX"))
+        (let (mapper (msx-cart-mapper msx))
+          (do (set! msxapp-cart rom) (set! msxapp-name name) (msx-reset msx)
+              (msxapp-say (if mapper (str name " · " mapper) name))
+              (ui-focus "scrMSX")))
         (ui-message ok))))
+
+;; Over 32 KB a cartridge has a mapper, which the MSX guesses from the program; when the guess is
+;; wrong the game crashes or shows rubbish — pick the right one here and it starts again.
+(defn msxapp-mapper (f)
+  (let (v (ui-get f "cboMapper"))
+    (do (set! msxapp-mapper-is (if (= v "guess") nil v))
+        (when msxapp-cart (msxapp-put-in msxapp-cart msxapp-name)))))
 
 (defn msxapp-pick-cart (f) (ui-pick msxapp-got-cart))
 (defn msxapp-got-cart (f) (msxapp-put-in (base64->bytes (ui-get f "$file")) (ui-get f "$filename")))
@@ -180,7 +195,10 @@
     0x20 0x74 0x68 0x65 0x20 0x62 0x6f 0x72 0x64 0x65 0x72 0x2e 0x0d 0x0a 0x00
 )))
 
-(defn msxapp-demo (f) (msxapp-put-in msxapp-demo-cart "demo"))
+;; The built-in cartridges have no mapper, whatever Mapper says.
+(defn msxapp-built-in (rom name)
+  (do (set! msxapp-mapper-is nil) (ui-set "cboMapper" :value "guess") (msxapp-put-in rom name)))
+(defn msxapp-demo (f) (msxapp-built-in msxapp-demo-cart "demo"))
 
 ;; Snake: the game the tutorial builds (docs/msx/TUTORIAL.md), docs/msx/snake/snake.asm assembled
 ;; — its bytes up to the filling at the end, as base64. After changing the source:
@@ -201,4 +219,4 @@
    "H6xnfR98H61vrGciDuLJzepCIPvN6kIo+8n7dioO4iN8tSABIyIO4q/N2AC3yX7+/8gjXiPlzZMA4Rjy7+/vAP7+/gA8fv//"
    "//9+PDx+29v//348CBBs/v7+fChuITGBB54IAAkACgD/AFABAAgQCgALAAwEDQD/Bh8IAAoQCwAMKA0A/1MgTiBBIEsgRQBD"
    "dXJzb3Iga2V5cyB0byBzdGVlcgBTcGFjZSB0byBzdGFydABHQU1FICBPVkVSAFNDT1JFAEhJAA==")))
-(defn msxapp-snake (f) (msxapp-put-in msxapp-snake-cart "snake: press Space"))
+(defn msxapp-snake (f) (msxapp-built-in msxapp-snake-cart "snake: press Space"))

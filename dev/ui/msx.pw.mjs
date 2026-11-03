@@ -3,6 +3,9 @@
 // from the video chip's memory ("tms9918") — and Space plays a note on the PSG.
 
 import { expect, test } from "@playwright/test";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 async function run(page) {
   await page.goto("/");
@@ -61,4 +64,21 @@ test("C-BIOS boots, the demo cartridge runs, and the cursor keys move its sprite
   const fps = ((await frames(form)) - a) / ((Date.now() - t0) / 1000);
   console.log(`msx: ${fps.toFixed(1)} frames/s painted in the browser (real time is 60)`);
   expect(fps).toBeGreaterThan(5);
+});
+
+test("a cartridge over 32 KB gets a mapper — guessed, or the one Mapper says", async ({ page }) => {
+  const form = await run(page);
+  // 128 KB whose code writes to Konami SCC's bank addresses (LD (0x9000),A; LD (0xB000),A)
+  const rom = Buffer.alloc(0x20000, 0);
+  rom.set([0x41, 0x42, 0x10, 0x40], 0);
+  rom.set([0x32, 0x00, 0x90, 0x32, 0x00, 0xb0, 0x32, 0x00, 0x50, 0x18, 0xfe], 0x10);
+  const file = join(mkdtempSync(join(tmpdir(), "msx-")), "big.rom");
+  writeFileSync(file, rom);
+  const chooser = page.waitForEvent("filechooser");
+  await form.locator("button", { hasText: "Load cartridge" }).click();
+  await (await chooser).setFiles(file);
+  await expect(form.getByText("big.rom · konami-scc")).toBeVisible();
+  await form.locator("select").selectOption("ascii16");
+  await expect(form.getByText("big.rom · ascii16")).toBeVisible();
+  await expect.poll(() => frames(form)).toBeGreaterThan(3);
 });

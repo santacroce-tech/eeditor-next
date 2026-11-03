@@ -19,6 +19,8 @@ A form that calls `(msx-…)` gets the MSX loaded, after the Z80 (`src/engine/fo
 ```clojure
 (def msx (msx-new msx-cbios-main msx-cbios-logo))   ; a machine, C-BIOS in slot 0
 (msx-insert msx rom)                                ; a cartridge in slot 1 (bytes or base64)
+(msx-insert-as msx rom "konami-scc")                ; …saying which mapper it has
+(msx-cart-mapper msx)                               ; → the mapper it has, or nil
 (msx-reset msx)                                     ; boot: C-BIOS finds the cartridge and runs it
 (screen scrMSX :frame "(msx-frame msx ui-held)" :hz 60 …)
 ```
@@ -68,6 +70,27 @@ few dozen a frame for music rather than 368 samples. A tone too high for 22,050 
 sample. A frame that is silent sends no `"audio"` and costs nothing. Each frame's samples carry on
 from the last's, the remainder kept, so the sound neither drifts nor clicks.
 
+**Mappers.** A cartridge over 32 KB shows a bank of its ROM in each 8 KB region of
+0x4000–0xBFFF, and its program picks the banks by writing to addresses in the cartridge. The four
+common ways are here:
+
+| Mapper | Banks | Switched by writing to |
+|---|---|---|
+| `ascii8` | 8 KB × 4 | 0x6000, 0x6800, 0x7000, 0x7800 |
+| `ascii16` | 16 KB × 2 | 0x6000 (0x4000–0x7FFF), 0x7000 (0x8000–0xBFFF) |
+| `konami` | 8 KB × 4, the first always bank 0 | 0x6000, 0x8000, 0xA000 |
+| `konami-scc` | 8 KB × 4 | 0x5000, 0x7000, 0x9000, 0xB000 — bank 0x3F at 0x8000 also shows the SCC |
+
+`msx-insert` guesses which from the program: it counts the `LD (nnnn),A` to each mapper's
+addresses, the guess most emulators make, and the form's **Mapper** list overrides it. A switch
+copies the bank into slot 1's 64 KB, and into the Z80's memory when that page shows slot 1, so
+reading stays as fast as before. Up to 2 MB.
+
+**The SCC.** Konami's sound chip, in its SCC cartridges: five channels, each a 32-byte waveform
+played at its own pitch (the fifth plays the fourth's). Its registers are at 0x9800 while bank
+0x3F is at 0x8000, and its samples are added to the PSG's in each frame's audio, a channel at a
+time.
+
 ## Speed
 
 A busy Spectrum runs at about real time in the native engine (`npm run spectrum:bench`, 20 ms a
@@ -79,8 +102,6 @@ frame halted, waiting for the interrupt, and run at 60 frames a second (`npm run
 
 ## Not yet
 
-- **Bigger cartridges.** Over 32 KB a cartridge has a mapper (ASCII 8, ASCII 16, Konami, Konami
-  SCC): writes to the ROM switch banks. `msx-low-write` is where they go, as `bcopy`s of 8 or 16 KB.
 - **The key click** (port 0xAA, bit 7), and samples played by changing a channel's volume very
   fast — a frame's sound is made at its end, from the registers as they are then.
 - **Sprite collision and the fifth-sprite flag** in the status register; the host draws the
