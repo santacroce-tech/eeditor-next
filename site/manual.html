@@ -917,12 +917,13 @@ sequenceDiagram
       form in front again, as it did in VB6.
     </p>
     <p>
-      A form opens <strong>running</strong>: that is the line <code>(forms-open "run")</code> in your
-      keybindings file. Change it to <code>(forms-open "design")</code> and a form opens in the
-      designer, running nothing until you press <strong>▶ run</strong> or <kbd>F5</kbd> — the rule
-      sheets and <code>eelisp</code> blocks keep. Worth doing if you open forms other people send
-      you: running one runs its code. <code>(forms-open "code")</code> opens its text. A new form
-      always opens in the designer, since there is nothing to run yet.
+      Opening a form <strong>asks</strong>: <strong>▶ Run</strong> or <strong>Design</strong>.
+      Running a form runs its code, so <strong>Design</strong> is what <kbd>↵</kbd> picks and what
+      <kbd>Esc</kbd> leaves you with — the designer runs nothing, the rule sheets and
+      <code>eelisp</code> blocks keep, and a form someone sent you can be looked at first. That is the
+      line <code>(forms-open "ask")</code> in your keybindings file: <code>"run"</code> opens forms
+      running without asking, <code>"design"</code> in the designer, <code>"code"</code> as their
+      text. A new form, and an app imported from an exported page, always open in the designer.
     </p>
     <p>
       To keep a form open while you write, run it in a <strong>window</strong>: type

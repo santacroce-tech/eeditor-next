@@ -87,6 +87,7 @@ test("a page of your own with the export's name is never replaced", async ({ pag
 test("the ⇪ export button shows what goes in; (ed-export …) exports without asking", async ({ page }) => {
   await page.goto("/");
   await page.locator(".tree-file", { hasText: "Office.eeform" }).click();
+  await page.locator(".dlg-panel .dlg-btn", { hasText: "Design" }).click(); // opening asks
   await page.locator(".form-modes .form-export").click();
   const panel = page.locator(".export-panel");
   await expect(panel.locator(".main-form")).toHaveText("Office (main)");

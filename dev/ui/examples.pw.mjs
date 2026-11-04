@@ -9,7 +9,8 @@ test.describe.configure({ mode: "serial" });
 async function run(page, name) {
   await page.goto("/");
   await page.locator(".tree-file", { hasText: `${name}.eeform` }).click();
-  // forms open running — the default (forms-open "run")
+  // opening asks — the default (forms-open "ask") — and this one is to run
+  await page.locator(".dlg-panel .dlg-btn", { hasText: "Run" }).click();
   await page.waitForSelector(".formrun-canvas");
   return page.locator(".formrun-host");
 }

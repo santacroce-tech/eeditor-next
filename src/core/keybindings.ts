@@ -58,8 +58,8 @@ export interface Button extends Body {
  * `(panel "agenda" "pim/Side.eeform")`: a form drawn in the sidebar. "agenda" puts it in the agenda
  * section, in place of the built-in list; any other name is a section of its own, under the agenda.
  */
-/** How a form opens in its tab: running, in the designer, or as its code. */
-export type FormsOpen = "run" | "design" | "code";
+/** How a form opens in its tab: running, in the designer, as its code — or "ask", each time. */
+export type FormsOpen = "ask" | "run" | "design" | "code";
 
 export interface Panel {
   /** The section: "agenda", or the title of a new one. */
@@ -90,8 +90,9 @@ export interface ParsedConfig {
   /** Every `(panel …)`, in order — one per section, the last one written for a name winning. */
   panels: Panel[];
   /**
-   * `(forms-open "run")`: how a form opens in its tab — `"run"` straight away, `"design"` (the
-   * designer, as without the line) or `"code"`. The last one written wins.
+   * `(forms-open "ask")`: how a form opens in its tab — `"ask"` with a Run / Design dialog each
+   * time, `"run"` straight away, `"design"` (the designer, as without the line) or `"code"`. The
+   * last one written wins.
    */
   formsOpen?: FormsOpen;
   /**
@@ -304,8 +305,8 @@ function parseForm(
   }
   if (head[1] === "panel") return parsePanel(inner, head[0].length, form.line);
   if (head[1] === "forms-open") {
-    const how = /^\s*"(run|design|code)"\s*$/.exec(inner.slice(head[0].length));
-    if (!how) return { error: `line ${form.line}: forms open as "run", "design" or "code" — (forms-open "run")` };
+    const how = /^\s*"(ask|run|design|code)"\s*$/.exec(inner.slice(head[0].length));
+    if (!how) return { error: `line ${form.line}: forms open as "ask", "run", "design" or "code" — (forms-open "ask")` };
     return { formsOpen: how[1] as FormsOpen };
   }
   if (head[1] !== "bind") {

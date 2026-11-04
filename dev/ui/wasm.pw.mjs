@@ -36,7 +36,8 @@ test("the REPL runs on the WebAssembly engine", async ({ page }) => {
 test("a form runs on the WebAssembly engine", async ({ page }) => {
   await page.goto("/?engine=wasm");
   await page.locator(".tree-file", { hasText: "Books.eeform" }).click();
-  // forms open running — the default (forms-open "run")
+  // opening asks — the default (forms-open "ask") — and this one is to run
+  await page.locator(".dlg-panel .dlg-btn", { hasText: "Run" }).click();
   const form = page.locator(".formrun-host");
   await form.locator(".formrun-menu", { hasText: "Record" }).click();
   await form.locator(".formrun-menuitem", { hasText: "Add sample books" }).click();

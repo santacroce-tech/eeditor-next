@@ -426,10 +426,11 @@ describe("(forms-open …)", () => {
   it("says how a form opens; the last one wins, and a wrong word is an error", () => {
     expect(parseKeybindings(`(bind "Mod-s" (ed-cmd "save"))`, true).formsOpen).toBeUndefined();
     expect(parseKeybindings(`(forms-open "run")`, true).formsOpen).toBe("run");
+    expect(parseKeybindings(`(forms-open "ask")`, true).formsOpen).toBe("ask");
     expect(parseKeybindings(`(forms-open "run")\n(forms-open "code")`, true).formsOpen).toBe("code");
     const bad = parseKeybindings(`(forms-open "fast")`, true);
     expect(bad.formsOpen).toBeUndefined();
-    expect(bad.errors[0]).toContain(`"run", "design" or "code"`);
+    expect(bad.errors[0]).toContain(`"ask", "run", "design" or "code"`);
   });
   it("F5 is the built-in Run", () => {
     expect(builtinBindings(new Set(), true).find((b) => b.spec === "F5")?.command).toBe("form-run");

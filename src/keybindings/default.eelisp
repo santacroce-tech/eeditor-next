@@ -130,9 +130,10 @@
 ;; (bind "Mod-Shift-b" (ed-insert (str "[[" *date* "]]")))
 
 ;; ── forms ──────────────────────────────────────────────────────────────────
-;; A form (.eeform) opens running, as if ▶ run were pressed. "design" opens it in the designer
-;; instead, "code" as its text. F5 runs the form in front whichever way it opened, as in VB6.
-(forms-open "run")
+;; Opening a form (.eeform) asks: Run, or Design? Running a form runs its code; the designer runs
+;; nothing — so a form someone sent you can be looked at first. "run" opens forms running without
+;; asking, "design" in the designer, "code" as their text. F5 runs the form in front, as in VB6.
+(forms-open "ask")
 
 ;; ── the header ─────────────────────────────────────────────────────────────
 ;; The buttons above the editor, left to right. Delete a line and the button goes; move it and it

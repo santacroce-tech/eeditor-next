@@ -14,37 +14,54 @@ const MOD = process.platform === "darwin" ? "Meta" : "Control";
 /** The text in the (hidden or shown) CodeMirror buffer. */
 const buffer = (page) => page.locator(".editor-host .cm-content").innerText();
 
-/** Contacts in the designer: it opens running — (forms-open "run") — so "design" first. */
+/** Contacts in the designer: opening asks — (forms-open "ask") — and Design is the answer. */
 async function openContacts(page) {
   await page.goto("/");
   await page.locator(".tree-file", { hasText: "Contacts.eeform" }).click();
-  await page.waitForSelector(".formrun-canvas");
-  await page.locator(".form-modes .head-btn", { hasText: "design" }).click();
+  await page.locator(".dlg-panel .dlg-btn", { hasText: "Design" }).click();
   await page.waitForSelector(".fd-canvas");
 }
 
-test("a form opens running; F5 runs it again from the designer, as in VB6", async ({ page }) => {
+test("opening a form asks Run or Design; ↵ and Escape are Design, which runs nothing", async ({ page }) => {
   await page.goto("/");
+  const dialog = page.locator(".dlg-panel");
   await page.locator(".tree-file", { hasText: "Contacts.eeform" }).click();
-  await expect(page.locator(".form-modes .head-btn.active")).toHaveText(/run/);
-  await expect(page.locator(".formrun-host .formrun-canvas")).toBeVisible();
-  await page.locator(".form-modes .head-btn", { hasText: "design" }).click();
+  await expect(dialog.locator(".dlg-title")).toHaveText("Open Contacts.eeform");
+  await page.keyboard.press("Enter");
   await page.waitForSelector(".fd-canvas");
+  await expect(page.locator(".form-modes .head-btn.active")).toHaveText("design");
+  // F5 runs the form in front, as in VB6
   await page.keyboard.press("F5");
   await expect(page.locator(".form-modes .head-btn.active")).toHaveText(/run/);
   await expect(page.locator(".formrun-host .formrun-canvas")).toBeVisible();
+
+  // a tab already open doesn't ask again; closed and opened again, Escape leaves it in the designer
+  await page.keyboard.press(`${MOD}+w`);
+  await page.locator(".tree-file", { hasText: "Contacts.eeform" }).click();
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.waitForSelector(".fd-canvas");
+  await expect(page.locator(".form-modes .head-btn.active")).toHaveText("design");
 });
 
-test("(forms-open \"design\") opens a form in the designer instead", async ({ page }) => {
+test("▶ Run in the dialog runs it; (forms-open \"run\") and \"design\" don't ask", async ({ page }) => {
+  await page.goto("/");
+  await page.locator(".tree-file", { hasText: "Contacts.eeform" }).click();
+  await page.locator(".dlg-panel .dlg-btn", { hasText: "Run" }).click();
+  await expect(page.locator(".formrun-host .formrun-canvas")).toBeVisible();
+
+  const CONFIG = `${UI_WORKSPACE}/.eeditor/keybindings.eelisp`;
   await mkdir(`${UI_WORKSPACE}/.eeditor`, { recursive: true });
-  await writeFile(`${UI_WORKSPACE}/.eeditor/keybindings.eelisp`, `(forms-open "design")\n`);
   try {
-    await page.goto("/");
-    await page.locator(".tree-file", { hasText: "Contacts.eeform" }).click();
-    await page.waitForSelector(".fd-canvas");
-    await expect(page.locator(".form-modes .head-btn.active")).toHaveText("design");
+    for (const [how, shows] of [["run", ".formrun-host .formrun-canvas"], ["design", ".fd-canvas"]]) {
+      await writeFile(CONFIG, `(forms-open "${how}")\n`);
+      await page.goto("/");
+      await page.locator(".tree-file", { hasText: "Contacts.eeform" }).click();
+      await page.waitForSelector(shows);
+      await expect(page.locator(".dlg-panel")).toHaveCount(0);
+    }
   } finally {
-    await rm(`${UI_WORKSPACE}/.eeditor/keybindings.eelisp`, { force: true });
+    await rm(CONFIG, { force: true });
   }
 });
 

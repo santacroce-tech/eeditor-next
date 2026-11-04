@@ -41,7 +41,7 @@ import { imageMime, resolveNoteRelative } from "./core/mdmedia";
 import { FORM_SLOT, collectApp, exportAppHtml, isExportedPage, readExportedApp, unpackPlan } from "./core/export";
 import { exportPanel } from "./ui/exportdialog";
 import { createImages } from "./ui/images";
-import { promptModal, confirmModal, infoModal, showContextMenu, toast, type MenuItem } from "./ui/dialogs";
+import { choiceModal, promptModal, confirmModal, infoModal, showContextMenu, toast, type MenuItem } from "./ui/dialogs";
 import { resolveWikiLink } from "./core/fuzzy";
 import { backlinksTo } from "./core/backlinks";
 import { linkifyWikiLinks } from "./ui/wikilinks";
@@ -1044,16 +1044,32 @@ function main(): void {
     toast("No agenda window here yet — right-click the workspace → Install the PIM keys… adds pim/Agenda");
   });
 
+  /**
+   * (forms-open "ask"): Run or Design, for this form, now. Design is the one ↵ picks, and what
+   * Escape or Cancel leave you with — it runs nothing.
+   */
+  async function askRunOrDesign(path: string): Promise<FormsOpen> {
+    const r = await choiceModal(
+      `Open ${basename(path)}`,
+      "Run it, or open it in the designer? Running a form runs its code — the designer runs nothing.",
+      [
+        { id: "run", label: "▶ Run" },
+        { id: "design", label: "Design", primary: true },
+      ],
+    );
+    return r.id === "run" ? "run" : "design";
+  }
   /** How a form opens in its tab — the keybindings' (forms-open …), the designer without one. */
   let formsOpen: FormsOpen = "design";
   /** Open a file in a tab — a form as (forms-open …) says, unless `formMode` says otherwise. */
   const openFile = async (path: string, formMode?: FormsOpen): Promise<void> => {
-    const opensAs = formMode ?? formsOpen;
     const existing = tabs.findIndex((t) => t.path === path);
     if (existing >= 0) {
       switchTab(existing);
       return;
     }
+    let opensAs = formMode ?? formsOpen;
+    if (isFormPath(path) && opensAs === "ask") opensAs = await askRunOrDesign(path);
     if (isSheetPath(path)) return openSheet(path);
     const content = await ws.read(path);
     contentCache.set(path, content);
@@ -1461,7 +1477,7 @@ function main(): void {
         if (!env.ok) toast(`${basename(p)}: ${env.error}`);
       }
       await sidebar.refresh();
-      await openFile(plan.main);
+      await openFile(plan.main, "design"); // it came from outside: look at it before it runs
       const n = plan.forms.length;
       toast(`Unpacked ${n} form${n > 1 ? "s" : ""}${plan.images.length ? ` and ${plan.images.length} image${plan.images.length > 1 ? "s" : ""}` : ""} into ${basename(folder)}`);
     } catch (e) {
