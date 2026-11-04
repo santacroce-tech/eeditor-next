@@ -237,13 +237,16 @@
       </p>
     </div>
 
-<pre><code><span class="cm">;; ⌘I — a new note stamped with the minute, and a heading to match</span>
-(bind <span class="st">"Mod-i"</span>
+<pre><code><span class="cm">;; ⌘I — the date and time, right where the caret is</span>
+(bind <span class="st">"Mod-i"</span> (ed-insert (str *date* <span class="st">" "</span> *time*)))
+
+<span class="cm">;; ⌘⇧I — a new note stamped with the minute, and a heading to match</span>
+(bind <span class="st">"Mod-Shift-i"</span>
   (ed-new (str *date* <span class="st">" "</span> (str-replace *time* <span class="st">":"</span> <span class="st">""</span>) <span class="st">".md"</span>)
           (str <span class="st">"# "</span> *date* <span class="st">" "</span> *time* <span class="st">"\n\n"</span>)))
 
-<span class="cm">;; ⌘B — wrap whatever is selected in bold</span>
-(bind <span class="st">"Mod-b"</span> (ed-replace (str <span class="st">"**"</span> *selection* <span class="st">"**"</span>)))
+<span class="cm">;; ⌘⇧T — a task line at the caret</span>
+(bind <span class="st">"Mod-Shift-t"</span> (ed-insert <span class="st">"- [ ] "</span>))
 
 <span class="cm">;; What opens when EEditor launches — a note, today's note, or nothing at all</span>
 (on-start (ed-cmd <span class="st">"daily-note"</span>))</code></pre>
