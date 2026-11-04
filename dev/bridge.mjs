@@ -7,7 +7,7 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
-import { readFile, writeFile, readdir, mkdir, rename, rm, stat, realpath } from "node:fs/promises";
+import { readFile, writeFile, readdir, mkdir, rename, rm, stat, realpath, cp } from "node:fs/promises";
 import path from "node:path";
 import readline from "node:readline";
 
@@ -32,6 +32,12 @@ const evalSrc = (src) =>
   new Promise((resolve) => (pending.push(resolve), child.stdin.write(JSON.stringify({ src }) + "\n")));
 
 // ── workspace fs (confined) ──
+const exists = (abs) => stat(abs).then(() => true, () => false);
+/** No file at `b`, or the same one as at `a` (a rename that only changes case). */
+async function sameOrMissing(a, b) {
+  const [sa, sb] = await Promise.all([stat(a).catch(() => null), stat(b).catch(() => null)]);
+  return !sb || (sa !== null && sa.ino === sb.ino && sa.dev === sb.dev);
+}
 function safe(rel) {
   const p = path.resolve(WS, rel || ".");
   if (p !== WS && !p.startsWith(WS + path.sep)) throw new Error("path escapes workspace");
@@ -128,8 +134,33 @@ const routes = {
   "/fs/rename": async ({ from, to }) => {
     const a = safe(from);
     const b = safe(to);
+    // never over another file — a change of case only (a.md → A.md on macOS) is the same file
+    if (await sameOrMissing(a, b)) {
+      await mkdir(path.dirname(b), { recursive: true });
+      await rename(a, b);
+      return JSON.stringify({ ok: true });
+    }
+    throw new Error(`${to} already exists`);
+  },
+  // Mirrors fs_copy: a file or a whole folder, never over something that is there.
+  "/fs/copy": async ({ from, to }) => {
+    const a = safe(from);
+    const b = safe(to);
+    if (await exists(b)) throw new Error(`${to} already exists`);
+    if (b === a || b.startsWith(a + path.sep)) throw new Error(`${from} can't be copied into itself`);
     await mkdir(path.dirname(b), { recursive: true });
-    await rename(a, b);
+    await cp(a, b, { recursive: true, errorOnExist: true, force: false });
+    return JSON.stringify({ ok: true });
+  },
+  // Mirrors fs_trash. The dev bridge has no system Trash to reach, so it keeps what was deleted in
+  // .eeditor/trash/ — out of the tree, and still there to look at.
+  "/fs/trash": async ({ path: rel }) => {
+    const abs = safe(rel);
+    if (abs === WS) throw new Error("the workspace itself can't go to the Trash");
+    if (!(await exists(abs))) throw new Error(`${rel} isn't there`);
+    const bin = path.join(WS, ".eeditor", "trash", String(Date.now()));
+    await mkdir(bin, { recursive: true });
+    await rename(abs, path.join(bin, path.basename(abs)));
     return JSON.stringify({ ok: true });
   },
   "/fs/delete": async ({ path: rel }) => {

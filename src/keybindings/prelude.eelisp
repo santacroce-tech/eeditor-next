@@ -22,6 +22,10 @@
 ;; Other notes. They're read with (notes) and (read-note path); these change them, open or not.
 (defn ed-write (path text . expected) (cons "write" (cons path (cons text expected))))  ;; replace a note's text (only if it still says `expected`)
 (defn ed-append (path text . heading) (cons "append" (cons path (cons text heading)))) ;; add to its end, or under a heading: "## Inbox"
+(defn ed-move (from to) (list "move" from to))              ;; move or rename a file or folder; open tabs follow it
+(defn ed-copy (from to) (list "copy" from to))              ;; copy a file or folder to a free path
+(defn ed-delete (path) (list "delete" path))                ;; into the system Trash; tabs open from it close
+(defn ed-mkdir (path) (list "mkdir" path))                  ;; a folder, and any above it that are missing
 ;; Ask, then run (callback answer) like a key — with the caret where it is then. Escape: nothing runs.
 ;;   (ed-prompt "When?" pim-set-when)   (ed-prompt "When?" pim-set-when "tomorrow")
 ;;   (ed-prompt "Category?" pim-set-category "" (categories-list))   ;; choices offered as you type

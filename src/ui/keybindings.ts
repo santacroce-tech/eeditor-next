@@ -80,6 +80,16 @@ export interface KeybindingsOptions {
   writeFile?: (path: string, text: string, expected?: string) => Promise<boolean>;
   /** `(ed-append path text [heading])`: add `text` at the end of a note, or of one of its sections. */
   appendFile?: (path: string, text: string, heading?: string) => Promise<void>;
+  /**
+   * `(ed-move …)`, `(ed-copy …)`, `(ed-delete …)`, `(ed-mkdir …)`: the workspace's files, with the
+   * tabs open from them kept in step. Each rejects, changing nothing, when it can't be done.
+   */
+  files?: {
+    move(from: string, to: string): Promise<void>;
+    copy(from: string, to: string): Promise<void>;
+    trash(path: string): Promise<void>;
+    mkdir(path: string): Promise<void>;
+  };
   /** `(ed-notify title [body])`: tell the person, even when EEditor isn't in front. */
   notify?: (title: string, body: string) => void;
   /** The `(button …)` forms changed — at launch and on every reload — so the header redraws them. */
@@ -111,6 +121,10 @@ const COMMANDS = new Set([
   "append",
   "prompt",
   "notify",
+  "move",
+  "copy",
+  "delete",
+  "mkdir",
 ]);
 
 /** What a prompt may call back: a function's name, nothing that could be more than a name. */
@@ -332,6 +346,25 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
       case "append": {
         const append = opts.appendFile;
         if (append) inOrder(() => append(text(args[0]), text(args[1]), args[2] != null && args[2] !== "" ? text(args[2]) : undefined));
+        return false;
+      }
+      case "move":
+      case "copy":
+      case "delete":
+      case "mkdir": {
+        const files = opts.files;
+        if (!files) return false;
+        const a = text(args[0]);
+        const b = text(args[1] ?? "");
+        const run = (): Promise<void> =>
+          name === "move" ? files.move(a, b) : name === "copy" ? files.copy(a, b) : name === "delete" ? files.trash(a) : files.mkdir(a);
+        const verb = { move: "move", copy: "copy", delete: "delete", mkdir: "make the folder" }[name];
+        // in order with the other file commands, and a failure said where it can be seen
+        inOrder(() =>
+          run().catch((e) => {
+            toast(`Could not ${verb} ${a}: ${e instanceof Error ? e.message : String(e)}`);
+          }),
+        );
         return false;
       }
       case "notify":

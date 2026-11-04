@@ -1202,14 +1202,22 @@ function main(): void {
     const name = await promptModal("Rename", node.name, "Rename");
     if (!name || name === node.name) return;
     const to = joinPath(parentDir(node.path), name);
-    // The engine holds a sheet's file open; SQLite would go on writing its journal under the old name.
-    await closeSheetsUnder(node.path);
     try {
-      await ws.rename(node.path, to);
+      await movePath(node.path, to);
     } catch (e) {
       toast(`Could not rename: ${String(e)}`);
-      return;
     }
+  }
+  /**
+   * Move or rename a file or folder, and everything open from it follows: tabs, sheets, running
+   * forms and their windows. Rejects — moving nothing — when `to` is taken or can't be written.
+   */
+  async function movePath(from: string, to: string): Promise<void> {
+    if (!from || !to || from === to) return;
+    // The engine holds a sheet's file open; SQLite would go on writing its journal under the old name.
+    await closeSheetsUnder(from);
+    await ws.rename(from, to);
+    const node = { path: from };
     // follow the renamed file/folder across any open tabs (and the active document)
     const renamePath = (p: string): string =>
       p === node.path ? to : p.startsWith(node.path + "/") ? to + p.slice(node.path.length) : p;
@@ -1253,13 +1261,35 @@ function main(): void {
     const kind = node.isDir ? "folder" : "file";
     const ok = await confirmModal(`Delete ${kind} "${node.name}"?`);
     if (!ok) return;
-    await closeSheetsUnder(node.path);
     try {
-      await ws.remove(node.path);
+      await deletePath(node.path, "remove");
     } catch (e) {
       toast(`Could not delete: ${String(e)}`);
-      return;
     }
+  }
+  /** Copy a file or folder to a path that is free; the tree shows it. Rejects when `to` is taken. */
+  async function copyPath(from: string, to: string): Promise<void> {
+    if (!from || !to || from === to) return;
+    await saveAllDirty(); // what is copied is what is on screen
+    await ws.copy(from, to);
+    await sidebar.refresh();
+    await tags.refresh();
+  }
+  /** Make a folder (and the ones above it); there already is one → nothing happens. */
+  async function makeFolder(path: string): Promise<void> {
+    await ws.create(path, true).catch((e) => {
+      if (!/exists/i.test(String(e))) throw e;
+    });
+    await sidebar.refresh();
+  }
+  /**
+   * Delete a file or folder — to the system Trash, or for good — and close whatever was open from
+   * it. Rejects, deleting nothing, when it can't.
+   */
+  async function deletePath(path: string, how: "trash" | "remove"): Promise<void> {
+    const node = { path };
+    await closeSheetsUnder(node.path);
+    await (how === "trash" ? ws.trash(node.path) : ws.remove(node.path));
     // close any tabs under the deleted path and reconcile the active document
     const gone = (p: string): boolean => p === node.path || p.startsWith(node.path + "/");
     for (const p of [...sheetViews.keys()].filter(gone)) await dropSheet(p);
@@ -2349,6 +2379,7 @@ function main(): void {
     flush: () => saveAllDirty(),
     writeFile: writeNote,
     appendFile: appendNote,
+    files: { move: movePath, copy: copyPath, trash: (p) => deletePath(p, "trash"), mkdir: makeFolder },
     notify: (title, body) => void notifyUser(title, body),
     onButtons: (list) => {
       drawnButtons = list.map((b) => {

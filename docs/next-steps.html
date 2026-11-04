@@ -132,12 +132,12 @@ a { color: var(--accent); }
   <div style="margin-top:18px">
     <div class="phase"><span class="n">1</span><div>
       <h3>Listing folders</h3>
-      <div class="repo">eelisp-rs · src/editor.rs · merges first, because CI builds the app against eelisp-rs main</div>
+      <div class="repo">eelisp-rs · src/editor.rs · in review: eelisp-rs #29 · merges first, because CI builds the app against eelisp-rs main</div>
       <p><code>(dir-list "notes")</code> returns one dict per entry, <code>{:name :dir? :size :modified :ext}</code>, and <code>(file-info p)</code> returns one. They sit beside <code>notes</code> and <code>read-note</code>, which follows the rule already in place: reading happens in the engine, writing goes through the app.</p>
     </div></div>
     <div class="phase"><span class="n">2</span><div>
       <h3>File operations as editor commands</h3>
-      <div class="repo">eeditor-next · src/ui/keybindings.ts · src-tauri (fs_copy) · dev/bridge.mjs</div>
+      <div class="repo">eeditor-next · src/ui/keybindings.ts · src-tauri (fs_copy, fs_trash) · dev/bridge.mjs · in review</div>
       <p><code>(ed-move from to)</code>, <code>(ed-copy from to)</code>, <code>(ed-delete p)</code> and <code>(ed-mkdir p)</code>, handled beside <code>write</code> and <code>append</code>. Because they go through the app, open tabs stay in step: a moved note's tab follows it, and a deleted one closes. A delete goes to the system trash. They work from <code>(bind …)</code> lines and from forms alike.</p>
     </div></div>
     <div class="phase"><span class="n">3</span><div>

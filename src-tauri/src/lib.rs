@@ -365,6 +365,17 @@ fn eelisp_eval(engine: Engine, src: String) -> String {
 }
 
 fn resolve(root: &Path, rel: &str) -> Result<PathBuf, String> {
+    // Spelled out first: a path that doesn't exist yet can't be canonicalized, and `Path::starts_with`
+    // compares components without collapsing them — so "ws/../x" would pass the check below.
+    let mut depth = 0i32;
+    for c in Path::new(rel).components() {
+        match c {
+            std::path::Component::Normal(_) => depth += 1,
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir if depth > 0 => depth -= 1,
+            _ => return Err("path escapes workspace".into()),
+        }
+    }
     let p = root.join(rel);
     let canon_root = root.canonicalize().map_err(|e| e.to_string())?;
     let canon = p.canonicalize().unwrap_or_else(|_| p.clone());
@@ -516,7 +527,73 @@ fn fs_rename(ws: Workspace, from: String, to: String) -> Result<(), String> {
     if let Some(parent) = t.parent() {
         let _ = fs::create_dir_all(parent);
     }
+    // Never over another file: rename(2) would replace it without a word. A change of case only
+    // (a.md → A.md, the same file on macOS) is a rename, not a clash.
+    if t.exists() && !same_file(&f, &t) {
+        return Err(format!("{to} already exists"));
+    }
     fs::rename(f, t).map_err(|e| e.to_string())
+}
+
+/// Whether two paths are one file on disk — on a case-insensitive volume "a.md" and "A.md" are.
+fn same_file(a: &Path, b: &Path) -> bool {
+    match (a.canonicalize(), b.canonicalize()) {
+        (Ok(x), Ok(y)) => x == y,
+        _ => false,
+    }
+}
+
+/// Copy a file or a whole folder to `to`, which must not exist yet.
+#[tauri::command(async)]
+fn fs_copy(ws: Workspace, from: String, to: String) -> Result<(), String> {
+    let root = ws.0.lock().unwrap().clone();
+    let f = resolve(&root, &from)?;
+    let t = resolve(&root, &to)?;
+    if t.exists() {
+        return Err(format!("{to} already exists"));
+    }
+    if t.starts_with(&f) {
+        return Err(format!("{from} can't be copied into itself"));
+    }
+    if let Some(parent) = t.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    copy_tree(&f, &t).map_err(|e| e.to_string())
+}
+
+/// What `fs_copy` does, recursively; a symlink is copied as what it points at, a folder's own
+/// symlinked folders are not followed (no loops).
+fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
+    if from.is_dir() {
+        fs::create_dir_all(to)?;
+        for e in fs::read_dir(from)? {
+            let e = e?;
+            if e.file_type()?.is_symlink() && e.path().is_dir() {
+                continue;
+            }
+            copy_tree(&e.path(), &to.join(e.file_name()))?;
+        }
+        Ok(())
+    } else {
+        fs::copy(from, to).map(|_| ())
+    }
+}
+
+/// Into the system's Trash (the Recycle Bin on Windows), where it can be put back. On a phone
+/// there is none to use, so it is deleted.
+#[tauri::command(async)]
+fn fs_trash(ws: Workspace, path: String) -> Result<(), String> {
+    let p = resolve(&ws.0.lock().unwrap(), &path)?;
+    if !p.exists() {
+        return Err(format!("{path} isn't there"));
+    }
+    if p == ws.0.lock().unwrap().as_path() {
+        return Err("the workspace itself can't go to the Trash".into());
+    }
+    #[cfg(desktop)]
+    return trash::delete(&p).map_err(|e| e.to_string());
+    #[cfg(not(desktop))]
+    if p.is_dir() { fs::remove_dir_all(p).map_err(|e| e.to_string()) } else { fs::remove_file(p).map_err(|e| e.to_string()) }
 }
 
 #[tauri::command(async)]
@@ -1253,6 +1330,8 @@ pub fn run() {
             fs_create,
             fs_rename,
             fs_delete,
+            fs_copy,
+            fs_trash,
             import_file,
             fs_read_image,
             fs_save_asset,
@@ -1359,6 +1438,11 @@ mod tests {
         // a detour that lands outside is still outside, however it is spelled
         assert!(resolve(&root, "../outside.md").is_err());
         assert!(resolve(&root, "notes/../../outside.md").is_err());
+        // …and so is one that doesn't exist yet, where there is nothing to canonicalize
+        assert!(resolve(&root, "../new.md").is_err());
+        assert!(resolve(&root, "notes/../../new/b.md").is_err());
+        assert!(resolve(&root, "/etc/new.md").is_err());
+        assert_eq!(resolve(&root, "notes/../b.md").unwrap(), root.join("notes/../b.md"));
     }
 
     #[test]

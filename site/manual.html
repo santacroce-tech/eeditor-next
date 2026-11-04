@@ -1332,8 +1332,39 @@ zzalinhar — function
       <tr><td><code>(ed-new path)</code><br><code>(ed-new path text)</code></td><td>create the note if it doesn't exist, then open it — never overwrites</td></tr>
       <tr><td><code>(ed-form "Contacts")</code></td><td>open a form (<a href="#forms">chapter 10</a>) and run it in a floating window</td></tr>
       <tr><td><code>(ed-message text)</code></td><td>show a toast</td></tr>
+      <tr><td><code>(ed-notify title body)</code></td><td>a toast, and a system notification when EEditor isn't in front</td></tr>
+      <tr><td><code>(ed-prompt "When?" my-fn)</code></td><td>ask, then run <code>(my-fn answer)</code> like a key</td></tr>
+      <tr><td><code>(ed-write path text)</code><br><code>(ed-write path text old)</code></td><td>replace a note's text, open or not — with <code>old</code>, only if it still says that</td></tr>
+      <tr><td><code>(ed-append path text)</code><br><code>(ed-append path text "## Log")</code></td><td>add to the end of a note, or of one of its sections</td></tr>
+      <tr><td><code>(ed-move from to)</code></td><td>move or rename a file or folder; tabs open from it follow</td></tr>
+      <tr><td><code>(ed-copy from to)</code></td><td>copy a file or a whole folder</td></tr>
+      <tr><td><code>(ed-delete path)</code></td><td>into the system Trash; tabs open from it close</td></tr>
+      <tr><td><code>(ed-mkdir path)</code></td><td>make a folder, and any above it that are missing</td></tr>
       <tr><td><code>(ed-nothing)</code></td><td>do nothing, useful as a <code>cond</code> branch</td></tr>
     </table></div>
+
+    <h3>Files and folders</h3>
+    <p>
+      A key or a form can read the whole workspace and rearrange it. Reading happens in EELisp
+      itself; changing goes through the app, so a tab open from a file that moves follows it.
+    </p>
+    <div class="table-wrap"><table>
+      <tr><th>Call</th><th>Gives</th></tr>
+      <tr><td><code>(notes)</code> / <code>(notes "reviews")</code></td><td>every note (<code>.md</code>), or those under a folder</td></tr>
+      <tr><td><code>(read-note "inbox.md")</code></td><td>a file's text as saved, or <code>nil</code></td></tr>
+      <tr><td><code>(dir-list "notes")</code></td><td>one folder's entries, folders first — each a dict with <code>:name</code> <code>:path</code> <code>:dir</code> <code>:size</code> <code>:modified</code> <code>:ext</code>; <code>:hidden true</code> adds the dot-names</td></tr>
+      <tr><td><code>(file-info "inbox.md")</code></td><td>one entry, or <code>nil</code></td></tr>
+    </table></div>
+<pre><code><span class="cm">;; ⌘⌥J — file the note in front under journal/, by month: journal/2026-11/…</span>
+(bind <span class="st">"Mod-Alt-j"</span>
+  (ed-mkdir (str <span class="st">"journal/"</span> (date-format *date* <span class="st">"yyyy-MM"</span>)))
+  (ed-move *file* (str <span class="st">"journal/"</span> (date-format *date* <span class="st">"yyyy-MM"</span>) <span class="st">"/"</span> *file*)))</code></pre>
+    <p>
+      <code>to</code> is always the whole new path. Nothing is ever written over: a move or copy onto
+      a name that is taken is refused, with a message, and so is any path that would leave the
+      workspace. <code>:modified</code> counts seconds the way <code>(now)</code> does, so
+      <code>(date-format (dict-get e :modified))</code> reads it.
+    </p>
 
     <h3>What your code can see</h3>
     <p>These are defined fresh before every run:</p>

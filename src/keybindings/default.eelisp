@@ -30,9 +30,16 @@
 ;;   (ed-append path text "## Log")  …at the end of that section (added if it isn't there)
 ;;   (ed-write path text)            replace a note's text; (ed-write path text old) only if it
 ;;                                   still says old — so a note being typed into is left alone
+;;   (ed-move from to)               move or rename a file or folder (to is the whole new path); open
+;;                                   tabs follow it. Never over something that is there already
+;;   (ed-copy from to)               copy a file or a whole folder to a path that is free
+;;   (ed-delete path)                into the system Trash, where it can be put back; its tabs close
+;;   (ed-mkdir path)                 a folder, and any above it that are missing
 ;;
 ;; Reading other notes: (notes) lists every .md in the workspace, (notes "reviews") those in a
-;; folder; (read-note "inbox.md") is one's text as saved (nil if there's none). Unsaved tabs are
+;; folder; (read-note "inbox.md") is one's text as saved (nil if there's none). (dir-list "notes")
+;; is one folder's entries as a file manager shows them — name, size, when it changed — and
+;; (file-info "inbox.md") is one of them. Unsaved tabs are
 ;; saved before any binding runs, so what you read is what's on screen.
 ;;
 ;; A binding may list several commands; they run in order against the live document.
