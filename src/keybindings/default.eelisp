@@ -75,7 +75,7 @@
 ;;
 ;; Switching tabs is built in, with no line here: ⌃Tab / ⌃⇧Tab the next / previous tab, ⌘1…⌘8 the
 ;; first eight, ⌘9 the last (Ctrl+1… on Windows and Linux), ⌘W closes the tab (the window, once
-;; there is none) and ⌘B shows or hides the sidebar. A (bind …) of your own on one of those keys
+;; there is none), ⌘B shows or hides the sidebar and F5 runs the form in front. A (bind …) of your own on one of those keys
 ;; replaces it — (bind "Mod-1" (ed-cmd "daily-note")), say.
 ;;
 ;; Context, defined fresh before every run:
@@ -129,6 +129,11 @@
 ;; ⌘⇧B — link back to today's note
 ;; (bind "Mod-Shift-b" (ed-insert (str "[[" *date* "]]")))
 
+;; ── forms ──────────────────────────────────────────────────────────────────
+;; A form (.eeform) opens running, as if ▶ run were pressed. "design" opens it in the designer
+;; instead, "code" as its text. F5 runs the form in front whichever way it opened, as in VB6.
+(forms-open "run")
+
 ;; ── the header ─────────────────────────────────────────────────────────────
 ;; The buttons above the editor, left to right. Delete a line and the button goes; move it and it
 ;; moves; add your own anywhere among them. A button that is one app command can leave its label
@@ -136,7 +141,7 @@
 ;; or label it yourself: (button "⇩ PDF" (ed-cmd "export-pdf")). Either way it hides where the
 ;; command can't work (no PDF of a form, no image in a sheet). A file with none of these six lines
 ;; gets them anyway, after its own buttons; write one and the header is yours.
-(button (ed-cmd "toggle-theme"))     ;; ☀ light / ☾ dark / ▦ VB6
+(button (ed-cmd "toggle-theme"))     ;; ☀ light / ☾ dark
 (button (ed-cmd "insert-image"))     ;; image…
 (button (ed-cmd "toggle-preview"))   ;; preview / edit
 (button (ed-cmd "export-pdf"))       ;; PDF
@@ -165,7 +170,7 @@
 ;; open-functions      your own spreadsheet functions (.eeditor/functions.eelisp), created if needed
 ;; reload-functions    load them again (saving the file does this too)
 ;; reload-keys · toggle-repl · focus-repl · toggle-preview · toggle-theme · export-pdf · snippets
-;; theme-dark · theme-light · theme-vb6   pick a theme (toggle-theme walks all three)
+;; theme-dark · theme-light   pick a theme (toggle-theme flips between them)
 ;; calendar · agenda-setup · agenda-refresh · close-tab · next-tab · prev-tab · focus-editor
 ;; toggle-sidebar      show or hide the sidebar (⌘B); drag its edge to make it wider
 ;; tab-1 … tab-8 · last-tab   go to that tab (what ⌘1…⌘8 and ⌘9 do)

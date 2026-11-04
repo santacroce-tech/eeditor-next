@@ -58,6 +58,9 @@ export interface Button extends Body {
  * `(panel "agenda" "pim/Side.eeform")`: a form drawn in the sidebar. "agenda" puts it in the agenda
  * section, in place of the built-in list; any other name is a section of its own, under the agenda.
  */
+/** How a form opens in its tab: running, in the designer, or as its code. */
+export type FormsOpen = "run" | "design" | "code";
+
 export interface Panel {
   /** The section: "agenda", or the title of a new one. */
   name: string;
@@ -86,6 +89,11 @@ export interface ParsedConfig {
   buttons: Button[];
   /** Every `(panel …)`, in order — one per section, the last one written for a name winning. */
   panels: Panel[];
+  /**
+   * `(forms-open "run")`: how a form opens in its tab — `"run"` straight away, `"design"` (the
+   * designer, as without the line) or `"code"`. The last one written wins.
+   */
+  formsOpen?: FormsOpen;
   /**
    * Every `(action "label" body…)`, in order: written like a button, but listed only in ⌘P's
    * actions (type ">"), never in the header.
@@ -279,13 +287,14 @@ function parseForm(
   | { button: Button }
   | { action: Button }
   | { panel: Panel }
+  | { formsOpen: FormsOpen }
   | { error: string } {
   const inner = form.text.slice(1, -1);
-  const head = /^\s*(bind|button|action|panel|on-start|on-load|on-tick)(?=[\s)]|$)/.exec(inner);
+  const head = /^\s*(bind|button|action|panel|forms-open|on-start|on-load|on-tick)(?=[\s)]|$)/.exec(inner);
   if (!head) {
     const what = form.text.slice(0, 40).replace(/\s+/g, " ");
     return {
-      error: `line ${form.line}: expected (bind "Key" …), (button "Label" …), (action "Label" …), (panel "agenda" "Form"), (on-start …), (on-load …) or (on-tick …), got ${what}…`,
+      error: `line ${form.line}: expected (bind "Key" …), (button "Label" …), (action "Label" …), (panel "agenda" "Form"), (forms-open "run"), (on-start …), (on-load …) or (on-tick …), got ${what}…`,
     };
   }
   if (head[1] === "button") return parseButton(inner, head[0].length, form.line, mac);
@@ -294,6 +303,11 @@ function parseForm(
     return "button" in r ? { action: r.button } : r;
   }
   if (head[1] === "panel") return parsePanel(inner, head[0].length, form.line);
+  if (head[1] === "forms-open") {
+    const how = /^\s*"(run|design|code)"\s*$/.exec(inner.slice(head[0].length));
+    if (!how) return { error: `line ${form.line}: forms open as "run", "design" or "code" — (forms-open "run")` };
+    return { formsOpen: how[1] as FormsOpen };
+  }
   if (head[1] !== "bind") {
     const body = { ...compileBody(inner.slice(head[0].length).trim()), line: form.line };
     return head[1] === "on-start" ? { start: body } : { hook: head[1] as Hook, body };
@@ -389,6 +403,7 @@ export const BUILTIN_KEYS: ReadonlyArray<readonly [spec: string, command: string
   ["Mod-9", "last-tab"], // as in browsers; ⌘0 is left alone — a mind map's "fit", beside ⌘= / ⌘-
   ["Mod-w", "close-tab"], // in the desktop app the File menu's Close Tab carries it (see main.ts)
   ["Mod-b", "toggle-sidebar"], // as in VS Code; a letter, so it is the same key on every layout
+  ["F5", "form-run"], // as in VB6: run the form in front (nothing happens on a note)
 ];
 
 /** The built-in keys the config doesn't bind itself, as bindings (line 0: they're in no file). */
@@ -415,6 +430,7 @@ export function parseKeybindings(src: string, mac: boolean = isMacPlatform()): P
   const buttons: Button[] = [];
   const actions: Button[] = [];
   const panels = new Map<string, Panel>();
+  let formsOpen: FormsOpen | undefined;
   for (const form of forms) {
     const r = parseForm(form, mac);
     if ("error" in r) errors.push(r.error);
@@ -424,6 +440,7 @@ export function parseKeybindings(src: string, mac: boolean = isMacPlatform()): P
       panels.delete(r.panel.name.toLowerCase()); // the last one for a section wins, in its place
       panels.set(r.panel.name.toLowerCase(), r.panel);
     }
+    else if ("formsOpen" in r) formsOpen = r.formsOpen;
     else if ("start" in r) start = r.start;
     else if ("hook" in r) (r.hook === "on-load" ? load : tick).push(r.body);
     else {
@@ -431,7 +448,7 @@ export function parseKeybindings(src: string, mac: boolean = isMacPlatform()): P
       byId.set(r.binding.id, doc ? { ...r.binding, doc } : r.binding);
     }
   }
-  return { bindings: [...byId.values()], start, load, tick, buttons, actions, panels: [...panels.values()], errors };
+  return { bindings: [...byId.values()], start, load, tick, buttons, actions, panels: [...panels.values()], formsOpen, errors };
 }
 
 /**

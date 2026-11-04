@@ -4,6 +4,8 @@
 // One workspace, in order: the sample Contacts.eeform is seeded by setup.mjs, the new form is made here.
 
 import { expect, test } from "@playwright/test";
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { UI_WORKSPACE } from "../../playwright.config.mjs";
 
 test.describe.configure({ mode: "serial" });
 
@@ -12,11 +14,39 @@ const MOD = process.platform === "darwin" ? "Meta" : "Control";
 /** The text in the (hidden or shown) CodeMirror buffer. */
 const buffer = (page) => page.locator(".editor-host .cm-content").innerText();
 
+/** Contacts in the designer: it opens running — (forms-open "run") — so "design" first. */
 async function openContacts(page) {
   await page.goto("/");
   await page.locator(".tree-file", { hasText: "Contacts.eeform" }).click();
+  await page.waitForSelector(".formrun-canvas");
+  await page.locator(".form-modes .head-btn", { hasText: "design" }).click();
   await page.waitForSelector(".fd-canvas");
 }
+
+test("a form opens running; F5 runs it again from the designer, as in VB6", async ({ page }) => {
+  await page.goto("/");
+  await page.locator(".tree-file", { hasText: "Contacts.eeform" }).click();
+  await expect(page.locator(".form-modes .head-btn.active")).toHaveText(/run/);
+  await expect(page.locator(".formrun-host .formrun-canvas")).toBeVisible();
+  await page.locator(".form-modes .head-btn", { hasText: "design" }).click();
+  await page.waitForSelector(".fd-canvas");
+  await page.keyboard.press("F5");
+  await expect(page.locator(".form-modes .head-btn.active")).toHaveText(/run/);
+  await expect(page.locator(".formrun-host .formrun-canvas")).toBeVisible();
+});
+
+test("(forms-open \"design\") opens a form in the designer instead", async ({ page }) => {
+  await mkdir(`${UI_WORKSPACE}/.eeditor`, { recursive: true });
+  await writeFile(`${UI_WORKSPACE}/.eeditor/keybindings.eelisp`, `(forms-open "design")\n`);
+  try {
+    await page.goto("/");
+    await page.locator(".tree-file", { hasText: "Contacts.eeform" }).click();
+    await page.waitForSelector(".fd-canvas");
+    await expect(page.locator(".form-modes .head-btn.active")).toHaveText("design");
+  } finally {
+    await rm(`${UI_WORKSPACE}/.eeditor/keybindings.eelisp`, { force: true });
+  }
+});
 
 test("a form opens in the designer with every control drawn", async ({ page }) => {
   await openContacts(page);

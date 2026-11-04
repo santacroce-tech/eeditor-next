@@ -40,8 +40,7 @@ test.beforeAll(() => {
 
 async function runInTab(page, name) {
   await page.locator(".tree-file", { hasText: `${name}.eeform` }).click();
-  await page.waitForSelector(".fd-canvas");
-  await page.locator(".form-modes .head-btn", { hasText: "run" }).click();
+  // forms open running — the default (forms-open "run")
   await page.waitForSelector(".formrun-host .formrun-canvas");
 }
 

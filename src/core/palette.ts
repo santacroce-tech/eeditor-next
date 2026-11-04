@@ -60,7 +60,6 @@ export const COMMAND_TITLES: Record<string, string> = {
   "toggle-theme": "Next theme",
   "theme-dark": "Theme: dark",
   "theme-light": "Theme: light",
-  "theme-vb6": "Theme: VB6",
   "insert-image": "Insert an image",
   snippets: "Snippets",
   calendar: "Calendar",

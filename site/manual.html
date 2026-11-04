@@ -913,8 +913,16 @@ sequenceDiagram
       <strong>▶ run</strong> evaluates the file — the table gets defined, the handlers too — builds
       the controls, and fires <code>on-load</code>. What the form writes goes into the workspace's
       database, the same one the REPL and your notes see, so <code>(browse contacts)</code> shows what
-      it saved. <strong>■ stop</strong> is the way back to the designer. Opening a form runs nothing:
-      only <em>run</em> does, the same rule as sheets and <code>eelisp</code> blocks.
+      it saved. <strong>■ stop</strong> is the way back to the designer, and <kbd>F5</kbd> runs the
+      form in front again, as it did in VB6.
+    </p>
+    <p>
+      A form opens <strong>running</strong>: that is the line <code>(forms-open "run")</code> in your
+      keybindings file. Change it to <code>(forms-open "design")</code> and a form opens in the
+      designer, running nothing until you press <strong>▶ run</strong> or <kbd>F5</kbd> — the rule
+      sheets and <code>eelisp</code> blocks keep. Worth doing if you open forms other people send
+      you: running one runs its code. <code>(forms-open "code")</code> opens its text. A new form
+      always opens in the designer, since there is nothing to run yet.
     </p>
     <p>
       To keep a form open while you write, run it in a <strong>window</strong>: type
@@ -1464,7 +1472,7 @@ zzalinhar — function
       <tr><td><code>toggle-repl</code> / <code>focus-repl</code></td><td>show/hide the REPL, or jump into it</td></tr>
       <tr><td><code>focus-editor</code></td><td>put the caret back in the document</td></tr>
       <tr><td><code>toggle-preview</code></td><td>editor ⇄ rendered Markdown</td></tr>
-      <tr><td><code>toggle-theme</code></td><td>dark → light → VB6 → dark</td></tr>
+      <tr><td><code>toggle-theme</code></td><td>dark ⇄ light</td></tr>
       <tr><td><code>export-pdf</code></td><td>print the current note to PDF</td></tr>
       <tr><td><code>insert-image</code></td><td>pick images; each is copied into <code>assets/</code> beside the note and linked</td></tr>
       <tr><td><code>snippets</code></td><td>load the standard EELisp bundle</td></tr>
@@ -1574,12 +1582,13 @@ zzalinhar — function
       <tr><td><kbd>⌃Tab</kbd> / <kbd>⌃⇧Tab</kbd></td><td>Next / previous tab; <kbd>⌘1</kbd>…<kbd>⌘8</kbd> pick one, <kbd>⌘9</kbd> the last</td></tr>
       <tr><td><kbd>⌘W</kbd></td><td>Close the tab — the window, once there is none</td></tr>
       <tr><td><kbd>⌘B</kbd></td><td>Show/hide the sidebar; drag its edge to resize it</td></tr>
+      <tr><td><kbd>F5</kbd></td><td>Run the form in front</td></tr>
       <tr><td><kbd>⇧⌘W</kbd></td><td>Close the window (the File menu's)</td></tr>
       <tr><td><kbd>⌃⌘N</kbd></td><td>New window, on another folder (the File menu's)</td></tr>
     </table></div>
     <p>
-      Most of these are a line in your keybindings file. The tab keys, <kbd>⌘W</kbd> and
-      <kbd>⌘B</kbd> are built in, and a <code>(bind …)</code> of your own on one of them replaces
+      Most of these are a line in your keybindings file. The tab keys, <kbd>⌘W</kbd>,
+      <kbd>⌘B</kbd> and <kbd>F5</kbd> are built in, and a <code>(bind …)</code> of your own on one of them replaces
       it; <kbd>⇧⌘W</kbd> and <kbd>⌃⌘N</kbd> belong to the File menu. The PIM adds its own <kbd>⌘⌥</kbd> keys — <kbd>⌘⌥T</kbd> a task, <kbd>⌘⌥U</kbd>
       update the blocks, <kbd>⌘⌥B</kbd> links to a tag's notes and the rest; the
       <a href="https://github.com/santacroce-tech/eeditor-next/blob/main/docs/PIM.md">PIM guide</a>

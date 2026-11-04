@@ -56,8 +56,7 @@ const MOD = process.platform === "darwin" ? "Meta" : "Control";
 async function runMain(page, name) {
   await page.goto("/");
   await page.locator(".tree-file", { hasText: `${name}.eeform` }).click();
-  await page.waitForSelector(".fd-canvas");
-  await page.locator(".form-modes .head-btn", { hasText: "run" }).click();
+  // forms open running — the default (forms-open "run")
   await page.waitForSelector(".formrun-host .formrun-ctl[data-name=frmBody]");
   return page.locator(".formrun-host");
 }
