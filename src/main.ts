@@ -727,6 +727,8 @@ function main(): void {
         toast(m);
       },
       note: (text) => repl.note(text),
+      // (ui-editor …) — as a form in a window has it; a form run in its tab had nowhere to send them.
+      onEditor: (v) => formExtras(t.path).onEditor(v),
       onPopOut: () => {
         backToDesign();
         void runForm(t.path);

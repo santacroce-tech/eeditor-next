@@ -10,7 +10,8 @@ Tags like #welcome and #demo are indexed from your notes, and [[todo]] is a wiki
 
 - **examples/** — forms you can run (▶ run in the tab): **Office** ties the others together;
   **Books**, **Orders** and **Tables** are dBASE-style data screens, **Agenda** is the agenda as a
-  form, **Functions** lists every function with its source, **Spectrum** is a ZX Spectrum and
+  form, **Functions** lists every function with its source, **Files** shows two folders side by
+  side to move and copy between (⌘→ / ⌘←), **Spectrum** is a ZX Spectrum and
   **MSX** an MSX with a game of Snake, **Display** paints a screen from EELisp, and **Raycaster**
   walks a 3D maze.
 - **examples/EEditor.mindmap.md** — every shortcut and the EELisp dialect, as a mind map.

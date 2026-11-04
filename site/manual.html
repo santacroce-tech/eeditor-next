@@ -1016,7 +1016,7 @@ sequenceDiagram
 
     <h3 id="form-examples">Example forms</h3>
     <p>
-      Ten forms to download, run and take apart. Save one into your workspace — any folder — and it
+      Eleven forms to download, run and take apart. Save one into your workspace — any folder — and it
       appears in the tree; press <strong>▶ run</strong>, then switch to <strong>code</strong> to see
       how it's done. Each file opens with a comment saying what it shows, and every handler has a
       line above it saying what it does. They write to your workspace's database, into tables of
@@ -1093,6 +1093,41 @@ sequenceDiagram
 
 <span class="cm">;; Run: the call is written out as text and read back, so arguments are typed as at the REPL.</span>
 (eval (parse (str <span class="st">"("</span> name <span class="st">" "</span> args <span class="st">")"</span>)))</code></pre>
+
+    <h4 id="files-form">Files — two folders side by side</h4>
+    <picture>
+        <source srcset="assets/forms/files-dark.png" media="(prefers-color-scheme: dark)">
+        <img class="shot" src="assets/forms/files-light.png"  alt="The Files form: two panels, a project folder on the left with roadmap.md picked and an archive folder on the right, a name box with Rename and New folder, and the keys listed underneath" width="762" loading="lazy">
+      </picture>
+    <p>
+      <a href="examples/Files.eeform" download>Files.eeform</a> · A file manager in the Norton
+      Commander tradition, for your workspace. Each panel is a folder, folders first, with sizes and
+      dates. <kbd>Tab</kbd> goes to the other panel, <kbd>↵</kbd> opens a folder or puts a file in
+      a tab, <kbd>⌫</kbd> goes up. <kbd>⌘→</kbd> and <kbd>⌘←</kbd> move what is picked into the
+      other panel's folder, <kbd>⌥⌘→</kbd> and <kbd>⌥⌘←</kbd> copy it, <kbd>⌘⌫</kbd> sends it to the
+      Trash; the box underneath renames it or makes a folder. Nothing is ever written over, and each
+      panel remembers its folder for next time.
+    </p>
+    <p>
+      It is about 140 lines of EELisp, comments included. <code>(dir-list …)</code> reads a folder; the moves are
+      <code>ed-move</code>, <code>ed-copy</code> and <code>ed-delete</code> handed to the app, which
+      keeps any tab open from a moved file in step and then runs the form's
+      <code>:on-refresh</code>; the keys are <code>:on-key</code> (see
+      <a href="#form-keys">Keys in a form</a>). The moving, in short:
+    </p>
+<pre><code><span class="cm">;; From one panel's pick into the other panel's folder — never over a name that is taken.</span>
+(defn fm-across (f from how)
+  (let (row (fm-picked f from) to (fm-other from))
+    (if (not (fm-real? row))
+      (fm-say <span class="st">"Pick something first"</span>)
+      (let (target (fm-join (fm-dir to) (dict-get row :file)))
+        (ui-editor (if (= how <span class="st">"copy"</span>)
+                     (ed-copy (dict-get row :path) target)
+                     (ed-move (dict-get row :path) target)))))))</code></pre>
+    <p>
+      It works on the workspace, not the whole disk, and only in the app: an exported page has no
+      folder to read.
+    </p>
 
     <h4>Tables — any table, dBASE-style</h4>
     <picture>
