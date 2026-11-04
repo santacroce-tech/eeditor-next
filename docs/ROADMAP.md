@@ -32,6 +32,37 @@ own running list: [SHEETS-LATER.md](SHEETS-LATER.md).
 
 ---
 
+## Next steps
+
+Where things stand after 2.5.0 (2026-11-03), and what comes next, in the order it makes sense to
+do it. The numbered items above are the engine and sheets work the book found; these are the
+screen, the machines and the site.
+
+2.5.0 is published (2026-11-03), with every installer and its notes, so the download buttons and
+the "Full notes" link are live.
+
+**Next — the machines** (`docs/DISPLAY.md`, `docs/msx/MSX.md`)
+
+| | Item | Cost | Notes |
+|---|---|---|---|
+| A | **The C64**: the 6502, the VIC-II (with its raster tricks), the SID, the CIAs | L | The next machine. As with the Spectrum, the user loads Commodore's ROMs; nothing of theirs is bundled. A 6502 in EELisp, tested against Klaus Dormann's functional tests the way the Z80 is against FUSE's — downloaded when the test runs, not kept here, since they're GPL — then the VIC-II drawn host-side as the TMS9918A is |
+| B | **MSX tutorial, step 6**: the snake's head as a sprite moving a pixel at a time, and a pause key | S | Practises sprites before the C64 |
+| C | **Frames that send only what changed** | M | An MSX frame sends all 16 KB of video memory, about 1.3 MB a second of base64. Sending the changed bytes would help most on the site's WebAssembly engine |
+| D | **The Spectrum's beeper** as `"audio"` | S | The MSX's PSG path already does the work; the Spectrum is still silent |
+| E | **MSX: the key click, and samples played through the volume** | M | A frame's sound is made from the registers at its end; samples need the writes timed within the frame |
+| F | **MSX2**: the V9938, 512 KB of video memory, more screens | L | After the C64, if wanted. C-BIOS has an MSX2 BIOS too |
+
+**Small things for the site**
+
+- Dark-mode screenshots for the new *Play* cards (Raycaster, MSX, Display).
+- Export Office and Functions again with the current runtime, so every live app has the same frame
+  loop.
+
+The pieces that could become projects of their own are listed at the end, in *Could stand on their
+own*.
+
+---
+
 ## Done
 
 Items 1–5 and 16 were the first round, all merged on 2026-10-26: `try` and `iferror`, `http-get`
