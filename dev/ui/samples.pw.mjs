@@ -26,7 +26,7 @@ test("an empty folder is offered the samples, and gets every one of them, the PI
   // the PIM tour
   for (const p of ["TRY ME.md", "inbox.md", "bills.md", "dashboard.md", "projects/site.md", "projects/home.md",
     "pim/Capture.eeform", "pim/Agenda.eeform", "pim/Side.eeform", "pim/Tags.eeform", ".eeditor/keybindings.eelisp", today]) expect(await there(p), p).toBe(true);
-  expect(await readFile(`${UI_EMPTY}/welcome.md`, "utf8")).toContain("TRY ME.md");
+  expect(await readFile(`${UI_EMPTY}/welcome.md`, "utf8")).toContain("[[TRY ME]]"); // a wiki link to the tour, ⌘-click to open it
 
   // it opens on the welcome note, the agenda (the PIM's side panel) has the tour's items, and the PIM's keys are live
   await expect(page.locator(".etab.active .etab-label")).toHaveText("welcome.md");

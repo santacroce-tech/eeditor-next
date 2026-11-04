@@ -21,7 +21,7 @@ const PREFIX = "../../workspace/";
 const WELCOME_PIM = `
 ## The PIM
 
-**TRY ME.md** is a hands-on tour of the agenda and the notes kept in step with it: tasks in notes,
+[[TRY ME]] is a hands-on tour of the agenda and the notes kept in step with it: tasks in notes,
 dates, reminders, capture, a dashboard, a time clock and a tracker — every ⌘⌥ key, one lesson at a time.
 `;
 

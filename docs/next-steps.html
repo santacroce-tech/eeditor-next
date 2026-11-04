@@ -85,17 +85,17 @@ a { color: var(--accent); }
     </div>
     <div class="step">
       <div class="step-head"><span class="chip new">new</span><h3>A key to close the tab</h3></div>
-      <p>The <code>close-tab</code> command exists but has no key. <kbd>⌘W</kbd> currently belongs to the native Window → Close Window item. The plan: <kbd>⌘W</kbd> closes the tab, and with no tabs left it closes the window, as browsers do. The menu item becomes a custom one that sends <code>close-tab</code>.</p>
+      <p>The <code>close-tab</code> command exists but has no key. <kbd>⌘W</kbd> currently belongs to the native Window → Close Window item. Now <kbd>⌘W</kbd> closes the tab, and with no tabs left it closes the window, as browsers do. The File menu gets Close Tab (<kbd>⌘W</kbd>) and Close Window (<kbd>⇧⌘W</kbd>). A popped-out screen still closes on <kbd>⌘W</kbd>.</p>
       <div class="where">src-tauri/src/lib.rs:231 (the predefined close_window) · src/main.ts:2128 · default.eelisp</div>
     </div>
     <div class="step">
       <div class="step-head"><span class="chip new">new</span><h3>Resize the sidebar</h3></div>
-      <p>The sidebar is a fixed 240px. Add a drag handle on its right edge, keep the width between 160 and 480px, and remember it for each window. Double-clicking the handle resets it to 240px.</p>
+      <p>The sidebar was a fixed 240px. Its right edge is now a drag handle that keeps the width between 160 and 480px and remembers it across launches. Double-clicking the handle resets it to 240px.</p>
       <div class="where">src/styles.css:37 (.sidebar flex: 0 0 240px) · src/main.ts</div>
     </div>
     <div class="step">
       <div class="step-head"><span class="chip new">new</span><h3>Hide and show the sidebar</h3></div>
-      <p>A <code>toggle-sidebar</code> command on <kbd>⌘\</kbd>, listed in the actions palette and available as a header button. On a phone it does nothing, because the files view already has its own place there.</p>
+      <p>A <code>toggle-sidebar</code> command on <kbd>⌘B</kbd>, as in VS Code, built in beside the tab keys and listed in the actions palette. On a phone it flips between the files and the note. A letter key was chosen because <code>\</code> needs extra modifiers on Portuguese and Italian keyboards.</p>
       <div class="where">src/main.ts (app commands) · src/core/palette.ts (label) · default.eelisp</div>
     </div>
     <div class="step">
@@ -104,7 +104,7 @@ a { color: var(--accent); }
         <li>Name the <b>MSX</b> (and <b>Display</b>, <b>Raycaster</b>) in the examples list.</li>
         <li><kbd>⌘⇧P</kbd> searches the actions; <kbd>⌘P</kbd> then <code>&gt;</code> does the same.</li>
         <li>Tabs: <kbd>⌃Tab</kbd> / <kbd>⌃⇧Tab</kbd> next and previous, <kbd>⌘1</kbd>…<kbd>⌘9</kbd> pick one, <kbd>⌘W</kbd> closes.</li>
-        <li><kbd>⌘I</kbd> / <kbd>⌘⇧I</kbd> as above, plus <kbd>⌘\</kbd> for the sidebar.</li>
+        <li><kbd>⌘I</kbd> / <kbd>⌘⇧I</kbd> as above, plus <kbd>⌘B</kbd> for the sidebar.</li>
       </ul>
       <div class="where">workspace/welcome.md</div>
     </div>

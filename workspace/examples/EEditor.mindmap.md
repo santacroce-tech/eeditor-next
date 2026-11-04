@@ -3,17 +3,20 @@
 - Shortcuts
   - Everywhere
     - ⌘S save · ⌘P quick open
+    - ⌘⇧P actions — everything, by name
     - ⌘⇧F search every note
     - ⌘D today's note · ⌘⇧N new file
     - ⌘J show/hide the REPL
     - ⌘E markdown preview
     - ⌘⇧K edit the shortcuts themselves
-    - ⌘I new note stamped with date and time
-    - ⌘⇧I "## HH:MM" heading at the caret
+    - ⌘I the date and time at the caret
+    - ⌘⇧I new note stamped with date and time
+    - ⌘B show/hide the sidebar — drag its edge to resize
+    - ⌃Tab ⌃⇧Tab next / previous tab · ⌘1…⌘9 pick one
     - All of these live in keybindings.eelisp
   - App menu
     - ⌘Q quit — unsaved work is saved first
-    - ⌘W close window · ⌘M minimize
+    - ⌘W close tab · ⇧⌘W close window · ⌘M minimize
     - ⌘H hide · ⌥⌘H hide others
     - ⌃⌘F full screen
   - Editor

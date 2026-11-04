@@ -31,7 +31,7 @@ import { createCalendar } from "./ui/calendar";
 import { createAgendaSetup } from "./ui/agenda-setup";
 import { createSnippets } from "./ui/snippets";
 import { createKeybindings, type CommandTable } from "./ui/keybindings";
-import { clockDefs, isMacPlatform, keyLabel, lispString, type Panel } from "./core/keybindings";
+import { clockDefs, isMacPlatform, keyLabel, lispString, parseKeySpec, type Panel } from "./core/keybindings";
 import { createSheetFunctions, FUNCTIONS_PATH, FUNCTIONS_TEMPLATE } from "./sheets/functions";
 import { createOpenWith } from "./ui/openwith";
 import { exportPdf } from "./ui/pdf";
@@ -342,6 +342,56 @@ function main(): void {
   }
   setReplVisible(replVisible);
   replHideBtn.addEventListener("click", () => (narrow() ? setMobileView("editor") : setReplVisible(false)));
+
+  // ── the sidebar: shown or hidden (⌘B), and as wide as it was dragged ──
+  const SIDEBAR_WIDTH = { min: 160, max: 480, standard: 240 };
+  function setSidebarWidth(px: number): number {
+    const w = Math.round(Math.min(SIDEBAR_WIDTH.max, Math.max(SIDEBAR_WIDTH.min, px)));
+    shell.style.setProperty("--sidebar-w", `${w}px`);
+    return w;
+  }
+  const savedWidth = Number(localStorage.getItem("sidebar.width"));
+  if (savedWidth) setSidebarWidth(savedWidth);
+  const resizer = document.createElement("div");
+  resizer.className = "side-resizer";
+  resizer.title = "Drag to resize · double-click for the standard width";
+  sidebarEl.appendChild(resizer);
+  resizer.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    resizer.setPointerCapture(e.pointerId);
+    resizer.classList.add("dragging");
+    shell.classList.add("resizing-sidebar");
+    // by how far the pointer travelled, so grabbing the handle anywhere doesn't make it jump
+    const startX = e.clientX;
+    const startW = sidebarEl.getBoundingClientRect().width;
+    const at = (x: number) => startW + (x - startX);
+    const move = (m: PointerEvent) => setSidebarWidth(at(m.clientX));
+    const up = (u: PointerEvent) => {
+      resizer.removeEventListener("pointermove", move);
+      resizer.removeEventListener("pointerup", up);
+      resizer.removeEventListener("pointercancel", up);
+      resizer.classList.remove("dragging");
+      shell.classList.remove("resizing-sidebar");
+      localStorage.setItem("sidebar.width", String(setSidebarWidth(at(u.clientX))));
+    };
+    resizer.addEventListener("pointermove", move);
+    resizer.addEventListener("pointerup", up);
+    resizer.addEventListener("pointercancel", up);
+  });
+  resizer.addEventListener("dblclick", () => {
+    setSidebarWidth(SIDEBAR_WIDTH.standard);
+    localStorage.removeItem("sidebar.width");
+  });
+  function setSidebarVisible(v: boolean): void {
+    shell.dataset.sidebar = v ? "on" : "off";
+    localStorage.setItem("sidebar.visible", v ? "1" : "0");
+  }
+  function toggleSidebar(): void {
+    // one pane at a time on a narrow screen: flip between the files and the editor
+    if (narrow()) setMobileView(shell.dataset.mobileView === "files" ? "editor" : "files");
+    else setSidebarVisible(shell.dataset.sidebar === "off");
+  }
+  setSidebarVisible(localStorage.getItem("sidebar.visible") !== "0");
 
   // ── state ── (currentPath/dirty mirror the active tab)
   interface Tab {
@@ -2125,7 +2175,9 @@ function main(): void {
     "agenda-refresh": () => void agenda.refresh(),
     "open-file": () => void openWith.pickAndOpen(),
     "copy-into-workspace": () => void copyActiveIntoWorkspace(),
-    "close-tab": () => void closeTab(activeIdx),
+    // With no tab left to close, ⌘W closes the window, as a browser does.
+    "close-tab": () => void (tabs.length === 0 && inTauri() ? saveAndClose() : closeTab(activeIdx)),
+    "toggle-sidebar": toggleSidebar,
     "next-tab": () => {
       if (tabs.length > 1) goToTab((activeIdx + 1) % tabs.length);
     },
@@ -2350,6 +2402,14 @@ function main(): void {
       });
       // Quitting outright (⌘Q, the Dock menu): the backend holds the exit until we say go.
       await listen("app-exiting", () => void saveAndQuit());
+      // The File menu's Close Tab owns ⌘W, so the key never reaches the page: it is pressed for us.
+      // A (bind "Mod-w" …) of the user's own still wins over closing the tab.
+      await listen("menu-close-tab", () => {
+        const w = parseKeySpec("Mod-w", isMacPlatform());
+        const b = "id" in w ? keys.bindings().find((x) => x.id === w.id) : undefined;
+        if (b) void keys.runBinding(b);
+        else commands["close-tab"]?.();
+      });
     })();
   } else {
     window.addEventListener("beforeunload", () => void saveAllDirty());

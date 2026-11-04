@@ -152,6 +152,10 @@ async fn follow_workspace(space: Arc<Space>, workspace: PathBuf) {
 const MENU_QUIT: &str = "quit";
 /// Id of New Window… (see `build_menu`).
 const MENU_NEW_WINDOW: &str = "new-window";
+/// Id of Close Tab (⌘W): the window in front closes its tab — or does what its own Mod-w binding says.
+const MENU_CLOSE_TAB: &str = "close-tab";
+/// Id of Close Window (⇧⌘W), which ⌘W used to be.
+const MENU_CLOSE_WINDOW: &str = "close-window";
 
 /// Hand the quit to the frontend — it holds the unsaved buffers — and arrange to exit anyway if it
 /// never answers. Returns false when the exit was already deferred once and should now go through.
@@ -201,6 +205,10 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::
     #[cfg(not(target_os = "macos"))]
     let new_window_key = "Ctrl+Alt+Shift+N";
     let new_window = MenuItem::with_id(app, MENU_NEW_WINDOW, "New Window…", true, Some(new_window_key))?;
+    // ⌘W closes the tab, as in a browser; the window moves to ⇧⌘W. The predefined Close Window
+    // would keep ⌘W for itself, and a menu shortcut never reaches the page.
+    let close_tab = MenuItem::with_id(app, MENU_CLOSE_TAB, "Close Tab", true, Some("CmdOrCtrl+W"))?;
+    let close_window = MenuItem::with_id(app, MENU_CLOSE_WINDOW, "Close Window", true, Some("CmdOrCtrl+Shift+W"))?;
 
     Menu::with_items(
         app,
@@ -228,7 +236,8 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::
                 &[
                     &new_window,
                     &PredefinedMenuItem::separator(app)?,
-                    &PredefinedMenuItem::close_window(app, None)?,
+                    &close_tab,
+                    &close_window,
                     #[cfg(not(target_os = "macos"))]
                     &quit,
                 ],
@@ -258,7 +267,7 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::
                     &PredefinedMenuItem::maximize(app, None)?,
                     #[cfg(target_os = "macos")]
                     &PredefinedMenuItem::separator(app)?,
-                    &PredefinedMenuItem::close_window(app, None)?,
+                    &MenuItem::with_id(app, MENU_CLOSE_WINDOW, "Close Window", true, None::<&str>)?,
                 ],
             )?,
             &Submenu::with_items(
@@ -1165,6 +1174,16 @@ pub fn run() {
     let builder = builder.menu(build_menu).on_menu_event(|app, event| {
         if event.id() == MENU_QUIT && !defer_exit(app) {
             app.exit(0);
+        }
+        if event.id() == MENU_CLOSE_TAB || event.id() == MENU_CLOSE_WINDOW {
+            if let Some(w) = app.webview_windows().into_values().find(|w| w.is_focused().unwrap_or(false)) {
+                // A popped-out screen has no tabs: ⌘W closes it, as before.
+                if event.id() == MENU_CLOSE_WINDOW || w.label().starts_with("screen-") {
+                    let _ = w.close();
+                } else {
+                    let _ = app.emit_to(w.label(), "menu-close-tab", ());
+                }
+            }
         }
         if event.id() == MENU_NEW_WINDOW {
             let app = app.clone();
