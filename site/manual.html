@@ -1097,7 +1097,7 @@ sequenceDiagram
     <h4 id="files-form">Files — two folders side by side</h4>
     <picture>
         <source srcset="assets/forms/files-dark.png" media="(prefers-color-scheme: dark)">
-        <img class="shot" src="assets/forms/files-light.png"  alt="The Files form: two panels, a project folder on the left with roadmap.md picked and an archive folder on the right, a name box with Rename and New folder, and the keys listed underneath" width="762" loading="lazy">
+        <img class="shot" src="assets/forms/files-light.png"  alt="The Files form: two panels, a project folder on the left with roadmap.md picked and an archive folder on the right, a name box with Rename, New folder and Go to, and the keys listed underneath" width="762" loading="lazy">
       </picture>
     <p>
       <a href="examples/Files.eeform" download>Files.eeform</a> · A file manager in the Norton
@@ -1105,7 +1105,9 @@ sequenceDiagram
       dates. <kbd>Tab</kbd> goes to the other panel, <kbd>↵</kbd> opens a folder or puts a file in
       a tab, <kbd>⌫</kbd> goes up. <kbd>⌘→</kbd> and <kbd>⌘←</kbd> move what is picked into the
       other panel's folder, <kbd>⌥⌘→</kbd> and <kbd>⌥⌘←</kbd> copy it, <kbd>⌘⌫</kbd> sends it to the
-      Trash; the box underneath renames it or makes a folder. Nothing is ever written over, and each
+      Trash. <kbd>⇧⌘→</kbd> and <kbd>⇧⌘←</kbd> show this panel's folder in the other one, and
+      <kbd>⌘G</kbd> goes to a folder you type — <code>notes/2026</code>, <code>/projects</code>,
+      <code>~Downloads/invoices</code>. The box underneath renames, makes a folder, or goes to one. Nothing is ever written over, and each
       panel remembers its folder for next time.
     </p>
     <p>

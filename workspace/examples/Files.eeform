@@ -3,23 +3,26 @@
 ;;   Tab          the other panel                ↵ / double-click   open a folder, or the file in a tab
 ;;   ⌫ or ⌘↑      the folder above               ⌘→ / ⌘←            move the pick to the other panel
 ;;   ⌥⌘→ / ⌥⌘←    copy it there instead          ⌘⌫                 into the Trash
+;;   ⇧⌘→ / ⇧⌘←    this folder in the other panel ⌘G                 go to a folder you type
 ;;
-;; Rename and New folder use the box under the panels. Each panel remembers its folder between
+;; Rename, New folder and Go to use the box under the panels (↵ in it is Go to). Each panel remembers its folder between
 ;; runs. At the top of each panel are the folders outside the workspace you've added (⋯ → Add a
 ;; folder outside the workspace…), as ~Downloads/ — move and copy into and out of them the same way. Everything here is EELisp: (dir-list …) reads a folder, and the moves are (ed-move …),
 ;; (ed-copy …) and (ed-delete …) handed to the app with ui-editor — which then runs :on-refresh, so
 ;; both panels show the folders as they are now.
 
 (form "Files" :size (760 480) :on-load fm-load :on-refresh fm-refresh :on-key fm-key
-  :keys ("Tab" "Backspace" "Mod-Up" "Mod-Right" "Mod-Left" "Mod-Alt-Right" "Mod-Alt-Left" "Mod-Backspace")
+  :keys ("Tab" "Backspace" "Mod-Up" "Mod-Right" "Mod-Left" "Mod-Alt-Right" "Mod-Alt-Left" "Mod-Backspace"
+         "Mod-Shift-Right" "Mod-Shift-Left" "Mod-g")
   (label lblLeft :text "/" :at (10 8) :size (365 20))
   (label lblRight :text "/" :at (385 8) :size (365 20) :anchor "tlr")
   (grid grdLeft :columns ("name" "size" "modified") :at (10 30) :size (365 340) :anchor "tlb" :on-change fm-pick-left :on-dblclick fm-open-left)
   (grid grdRight :columns ("name" "size" "modified") :at (385 30) :size (365 340) :anchor "tlrb" :on-change fm-pick-right :on-dblclick fm-open-right)
-  (textbox txtName :placeholder "a name — for Rename or New folder" :at (10 380) :size (300 28) :anchor "bl")
+  (textbox txtName :placeholder "a name — or a folder to go to, like notes/2026" :at (10 380) :size (300 28) :anchor "bl")
   (button btnRename :text "Rename" :at (316 380) :size (90 28) :anchor "bl" :on-click fm-rename)
   (button btnFolder :text "New folder" :at (412 380) :size (110 28) :anchor "bl" :on-click fm-new-folder)
-  (label lblHelp :text "Tab other panel · ↵ open · ⌫ up · ⌘→ ⌘← move · ⌥⌘→ ⌥⌘← copy · ⌘⌫ to the Trash" :at (10 418) :size (740 20) :anchor "blr")
+  (button btnGo :text "Go to" :default true :at (528 380) :size (80 28) :anchor "bl" :on-click fm-go)
+  (label lblHelp :text "Tab other panel · ↵ open · ⌫ up · ⌘→ ⌘← move · ⌥⌘→ ⌥⌘← copy · ⇧⌘→ ⇧⌘← same folder · ⌘G go to · ⌘⌫ Trash" :at (10 418) :size (740 20) :anchor "blr")
   (label lblStatus :text "" :at (10 444) :size (740 20) :anchor "blr"))
 
 ;; Where each panel is (workspace-relative, "" the top), kept between runs; the panel last used.
@@ -123,6 +126,10 @@
           (= key "Mod-Alt-Right") (fm-across f "left" "copy")
           (= key "Mod-Alt-Left") (fm-across f "right" "copy")
           (= key "Mod-Backspace") (fm-trash f side)
+          ;; the other panel shows this one's folder — ⇧⌘→ from the left, ⇧⌘← from the right
+          (= key "Mod-Shift-Right") (fm-same "left")
+          (= key "Mod-Shift-Left") (fm-same "right")
+          (= key "Mod-g") (do (ui-set "txtName" :value "") (ui-focus "txtName"))
           true nil)))
 
 ;; ── the box under the panels ──
@@ -135,6 +142,26 @@
           (str-contains name "/") (fm-say "A name, not a path")
           true (do (ui-editor (ed-move (dict-get row :path) (fm-join (fm-dir side) name)))
                    (fm-say (str "Renamed to " name))))))
+
+(defn fm-same (from)
+  (let (to (fm-other from))
+    (var! (str "fm-" to) (fm-dir from))
+    (fm-show to)
+    (fm-say (str "Both panels at " (fm-where (fm-dir from))))))
+
+;; Go to: the folder typed in the box, in the panel last used — "notes/2026", "/projects" (from the
+;; top) or "~Downloads/invoices". Only a folder that is there.
+(defn fm-go (f)
+  (let (side (var "fm-side")
+        typed (fm-name f)
+        dir (str-join (filter (fn (p) (not (= p ""))) (str-split typed "/")) "/")
+        info (if (= dir "") nil (file-info dir)))
+    (cond (= typed "") (fm-say "Type a folder in the box, like notes/2026")
+          (= dir "") (do (var! (str "fm-" side) "") (fm-show side) (ui-focus (fm-grid side)))
+          (nil? info) (fm-say (str "There is no " (fm-where dir)))
+          (not (dict-get info :dir)) (fm-say (str (fm-where dir) " is a file, not a folder"))
+          true (do (var! (str "fm-" side) dir) (fm-show side) (ui-focus (fm-grid side))
+                   (fm-say (str "At " (fm-where dir)))))))
 
 (defn fm-new-folder (f)
   (let (side (var "fm-side") name (fm-name f))
