@@ -5,6 +5,8 @@ import { anchoredBox, frameMode, humanName, onOpenPage, openPages, type Control,
 import { rowsOf, stateValue, type Row, type UiChange } from "../engine/form";
 import type { JsonValue } from "../engine/types";
 import { bytesToB64 } from "../spectrum/screen";
+import { eventKeyId, eventKeySpec, isMacPlatform, parseKeySpec } from "../core/keybindings";
+import { registerFormKeys } from "./formkeys";
 import { createScreenView, type ScreenWindow } from "./screenview";
 
 export interface FormRunner {
@@ -82,7 +84,11 @@ export interface FormRunnerOptions {
   /** A handler wrote the public variable `name` — for the host to tell the other forms. */
   onPublic?: (name: string) => void;
   /** `(ui-editor …)`: editor commands for the app to carry out. Left out where there's no editor. */
-  onEditor?: (commands: JsonValue) => void;
+  /**
+   * `(ui-editor …)`: commands for the app. A promise that settles once they have been carried out —
+   * after file commands among them, the form's :on-refresh runs, so it can look at the folder again.
+   */
+  onEditor?: (commands: JsonValue) => void | Promise<void>;
   /** The runner was destroyed: the form is gone. */
   onDestroy?: () => void;
   onError: (message: string) => void;
@@ -163,6 +169,42 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
 const asText = (v: JsonValue): string => (v === null || v === undefined ? "" : typeof v === "string" ? v : String(stateValue(v)));
 const asItems = (v: JsonValue): string[] => (Array.isArray(v) ? v.map(asText) : []);
 const truthy = (v: JsonValue): boolean => v !== false && v !== null && v !== undefined;
+
+
+
+/**
+ * Moving through a listbox or grid with the keys: ↑ ↓, Home End, PageUp PageDown (a page is ten).
+ * The new index for `key` from `i` among `n` (-1: nothing picked yet), or null for any other key.
+ */
+function stepIndex(key: string, i: number, n: number): number | null {
+  if (n === 0) return null;
+  const to = (j: number) => Math.max(0, Math.min(n - 1, j));
+  switch (key) {
+    case "ArrowDown":
+      return i < 0 ? 0 : to(i + 1);
+    case "ArrowUp":
+      return i < 0 ? n - 1 : to(i - 1);
+    case "Home":
+      return 0;
+    case "End":
+      return n - 1;
+    case "PageDown":
+      return to(i + 10);
+    case "PageUp":
+      return to(i - 10);
+    default:
+      return null;
+  }
+}
+
+/** The commands that change files — after them a form's folder listings are out of date. */
+const FILE_COMMANDS = new Set(["move", "copy", "delete", "mkdir", "write", "append"]);
+/** Whether `(ui-editor …)`'s commands — one, or a list of them — include one that changes a file. */
+function touchesFiles(v: JsonValue): boolean {
+  if (!Array.isArray(v)) return false;
+  if (typeof v[0] === "string") return FILE_COMMANDS.has(v[0]);
+  return v.some(touchesFiles);
+}
 
 export function createFormRunner(opts: FormRunnerOptions): FormRunner {
   const root = el("div", "formrun" + (opts.windowed ? " windowed" : "") + (opts.embedded ? " embedded" : ""));
@@ -452,6 +494,50 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
     loops = [];
   };
 
+  // ── :on-key: the form's own keys, outside its text boxes ──
+  /** Typing goes there: a key in one is the box's, never the form's. */
+  const typingIn = (t: HTMLElement): boolean =>
+    t.isContentEditable ||
+    t.tagName === "TEXTAREA" ||
+    t.tagName === "SELECT" ||
+    (t.tagName === "INPUT" && !["checkbox", "radio", "button", "submit", "range", "color"].includes((t as HTMLInputElement).type)) ||
+    t.closest(".cm-editor") !== null;
+  let keyIds: { spec: string[] | undefined; ids: Set<string> } = { spec: undefined, ids: new Set() };
+  /** Whether this form's :on-key takes the key: one of its :keys, or with none, any ⌘/Ctrl/Alt key and F1–F12. */
+  function takesKey(e: KeyboardEvent): boolean {
+    if (!current.onKey) return false;
+    const t = e.target as HTMLElement;
+    if (t.closest(".formrun") !== root || t.closest(".formrun-screen") || typingIn(t)) return false;
+    const spec = eventKeySpec(e);
+    if (!spec) return false;
+    if (!current.keys) return e.metaKey || e.ctrlKey || e.altKey || /^F([1-9]|1[0-2])$/.test(spec);
+    if (keyIds.spec !== current.keys) {
+      const mac = isMacPlatform();
+      const ids = new Set<string>();
+      for (const k of current.keys) {
+        const r = parseKeySpec(k, mac, { bare: true });
+        if ("id" in r) ids.add(r.id);
+      }
+      keyIds = { spec: current.keys, ids };
+    }
+    return keyIds.ids.has(eventKeyId(e));
+  }
+  registerFormKeys(root, takesKey);
+  // In the capture phase, so the form hears its keys before a control or the :default button does.
+  root.addEventListener(
+    "keydown",
+    (e) => {
+      if (!takesKey(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.isComposing) return;
+      const t = e.target as HTMLElement;
+      const control = [...live.entries()].find(([, l]) => l.box.contains(t))?.[0] ?? "";
+      void fire(current.onKey, undefined, { $pressed: eventKeySpec(e) ?? "", $control: control });
+    },
+    true,
+  );
+
   /** The `:default` button on Enter in a single-line box, the `:cancel` one on Escape — as VB had it. */
   canvas.addEventListener("keydown", (e) => {
     if (e.key !== "Enter" && e.key !== "Escape") return;
@@ -581,8 +667,11 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
         return opts.onPublic?.(ch.name);
       case "pick":
         return void pickFile().then((file) => file && fire(ch.handler, undefined, file));
-      case "editor":
-        return opts.onEditor?.(ch.commands);
+      case "editor": {
+        const done = opts.onEditor?.(ch.commands);
+        if (done && touchesFiles(ch.commands)) void done.then(() => fire(current.onRefresh));
+        return;
+      }
     }
   }
 
@@ -963,6 +1052,23 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
           );
         };
         draw();
+        // ↑ ↓ Home End PageUp PageDown move the pick (and :on-change hears it); Enter is a double-click
+        l.addEventListener("keydown", (e) => {
+          if (e.metaKey || e.ctrlKey || e.altKey) return;
+          if (e.key === "Enter") {
+            e.preventDefault();
+            if (value !== null) void fire(c.events.dblclick);
+            return;
+          }
+          const to = stepIndex(e.key, value === null ? -1 : items.indexOf(value), items.length);
+          if (to === null) return;
+          e.preventDefault();
+          if (items[to] === value) return;
+          value = items[to];
+          draw();
+          l.children[to]?.scrollIntoView({ block: "nearest" });
+          void fire(c.events.change);
+        });
         box.append(l);
         out = {
           spec: c,
@@ -984,6 +1090,7 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
       }
       case "grid": {
         const scroll = el("div", "formrun-grid");
+        scroll.tabIndex = 0; // so the keys reach it: a click on a row puts the focus here
         const table = el("table");
         scroll.append(table);
         let columns = (p.columns as string[]) ?? [];
@@ -1104,6 +1211,26 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
           table.replaceChildren(thead, tbody);
         };
         draw();
+        // ↑ ↓ Home End PageUp PageDown move the selection across the rows as shown (filtered, sorted,
+        // turning the page when it leaves this one); Enter is a double-click. Not while a cell is edited.
+        scroll.addEventListener("keydown", (e) => {
+          if (e.target !== scroll || e.metaKey || e.ctrlKey || e.altKey) return;
+          if (e.key === "Enter") {
+            e.preventDefault();
+            if (selected) void fire(c.events.dblclick);
+            return;
+          }
+          const all = shown();
+          const to = stepIndex(e.key, selected ? all.indexOf(selected) : -1, all.length);
+          if (to === null) return;
+          e.preventDefault();
+          if (all[to] === selected) return;
+          selected = all[to];
+          if (pageSize > 0) pageIndex = Math.floor(to / pageSize);
+          draw();
+          table.querySelector("tbody tr.selected")?.scrollIntoView({ block: "nearest" });
+          void fire(c.events.change);
+        });
         box.classList.add("datagrid");
         if (p.filter === true) box.append(filterBox);
         box.append(scroll);

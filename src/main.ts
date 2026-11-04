@@ -884,7 +884,10 @@ function main(): void {
     },
     note: (text: string) => repl.note(text),
     // (ui-editor …) — Capture filing a line into a note, say. `keys` exists by the time a form runs.
-    onEditor: (v: JsonValue) => void keys.applyResult(v),
+    onEditor: (v: JsonValue) => {
+      keys.applyResult(v);
+      return keys.settled();
+    },
   });
   const formHost = createFormHost({
     forms,

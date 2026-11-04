@@ -130,7 +130,17 @@ selection moves), `:on-dblclick` (a listbox or grid row, a board's card), `:on-m
 timer), `:on-load` (the form), `:on-public` (the form — another form of its main wrote a public variable),
 `:on-close` (the form — asked before it closes, by its stop/✕ button, `(ui-close)`, a frame's Close or ×,
 or the main form holding it closing: a message refuses and is shown, nil lets it go; the forms in a
-form's frames are asked before the form itself), `:on-refresh` (the form, drawn in the sidebar — see below).
+form's frames are asked before the form itself), `:on-refresh` (the form, drawn in the sidebar — see below —
+and any form once the file commands it gave `ui-editor` have been carried out), `:on-key` (the form — see below).
+
+**Keys.** A listbox or grid moves its pick with ↑ ↓, Home End and PageUp PageDown (`:on-change`
+hears it), and Enter is a double-click. `:on-key fm-key :keys ("Mod-Right" "Tab")` on the form gives
+it keys of its own: pressed anywhere in it but a text box, a key it names runs the handler with
+`$pressed` — the key as `(bind …)` writes it, modifiers in the order Mod, Ctrl, Alt, Shift — and
+`$control`, the control that had the focus. Those keys are the form's while it has the focus, ahead
+of the app's shortcuts (⌘B included, if it names it). With no `:keys` it takes every key with
+⌘/Ctrl/Alt and F1–F12. (`$key` was taken: it is the form's own path, beside `$form`, `$main`, `$app`.)
+`ui/formkeys.ts` is how the app's dispatcher asks a form first.
 
 **A form in the sidebar**: `(panel "agenda" "pim/Side.eeform")` in `.eeditor/keybindings.eelisp`
 draws a form in the sidebar's agenda section, in place of the built-in list; `"tags"` puts one in the

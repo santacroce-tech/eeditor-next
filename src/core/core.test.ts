@@ -6,7 +6,7 @@ import { codeToRun, eelispBlockAt } from "./blocks";
 import { searchFiles } from "./search";
 import { wikiLinkAt, wikiLinkTargets } from "./wikilink";
 import { backlinksTo } from "./backlinks";
-import { parseKeybindings, parseKeySpec, eventKeyId, keyLabel, lispString, headerButtons, builtinBindings } from "./keybindings";
+import { parseKeybindings, parseKeySpec, eventKeyId, eventKeySpec, keyLabel, lispString, headerButtons, builtinBindings } from "./keybindings";
 import { uniqueName } from "./uniquename";
 import { highlightEelisp } from "./lisphl";
 
@@ -419,5 +419,31 @@ describe("the header", () => {
     const config = parseKeybindings(`(button "↻ update" "Mod-Alt-u")`, true).buttons;
     expect(headerButtons(config, defaults).map((b) => b.label || b.command)).toEqual(["↻ update", "toggle-theme", "export-pdf"]);
     expect(headerButtons([], defaults)).toHaveLength(2);
+  });
+});
+
+describe("keys by any name, and a key press as a config writes it", () => {
+  const ev = (key: string, mods: Partial<KeyboardEvent> = {}, code = ""): KeyboardEvent =>
+    ({ key, code, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...mods }) as KeyboardEvent;
+  it("matches Right and ArrowRight, Space and ' ', Esc and Escape", () => {
+    const id = (s: string) => (parseKeySpec(s, true) as { id: string }).id;
+    expect(id("Mod-Right")).toBe(eventKeyId(ev("ArrowRight", { metaKey: true })));
+    expect(id("Mod-ArrowRight")).toBe(id("Mod-Right"));
+    expect(id("Ctrl-Space")).toBe(eventKeyId(ev(" ", { ctrlKey: true })));
+    expect(id("Esc")).toBe(eventKeyId(ev("Escape")));
+    expect(keyLabel("Mod-Left", true)).toBe("⌘←");
+  });
+  it("only takes a bare key when asked", () => {
+    expect(parseKeySpec("Tab", true)).toHaveProperty("error");
+    expect(parseKeySpec("Tab", true, { bare: true })).toHaveProperty("id");
+  });
+  it("writes a press as (bind …) would: Mod, Ctrl, Alt, Shift, then the key", () => {
+    expect(eventKeySpec(ev("ArrowRight", { metaKey: true }), true)).toBe("Mod-Right");
+    expect(eventKeySpec(ev("ArrowRight", { ctrlKey: true }), false)).toBe("Mod-Right");
+    expect(eventKeySpec(ev("ArrowLeft", { metaKey: true, altKey: true }), true)).toBe("Mod-Alt-Left");
+    expect(eventKeySpec(ev("i", { metaKey: true, shiftKey: true }, "KeyI"), true)).toBe("Mod-Shift-i");
+    expect(eventKeySpec(ev("F5", {}, "F5"), true)).toBe("F5");
+    expect(eventKeySpec(ev("Tab"), true)).toBe("Tab");
+    expect(eventKeySpec(ev("Meta", { metaKey: true }), true)).toBeNull();
   });
 });
