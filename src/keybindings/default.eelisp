@@ -67,8 +67,9 @@
 ;; There may be several on-load and on-tick forms; each runs, in order.
 ;;
 ;; Switching tabs is built in, with no line here: ⌃Tab / ⌃⇧Tab the next / previous tab, ⌘1…⌘8 the
-;; first eight, ⌘9 the last (Ctrl+1… on Windows and Linux). A (bind …) of your own on one of those
-;; keys replaces it — (bind "Mod-1" (ed-cmd "daily-note")), say.
+;; first eight, ⌘9 the last (Ctrl+1… on Windows and Linux), ⌘W closes the tab (the window, once
+;; there is none) and ⌘B shows or hides the sidebar. A (bind …) of your own on one of those keys
+;; replaces it — (bind "Mod-1" (ed-cmd "daily-note")), say.
 ;;
 ;; Context, defined fresh before every run:
 ;;   *file*        path of the current note        *cursor*   caret offset
@@ -94,23 +95,22 @@
 
 ;; ── lisp ───────────────────────────────────────────────────────────────────
 
-;; ⌘I — a new note stamped with the minute, e.g. "2026-08-09 1430.md", with the same stamp as
+;; ⌘I — the date and time at the caret, e.g. "2026-08-09 14:30".
+(bind "Mod-i" (ed-insert (str *date* " " *time*)))
+
+;; ⌘⇧I — a new note stamped with the minute, e.g. "2026-08-09 1430.md", with the same stamp as
 ;; its heading. Press it twice in the same minute and you land back in the same note.
 ;; (No ":" in the name — Finder shows a colon as a "/".)
-(bind "Mod-i"
+(bind "Mod-Shift-i"
   (ed-new (str *date* " " (str-replace *time* ":" "") ".md")
           (str "# " *date* " " *time* "\n\n")))
-
-;; ⌘⇧I — a timestamped "## " heading at the caret, caret on the blank line under it.
-(bind "Mod-Shift-i"
-  (ed-insert (str (cond (= *col* 1) "" true "\n") "## " *time* "\n\n")))
 
 ;; A few more ideas — uncomment to enable:
 ;;
 ;; ⌘⌥I — the same heading, but at the top of the note (line 2)
 ;; (bind "Mod-Alt-i" (ed-goto-line 2) (ed-insert (str "## " *date* " " *time* "\n\n")))
 ;;
-;; ⌘B — wrap the selection in bold
+;; ⌘B — wrap the selection in bold (⌘B then stops hiding the sidebar; ⌘⇧P still finds that)
 ;; (bind "Mod-b" (ed-replace (str "**" *selection* "**")))
 ;;
 ;; ⌘⇧T — a "- [ ] " task line
@@ -160,6 +160,7 @@
 ;; reload-keys · toggle-repl · focus-repl · toggle-preview · toggle-theme · export-pdf · snippets
 ;; theme-dark · theme-light · theme-vb6   pick a theme (toggle-theme walks all three)
 ;; calendar · agenda-setup · agenda-refresh · close-tab · next-tab · prev-tab · focus-editor
+;; toggle-sidebar      show or hide the sidebar (⌘B); drag its edge to make it wider
 ;; tab-1 … tab-8 · last-tab   go to that tab (what ⌘1…⌘8 and ⌘9 do)
 ;; form-design · form-code · form-run   the active form tab's mode
 ;; mindmap-map · mindmap-text          the active mind map tab: the map, or its markdown outline

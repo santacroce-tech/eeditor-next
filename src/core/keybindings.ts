@@ -387,6 +387,8 @@ export const BUILTIN_KEYS: ReadonlyArray<readonly [spec: string, command: string
   ["Ctrl-Shift-Tab", "prev-tab"],
   ...[1, 2, 3, 4, 5, 6, 7, 8].map((n) => [`Mod-${n}`, `tab-${n}`] as const),
   ["Mod-9", "last-tab"], // as in browsers; ⌘0 is left alone — a mind map's "fit", beside ⌘= / ⌘-
+  ["Mod-w", "close-tab"], // in the desktop app the File menu's Close Tab carries it (see main.ts)
+  ["Mod-b", "toggle-sidebar"], // as in VS Code; a letter, so it is the same key on every layout
 ];
 
 /** The built-in keys the config doesn't bind itself, as bindings (line 0: they're in no file). */

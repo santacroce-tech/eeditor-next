@@ -94,16 +94,15 @@
 
 ;; ── lisp ───────────────────────────────────────────────────────────────────
 
-;; ⌘I — a new note stamped with the minute, e.g. "2026-08-09 1430.md", with the same stamp as
+;; ⌘I — the date and time at the caret, e.g. "2026-08-09 14:30".
+(bind "Mod-i" (ed-insert (str *date* " " *time*)))
+
+;; ⌘⇧I — a new note stamped with the minute, e.g. "2026-08-09 1430.md", with the same stamp as
 ;; its heading. Press it twice in the same minute and you land back in the same note.
 ;; (No ":" in the name — Finder shows a colon as a "/".)
-(bind "Mod-i"
+(bind "Mod-Shift-i"
   (ed-new (str *date* " " (str-replace *time* ":" "") ".md")
           (str "# " *date* " " *time* "\n\n")))
-
-;; ⌘⇧I — a timestamped "## " heading at the caret, caret on the blank line under it.
-(bind "Mod-Shift-i"
-  (ed-insert (str (cond (= *col* 1) "" true "\n") "## " *time* "\n\n")))
 
 ;; A few more ideas — uncomment to enable:
 ;;

@@ -1441,13 +1441,14 @@ zzalinhar — function
       <tr><td><code>agenda-setup</code></td><td>categories and rules panel</td></tr>
       <tr><td><code>agenda-refresh</code></td><td>re-read the agenda panel — after a script changed items behind its back</td></tr>
       <tr><td><code>close-tab</code> / <code>next-tab</code> / <code>prev-tab</code></td><td>tab management</td></tr>
+      <tr><td><code>toggle-sidebar</code></td><td>show or hide the sidebar — <kbd>⌘B</kbd></td></tr>
       <tr><td><code>tab-1</code> … <code>tab-8</code> / <code>last-tab</code></td><td>go to that tab — <kbd>⌘1</kbd>…<kbd>⌘8</kbd>, <kbd>⌘9</kbd> the last</td></tr>
       <tr><td><code>new-window</code></td><td>open another folder in a window of its own</td></tr>
     </table></div>
 
     <h3>Worked examples</h3>
 <pre><code><span class="cm">;; A timestamped heading at the caret, on its own line</span>
-(bind <span class="st">"Mod-Shift-i"</span>
+(bind <span class="st">"Mod-Alt-h"</span>
   (ed-insert (str (cond (= *col* 1) <span class="st">""</span> true <span class="st">"\n"</span>) <span class="st">"## "</span> *time* <span class="st">"\n\n"</span>)))
 
 <span class="cm">;; Wrap the selection in bold</span>
@@ -1530,8 +1531,8 @@ zzalinhar — function
       <tr><td><kbd>⌘⇧P</kbd></td><td>Actions: everything EEditor can do, by name</td></tr>
       <tr><td><kbd>⌘⇧F</kbd></td><td>Full-text search</td></tr>
       <tr><td><kbd>⌘D</kbd></td><td>Today's note</td></tr>
-      <tr><td><kbd>⌘I</kbd></td><td>New note stamped with the minute</td></tr>
-      <tr><td><kbd>⌘⇧I</kbd></td><td>Timestamped heading at the caret</td></tr>
+      <tr><td><kbd>⌘I</kbd></td><td>The date and time at the caret</td></tr>
+      <tr><td><kbd>⌘⇧I</kbd></td><td>New note stamped with the minute</td></tr>
       <tr><td><kbd>⌘⇧N</kbd></td><td>New file</td></tr>
       <tr><td><kbd>⌘E</kbd></td><td>Preview ⇄ edit</td></tr>
       <tr><td><kbd>⌘J</kbd></td><td>Show/hide the REPL</td></tr>
@@ -1539,11 +1540,16 @@ zzalinhar — function
       <tr><td><kbd>⌘⇧↵</kbd></td><td>Run the selection as EELisp, or the <code>eelisp</code> block at the caret</td></tr>
       <tr><td><kbd>⌘↵</kbd></td><td>Evaluate in the REPL</td></tr>
       <tr><td><kbd>⌘</kbd>-click</td><td>Follow a wiki link from the editor</td></tr>
+      <tr><td><kbd>⌃Tab</kbd> / <kbd>⌃⇧Tab</kbd></td><td>Next / previous tab; <kbd>⌘1</kbd>…<kbd>⌘8</kbd> pick one, <kbd>⌘9</kbd> the last</td></tr>
+      <tr><td><kbd>⌘W</kbd></td><td>Close the tab — the window, once there is none</td></tr>
+      <tr><td><kbd>⌘B</kbd></td><td>Show/hide the sidebar; drag its edge to resize it</td></tr>
+      <tr><td><kbd>⇧⌘W</kbd></td><td>Close the window (the File menu's)</td></tr>
       <tr><td><kbd>⌃⌘N</kbd></td><td>New window, on another folder (the File menu's)</td></tr>
     </table></div>
     <p>
-      Every one of these but the last is a line in your keybindings file, and every one can be
-      changed. The PIM adds its own <kbd>⌘⌥</kbd> keys — <kbd>⌘⌥T</kbd> a task, <kbd>⌘⌥U</kbd>
+      Most of these are a line in your keybindings file. The tab keys, <kbd>⌘W</kbd> and
+      <kbd>⌘B</kbd> are built in, and a <code>(bind …)</code> of your own on one of them replaces
+      it; <kbd>⇧⌘W</kbd> and <kbd>⌃⌘N</kbd> belong to the File menu. The PIM adds its own <kbd>⌘⌥</kbd> keys — <kbd>⌘⌥T</kbd> a task, <kbd>⌘⌥U</kbd>
       update the blocks, <kbd>⌘⌥B</kbd> links to a tag's notes and the rest; the
       <a href="https://github.com/santacroce-tech/eeditor-next/blob/main/docs/PIM.md">PIM guide</a>
       lists them all.

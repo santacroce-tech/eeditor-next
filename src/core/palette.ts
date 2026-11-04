@@ -69,6 +69,7 @@ export const COMMAND_TITLES: Record<string, string> = {
   "open-file": "Open a file from disk",
   "copy-into-workspace": "Copy a file into the workspace",
   "close-tab": "Close the tab",
+  "toggle-sidebar": "Show / hide the sidebar",
   "next-tab": "Next tab",
   "prev-tab": "Previous tab",
   "last-tab": "Last tab",
