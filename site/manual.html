@@ -1125,8 +1125,9 @@ sequenceDiagram
                      (ed-copy (dict-get row :path) target)
                      (ed-move (dict-get row :path) target)))))))</code></pre>
     <p>
-      It works on the workspace, not the whole disk, and only in the app: an exported page has no
-      folder to read.
+      It works on the workspace and the folders you add outside it (⋯ → Add a folder outside the
+      workspace…), which head each panel as <code>~Downloads/</code> — not the whole disk — and only
+      in the app: an exported page has no folder to read.
     </p>
 
     <h4>Tables — any table, dBASE-style</h4>
@@ -1437,7 +1438,18 @@ zzalinhar — function
     <p>
       <code>to</code> is always the whole new path. Nothing is ever written over: a move or copy onto
       a name that is taken is refused, with a message, and so is any path that would leave the
-      workspace. <code>:modified</code> counts seconds the way <code>(now)</code> does, so
+      workspace.
+    </p>
+    <p>
+      <strong>Folders outside the workspace.</strong> <strong>⋯ → Add a folder outside the
+      workspace…</strong> in the desktop app grants one — your Downloads, say — and from then on a
+      path names it as <code>~Downloads/…</code>: <code>(dir-list "~Downloads")</code>,
+      <code>(read-note "~Downloads/notes.md")</code>,
+      <code>(ed-move "~Downloads/invoice.pdf" "money/invoice.pdf")</code>, and a note there opens in
+      a tab like any other. <code>(roots)</code> lists what was granted. Only you can grant one, with
+      the folder picker; a script can't, and the list is kept in EEditor's own settings, not in the
+      workspace, so a folder someone sends you can't grant itself anything. <strong>Remove a folder
+      outside the workspace…</strong> in ⌘⇧P takes one back. <code>:modified</code> counts seconds the way <code>(now)</code> does, so
       <code>(date-format (dict-get e :modified))</code> reads it.
     </p>
 
