@@ -154,7 +154,7 @@ header opens it, writing the documented defaults on first use). Saving it reload
 ```lisp
 (bind "Mod-s" (ed-cmd "save"))          ; a built-in command — dispatched without the engine
 
-(bind "Mod-i"                            ; anything else is EELisp, run on the engine
+(bind "Mod-Alt-i"                        ; anything else is EELisp, run on the engine
   (ed-goto-line 2)
   (ed-insert (str "## " *date* " " *time* "\n\n")))
 ```
