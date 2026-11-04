@@ -49,7 +49,7 @@ test("Escape closes the cheatsheet and leaves the prompt alone", async ({ page }
 
 test("the sheet's ? types a formula into the selected cell", async ({ page }) => {
   await page.goto("/");
-  await page.locator(".tree-dir").click({ button: "right" });
+  await page.locator(".tree-dir").first().click({ button: "right" });
   await page.locator(".ctx-item", { hasText: "New sheet…" }).click();
   await page.locator(".dlg-input").fill("Help");
   await page.locator(".dlg-input").press("Enter");
