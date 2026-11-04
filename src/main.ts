@@ -30,6 +30,7 @@ import { createSearch } from "./ui/search";
 import { createCalendar } from "./ui/calendar";
 import { createAgendaSetup } from "./ui/agenda-setup";
 import { createSnippets } from "./ui/snippets";
+import { openHelp, LISP_HELP } from "./ui/help";
 import { createKeybindings, type CommandTable } from "./ui/keybindings";
 import { clockDefs, isMacPlatform, keyLabel, lispString, type Panel } from "./core/keybindings";
 import { createSheetFunctions, FUNCTIONS_PATH, FUNCTIONS_TEMPLATE } from "./sheets/functions";
@@ -309,13 +310,17 @@ function main(): void {
   snippetsBtn.className = "head-btn";
   snippetsBtn.textContent = "snippets";
   snippetsBtn.title = "Standard EELisp bundle (zzeelisp)";
+  const lispHelpBtn = document.createElement("button");
+  lispHelpBtn.className = "head-btn repl-help";
+  lispHelpBtn.textContent = "?";
+  lispHelpBtn.title = "What EELisp looks like";
   const replHideBtn = document.createElement("button");
   replHideBtn.className = "head-btn repl-toggle";
   replHideBtn.textContent = "✕";
   replHideBtn.title = "Hide this panel";
   const replBtns = document.createElement("span");
   replBtns.className = "head-right";
-  replBtns.append(snippetsBtn, replHideBtn);
+  replBtns.append(lispHelpBtn, snippetsBtn, replHideBtn);
   replPane.head.append(replLabel, replBtns);
 
   // ── REPL pane visibility (desktop; on narrow screens the tab bar governs instead) ──
@@ -845,6 +850,8 @@ function main(): void {
   });
 
   snippetsBtn.addEventListener("click", () => snippets.open());
+  // picking a line puts it at the prompt rather than running it — reading it first is the point
+  lispHelpBtn.addEventListener("click", () => openHelp(LISP_HELP, (src) => repl.put(src)));
 
   const editor = createEditor(editorHost, "", {
     theme,

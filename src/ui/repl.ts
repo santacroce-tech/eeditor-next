@@ -9,6 +9,8 @@ import { renderModelEl } from "./results";
 
 export interface Repl {
   run(src: string): Promise<void>;
+  /** Put something at the prompt without running it — from the cheatsheet, to edit and then run. */
+  put(src: string): void;
   /** Append an informational line to the scrollback (used by the snippets loader). */
   note(text: string): void;
   focus(): void;
@@ -96,6 +98,12 @@ export function createRepl(parent: HTMLElement, engine: EngineClient, opts: Repl
 
   return {
     run,
+    put(src: string) {
+      input.value = src;
+      autosize();
+      input.focus();
+      input.setSelectionRange(src.length, src.length);
+    },
     note: (text: string) => append("repl-output", text),
     focus: () => input.focus(),
   };
