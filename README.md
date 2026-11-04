@@ -160,7 +160,7 @@ header opens it, writing the documented defaults on first use). Saving it reload
 ```
 
 A body returns editor commands (`ed-insert`, `ed-goto-line`, `ed-select`, `ed-replace`, `ed-open`,
-`ed-message`, `ed-cmd`, …) which the frontend applies in order. Context — `*file*`, `*cursor*`,
+`ed-message`, `ed-cmd`, `ed-move`/`ed-copy`/`ed-delete`/`ed-mkdir` for files, …) which the frontend applies in order. Context — `*file*`, `*cursor*`,
 `*line*`, `*col*`, `*line-text*`, `*sel-from*`/`*sel-to*`, `*selection*`, `*buffer*`, `*date*`,
 `*time*`, `*now*` — is defined before the body runs. Bindings are claimed in the capture phase, so
 they beat CodeMirror's own keymap; unbind a key and CodeMirror gets it back. If the file is missing

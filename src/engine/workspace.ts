@@ -44,6 +44,10 @@ export interface WorkspaceClient {
   rename(from: string, to: string): Promise<void>;
   /** Delete a file or directory (recursive for directories). */
   remove(path: string): Promise<void>;
+  /** Copy a file or a whole folder to `to`, which must not exist yet. */
+  copy(from: string, to: string): Promise<void>;
+  /** Into the system Trash, where it can be put back (deleted outright where there is none). */
+  trash(path: string): Promise<void>;
   /** Native folder dialog → the chosen root, or null (unavailable in a plain browser). */
   pickWorkspace(): Promise<string | null>;
   /** iOS: re-open the folder picked last session (updates the workspace), or null. */
@@ -144,6 +148,12 @@ class HttpWorkspace implements WorkspaceClient {
   }
   async remove(path: string): Promise<void> {
     await post<{ ok: boolean }>(this.base + "/fs/delete", { path });
+  }
+  async copy(from: string, to: string): Promise<void> {
+    await post<{ ok: boolean }>(this.base + "/fs/copy", { from, to });
+  }
+  async trash(path: string): Promise<void> {
+    await post<{ ok: boolean }>(this.base + "/fs/trash", { path });
   }
   async pickWorkspace(): Promise<string | null> {
     return null; // no native folder dialog in the browser
@@ -247,6 +257,14 @@ class TauriWorkspace implements WorkspaceClient {
   async remove(path: string): Promise<void> {
     const { invoke } = await import("@tauri-apps/api/core");
     await invoke("fs_delete", { path });
+  }
+  async copy(from: string, to: string): Promise<void> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("fs_copy", { from, to });
+  }
+  async trash(path: string): Promise<void> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("fs_trash", { path });
   }
   async pickWorkspace(): Promise<string | null> {
     const { invoke } = await import("@tauri-apps/api/core");
