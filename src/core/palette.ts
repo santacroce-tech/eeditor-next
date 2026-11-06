@@ -69,6 +69,8 @@ export const COMMAND_TITLES: Record<string, string> = {
   "copy-into-workspace": "Copy a file into the workspace",
   "close-tab": "Close the tab",
   "toggle-sidebar": "Show / hide the sidebar",
+  "add-folder": "Add a folder outside the workspace…",
+  "remove-folder": "Remove a folder outside the workspace…",
   "next-tab": "Next tab",
   "prev-tab": "Previous tab",
   "last-tab": "Last tab",

@@ -727,6 +727,8 @@ function main(): void {
         toast(m);
       },
       note: (text) => repl.note(text),
+      // (ui-editor …) — as a form in a window has it; a form run in its tab had nowhere to send them.
+      onEditor: (v) => formExtras(t.path).onEditor(v),
       onPopOut: () => {
         backToDesign();
         void runForm(t.path);
@@ -884,7 +886,10 @@ function main(): void {
     },
     note: (text: string) => repl.note(text),
     // (ui-editor …) — Capture filing a line into a note, say. `keys` exists by the time a form runs.
-    onEditor: (v: JsonValue) => void keys.applyResult(v),
+    onEditor: (v: JsonValue) => {
+      keys.applyResult(v);
+      return keys.settled();
+    },
   });
   const formHost = createFormHost({
     forms,
@@ -978,6 +983,38 @@ function main(): void {
   };
   let sidePanels: SidePanel[] = [];
   let wantedPanels: Panel[] = [];
+  /** Every running form's :on-refresh — tabs, windows and the sidebar's — after the folders changed. */
+  async function refreshAllForms(): Promise<void> {
+    const all = [...runners.values(), ...[...windows.values()].map((w) => w.runner)];
+    await Promise.all(all.map((r) => r.refresh().catch(() => {})));
+    await refreshPanels();
+  }
+  /** "Add a folder…": grant one outside the workspace, read and changed as ~name/…. */
+  async function addGrantedFolder(): Promise<void> {
+    try {
+      const name = await ws.addRoot();
+      if (!name) return;
+      toast(`~${name} is yours to use: (dir-list "~${name}"), and in Files at the top`);
+      await refreshAllForms();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e));
+    }
+  }
+  /** "Remove a folder…": take one back. The folder itself stays as it is. */
+  async function removeGrantedFolder(): Promise<void> {
+    try {
+      const granted = await ws.roots();
+      if (granted.length === 0) return toast("No folder outside the workspace has been added");
+      const pick = await promptModal("Which folder?", `~${granted[0].name}`, "Remove", granted.map((g) => `~${g.name}`));
+      const name = pick?.replace(/^~/, "").trim();
+      if (!name || !granted.some((g) => g.name === name)) return;
+      await ws.removeRoot(name);
+      toast(`~${name} is no longer reachable from here — the folder itself is untouched`);
+      await refreshAllForms();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e));
+    }
+  }
   async function refreshPanels(): Promise<void> {
     const shown = sidePanels.filter((p) => !(p.section ?? builtInSection(p)?.body)?.contains(document.activeElement));
     if (shown.length === 0) return;
@@ -1838,6 +1875,8 @@ function main(): void {
       { label: "Open a file…", action: () => void openWith.pickAndOpen() },
       { label: "Open another folder…", action: openFolder },
       ...(ws.canOpenWindows() ? [{ label: "Open a folder in a new window…  ⌃⌘N", action: () => void ws.newWindow() }] : []),
+      // a folder beside the workspace for scripts and forms (~name/…) — desktop only: it needs a picker
+      ...(ws.canOpenExternal() ? [{ label: "Add a folder outside the workspace…", action: () => void addGrantedFolder() }] : []),
       ...locationItems(""),
       ...workspaceItems(),
     ]),
@@ -2235,6 +2274,8 @@ function main(): void {
     "open-file": () => void openWith.pickAndOpen(),
     "copy-into-workspace": () => void copyActiveIntoWorkspace(),
     // With no tab left to close, ⌘W closes the window, as a browser does.
+    "add-folder": () => void addGrantedFolder(),
+    "remove-folder": () => void removeGrantedFolder(),
     "close-tab": () => void (tabs.length === 0 && inTauri() ? saveAndClose() : closeTab(activeIdx)),
     "toggle-sidebar": toggleSidebar,
     "next-tab": () => {

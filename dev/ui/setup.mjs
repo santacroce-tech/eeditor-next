@@ -7,7 +7,7 @@
 
 import { copyFile, cp, mkdir, rm, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { UI_EMPTY, UI_WORKSPACE } from "../../playwright.config.mjs";
+import { UI_EMPTY, UI_OUTSIDE, UI_WORKSPACE } from "../../playwright.config.mjs";
 
 export default async function setup() {
   await rm(UI_WORKSPACE, { recursive: true, force: true });
@@ -18,6 +18,9 @@ export default async function setup() {
   await copyFile("workspace/Contacts.eeform", `${UI_WORKSPACE}/Contacts.eeform`);
   // …and the example forms, which dev/ui/examples.pw.mjs runs.
   await cp("workspace/examples", `${UI_WORKSPACE}/examples`, { recursive: true });
+  // …and the folder granted to it from outside, as ~Outside (the bridge's EEDITOR_ROOTS).
+  await rm(UI_OUTSIDE, { recursive: true, force: true });
+  await mkdir(UI_OUTSIDE, { recursive: true });
 }
 
 /** The folder dev/ui/samples.pw.mjs opens: nothing in it at all, not even a database. */

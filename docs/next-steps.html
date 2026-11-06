@@ -132,22 +132,22 @@ a { color: var(--accent); }
   <div style="margin-top:18px">
     <div class="phase"><span class="n">1</span><div>
       <h3>Listing folders</h3>
-      <div class="repo">eelisp-rs · src/editor.rs · in review: eelisp-rs #29 · merges first, because CI builds the app against eelisp-rs main</div>
+      <div class="repo">eelisp-rs · src/editor.rs · done (eelisp-rs #29)</div>
       <p><code>(dir-list "notes")</code> returns one dict per entry, <code>{:name :dir? :size :modified :ext}</code>, and <code>(file-info p)</code> returns one. They sit beside <code>notes</code> and <code>read-note</code>, which follows the rule already in place: reading happens in the engine, writing goes through the app.</p>
     </div></div>
     <div class="phase"><span class="n">2</span><div>
       <h3>File operations as editor commands</h3>
-      <div class="repo">eeditor-next · src/ui/keybindings.ts · src-tauri (fs_copy, fs_trash) · dev/bridge.mjs · in review</div>
+      <div class="repo">eeditor-next · src/ui/keybindings.ts · src-tauri (fs_copy, fs_trash) · dev/bridge.mjs · done (#75)</div>
       <p><code>(ed-move from to)</code>, <code>(ed-copy from to)</code>, <code>(ed-delete p)</code> and <code>(ed-mkdir p)</code>, handled beside <code>write</code> and <code>append</code>. Because they go through the app, open tabs stay in step: a moved note's tab follows it, and a deleted one closes. A delete goes to the system trash. They work from <code>(bind …)</code> lines and from forms alike.</p>
     </div></div>
     <div class="phase"><span class="n">3</span><div>
       <h3>Keys in a form</h3>
-      <div class="repo">eeditor-next · src/ui/formrun.ts · src/core/form.ts</div>
-      <p><code>:on-key</code> on the form receives keys in the notation <code>(bind …)</code> uses, such as <code>"Mod-Left"</code>, before the app's own shortcuts. It fires outside text boxes only, since <kbd>⌘←</kbd> in a text box means “go to the start of the line”.</p>
+      <div class="repo">eeditor-next · src/ui/formrun.ts · src/core/form.ts · in review (#76)</div>
+      <p><code>:on-key</code> on the form, with <code>:keys</code> naming the keys it takes, receives each as <code>$pressed</code> in the notation <code>(bind …)</code> uses, such as <code>"Mod-Left"</code>, and <code>$control</code>, before the app's own shortcuts. It fires outside text boxes only, since <kbd>⌘←</kbd> in a text box means “go to the start of the line”. Listboxes and grids move their pick with the arrow keys, and Enter opens. After a form's file commands, its <code>:on-refresh</code> runs.</p>
     </div></div>
     <div class="phase"><span class="n">4</span><div>
       <h3>The form: <code>workspace/examples/Files.eeform</code></h3>
-      <div class="repo">eeditor-next · plus a page in the manual</div>
+      <div class="repo">eeditor-next · workspace/examples/Files.eeform · in the manual, the welcome note and on the home page · in review</div>
       <p>Two grids, a path over each, a status line. <kbd>Tab</kbd> switches panel, <kbd>Enter</kbd> opens, <kbd>⌘→</kbd> / <kbd>⌘←</kbd> move the selection to the other panel, <kbd>⌥⌘→</kbd> / <kbd>⌥⌘←</kbd> copy it, <kbd>⌘⌫</kbd> sends it to the trash.</p>
 <pre>(defn fm-key (f key)
   (cond (= key "Mod-Right") (fm-transfer f "left" "right" ed-move)
@@ -156,7 +156,7 @@ a { color: var(--accent); }
     </div></div>
     <div class="phase"><span class="n">5</span><div>
       <h3>Folders outside the workspace</h3>
-      <div class="repo">both repos · later</div>
+      <div class="repo">both repos · in review (eelisp-rs #31) — named roots, ~Downloads/…</div>
       <p>Engine and app keep every path inside the workspace today. A file manager wants <code>~/Downloads</code> too, so the user grants extra folders, the way Open With already grants single files. On macOS the first read of a protected folder waits for the privacy dialog, so these calls run asynchronously and never on the main thread.</p>
     </div></div>
   </div>

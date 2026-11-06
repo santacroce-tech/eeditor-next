@@ -22,7 +22,17 @@ const BINARY =
 // --workspace tells the engine where it is, so (current-dir) answers the same here as it does
 // in the desktop app; --db keeps the tables and agenda in the workspace, where the app keeps them.
 const DB = path.join(WS, ".eeditor", "eeditor.db");
-const child = spawn(BIN, ["--serve", "--workspace", WS, "--db", DB], { stdio: ["pipe", "pipe", "inherit"] });
+// Folders outside the workspace, granted as the desktop app grants them with "Add a folder…":
+// EEDITOR_ROOTS="Downloads=/Users/me/Downloads;Shared=/Volumes/x". A path then names one as ~Downloads/….
+const ROOTS = new Map(
+  (process.env.EEDITOR_ROOTS ?? "")
+    .split(";")
+    .map((pair) => pair.split("="))
+    .filter(([name, dir]) => name && dir)
+    .map(([name, dir]) => [name.trim(), path.resolve(dir.trim())]),
+);
+const rootArgs = [...ROOTS].flatMap(([name, dir]) => ["--root", `${name}=${dir}`]);
+const child = spawn(BIN, ["--serve", "--workspace", WS, "--db", DB, ...rootArgs], { stdio: ["pipe", "pipe", "inherit"] });
 child.on("error", (e) => (console.error(`[bridge] spawn ${BIN}: ${e.message}`), process.exit(1)));
 child.on("exit", (c) => (console.error(`[bridge] engine exited (${c})`), process.exit(1)));
 const rl = readline.createInterface({ input: child.stdout });
@@ -33,14 +43,31 @@ const evalSrc = (src) =>
 
 // ── workspace fs (confined) ──
 const exists = (abs) => stat(abs).then(() => true, () => false);
+/** rename(2), or across disks — a granted folder can be on another — a copy, then the original gone. */
+async function moveAcross(a, b) {
+  try {
+    await rename(a, b);
+  } catch (e) {
+    if (e.code !== "EXDEV") throw e;
+    await cp(a, b, { recursive: true, errorOnExist: true, force: false });
+    await rm(a, { recursive: true });
+  }
+}
 /** No file at `b`, or the same one as at `a` (a rename that only changes case). */
 async function sameOrMissing(a, b) {
   const [sa, sb] = await Promise.all([stat(a).catch(() => null), stat(b).catch(() => null)]);
   return !sb || (sa !== null && sa.ino === sb.ino && sa.dev === sb.dev);
 }
 function safe(rel) {
-  const p = path.resolve(WS, rel || ".");
-  if (p !== WS && !p.startsWith(WS + path.sep)) throw new Error("path escapes workspace");
+  let base = WS;
+  if (typeof rel === "string" && rel.startsWith("~")) {
+    const [name, ...rest] = rel.slice(1).split("/");
+    base = ROOTS.get(name);
+    if (!base) throw new Error(`~${name}: no folder by that name — add it first`);
+    rel = rest.join("/");
+  }
+  const p = path.resolve(base, rel || ".");
+  if (p !== base && !p.startsWith(base + path.sep)) throw new Error("path escapes workspace");
   return p;
 }
 // Mirrors src-tauri's `children_of`: bounded, cycle-proof, and it reports what it could not read
@@ -137,11 +164,14 @@ const routes = {
     // never over another file — a change of case only (a.md → A.md on macOS) is the same file
     if (await sameOrMissing(a, b)) {
       await mkdir(path.dirname(b), { recursive: true });
-      await rename(a, b);
+      await moveAcross(a, b);
       return JSON.stringify({ ok: true });
     }
     throw new Error(`${to} already exists`);
   },
+  // Mirrors roots_list. Adding or removing one is the desktop app's (a folder picker); here they
+  // come from EEDITOR_ROOTS.
+  "/fs/roots": async () => JSON.stringify([...ROOTS].map(([name, dir]) => ({ name, path: dir }))),
   // Mirrors fs_copy: a file or a whole folder, never over something that is there.
   "/fs/copy": async ({ from, to }) => {
     const a = safe(from);
@@ -160,7 +190,7 @@ const routes = {
     if (!(await exists(abs))) throw new Error(`${rel} isn't there`);
     const bin = path.join(WS, ".eeditor", "trash", String(Date.now()));
     await mkdir(bin, { recursive: true });
-    await rename(abs, path.join(bin, path.basename(abs)));
+    await moveAcross(abs, path.join(bin, path.basename(abs)));
     return JSON.stringify({ ok: true });
   },
   "/fs/delete": async ({ path: rel }) => {

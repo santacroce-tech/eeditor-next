@@ -91,6 +91,14 @@ describe("the layout", () => {
     expect(grid.events).toEqual({ change: "pick-contact" });
     expect([grid.x, grid.y, grid.w, grid.h]).toEqual([16, 136, 448, 220]);
   });
+  it("reads :on-key and :keys, and prints them back", () => {
+    const r = readFormSpec(`(form "Files" :size (400 300) :on-key fm-key :keys ("Mod-Right" "Tab"))`);
+    if ("error" in r) throw new Error(r.error);
+    expect([r.spec.onKey, r.spec.keys]).toEqual(["fm-key", ["Mod-Right", "Tab"]]);
+    const again = readFormSpec(printFormSpec(r.spec));
+    if ("error" in again) throw new Error(again.error);
+    expect([again.spec.onKey, again.spec.keys]).toEqual(["fm-key", ["Mod-Right", "Tab"]]);
+  });
   it("prints canonically and round-trips", () => {
     const r = readFormSpec(FILE);
     if ("error" in r) throw new Error(r.error);

@@ -69,6 +69,159 @@ impl<'de, R: Runtime> CommandArg<'de, R> for Workspace {
     }
 }
 
+impl Workspace {
+    /// A path a command was given: inside the workspace, or `~name/…` inside a folder the person
+    /// granted it (see `GRANTS`). Never outside either.
+    fn resolve(&self, rel: &str) -> Result<PathBuf, String> {
+        let root = self.0.lock().unwrap().clone();
+        resolve_named(&root, rel)
+    }
+}
+
+fn resolve_named(root: &Path, rel: &str) -> Result<PathBuf, String> {
+    let Some(named) = rel.strip_prefix('~') else { return resolve(root, rel) };
+    let (name, rest) = named.split_once('/').unwrap_or((named, ""));
+    let base = grants_for(root)
+        .into_iter()
+        .find(|(n, _)| n == name)
+        .map(|(_, p)| p)
+        .ok_or_else(|| format!("~{name}: no folder by that name — add it first (Add a folder…)"))?;
+    resolve(&base, rest)
+}
+
+/// `~name` with nothing after it: a granted folder itself, which can be read but not moved,
+/// copied over or thrown away from here.
+fn is_granted_folder_itself(rel: &str) -> bool {
+    rel.strip_prefix('~').is_some_and(|n| n.split_once('/').is_none_or(|(_, rest)| rest.trim_matches('/').is_empty()))
+}
+
+// ── folders outside a workspace, granted ("Add a folder…") ──────────────────────────────────────
+//
+// By workspace: each a name a script writes as ~name/… and the folder it is. Kept in the app's own
+// settings (app config dir/roots.json), never in the workspace — a folder someone sends you can't
+// grant itself your Downloads. The engine reads the same list (open_space).
+
+struct GrantStore {
+    file: Option<PathBuf>,
+    by_workspace: HashMap<String, Vec<(String, String)>>,
+}
+
+static GRANTS: std::sync::OnceLock<Mutex<GrantStore>> = std::sync::OnceLock::new();
+
+fn grant_store() -> &'static Mutex<GrantStore> {
+    GRANTS.get_or_init(|| Mutex::new(GrantStore { file: None, by_workspace: HashMap::new() }))
+}
+
+fn grant_key(root: &Path) -> String {
+    root.canonicalize().unwrap_or_else(|_| root.to_path_buf()).display().to_string()
+}
+
+/// Read roots.json from the app's config folder, once, at launch.
+fn load_grants(app: &tauri::AppHandle) {
+    let Ok(dir) = app.path().app_config_dir() else { return };
+    let file = dir.join("roots.json");
+    let by_workspace = fs::read_to_string(&file)
+        .ok()
+        .and_then(|t| serde_json::from_str::<HashMap<String, Vec<(String, String)>>>(&t).ok())
+        .unwrap_or_default();
+    *grant_store().lock().unwrap() = GrantStore { file: Some(file), by_workspace };
+}
+
+fn save_grants(store: &GrantStore) -> Result<(), String> {
+    let Some(file) = &store.file else { return Ok(()) };
+    if let Some(dir) = file.parent() {
+        let _ = fs::create_dir_all(dir);
+    }
+    let text = serde_json::to_string_pretty(&store.by_workspace).map_err(|e| e.to_string())?;
+    fs::write(file, text).map_err(|e| e.to_string())
+}
+
+/// The folders granted to the workspace at `root`, as (name, folder).
+fn grants_for(root: &Path) -> Vec<(String, PathBuf)> {
+    let store = grant_store().lock().unwrap();
+    store.by_workspace.get(&grant_key(root)).map(|v| v.iter().map(|(n, p)| (n.clone(), PathBuf::from(p))).collect()).unwrap_or_default()
+}
+
+/// A name for a granted folder: its own name, with what a path can't hold taken out, and a number
+/// after it when the name is taken.
+fn grant_name(folder: &Path, taken: &[(String, String)]) -> String {
+    let raw = folder.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let clean: String = raw.chars().filter(|c| c.is_alphanumeric() || matches!(c, ' ' | '-' | '_' | '.')).collect();
+    let base = if clean.trim().is_empty() { "Folder".to_string() } else { clean.trim().to_string() };
+    let mut name = base.clone();
+    let mut i = 2;
+    while taken.iter().any(|(n, _)| n.eq_ignore_ascii_case(&name)) {
+        name = format!("{base} {i}");
+        i += 1;
+    }
+    name
+}
+
+#[derive(serde::Serialize)]
+struct GrantedFolder {
+    name: String,
+    path: String,
+}
+
+/// The folders granted to this window's workspace.
+#[tauri::command(async)]
+fn roots_list(ws: Workspace) -> Vec<GrantedFolder> {
+    let root = ws.0.lock().unwrap().clone();
+    grants_for(&root).into_iter().map(|(name, p)| GrantedFolder { name, path: p.display().to_string() }).collect()
+}
+
+/// Ask for a folder and grant it to this workspace. Its name (what `~name/…` says), or None when
+/// the picker was cancelled. Desktop only: a phone has no folder picker of this kind.
+#[cfg(desktop)]
+#[tauri::command]
+async fn roots_add(app: tauri::AppHandle, ws: Workspace) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.dialog().file().set_title("Add a folder outside the workspace").pick_folder(move |picked| {
+        let _ = tx.send(picked);
+    });
+    let picked = tauri::async_runtime::spawn_blocking(move || rx.recv().unwrap_or(None)).await.map_err(|e| e.to_string())?;
+    let Some(folder) = picked.and_then(|fp| fp.into_path().ok()) else { return Ok(None) };
+    let root = ws.0.lock().unwrap().clone();
+    let (cf, cr) = (folder.canonicalize().unwrap_or(folder.clone()), root.canonicalize().unwrap_or(root.clone()));
+    if cf.starts_with(&cr) {
+        return Err("That folder is already in the workspace".into());
+    }
+    if cr.starts_with(&cf) {
+        return Err("That folder holds the workspace itself — pick one beside it".into());
+    }
+    let mut store = grant_store().lock().unwrap();
+    let list = store.by_workspace.entry(grant_key(&root)).or_default();
+    if let Some((name, _)) = list.iter().find(|(_, p)| same_dir(Path::new(p), &folder)) {
+        return Ok(Some(name.clone())); // granted already
+    }
+    let name = grant_name(&folder, list);
+    list.push((name.clone(), folder.display().to_string()));
+    save_grants(&store)?;
+    Ok(Some(name))
+}
+
+#[cfg(not(desktop))]
+#[tauri::command]
+async fn roots_add() -> Result<Option<String>, String> {
+    Err("Adding a folder outside the workspace isn't available here".into())
+}
+
+/// Take a granted folder away from this workspace. The folder itself is left as it is.
+#[tauri::command(async)]
+fn roots_remove(ws: Workspace, name: String) -> Result<(), String> {
+    let root = ws.0.lock().unwrap().clone();
+    let mut store = grant_store().lock().unwrap();
+    let key = grant_key(&root);
+    if let Some(list) = store.by_workspace.get_mut(&key) {
+        list.retain(|(n, _)| n != &name);
+        if list.is_empty() {
+            store.by_workspace.remove(&key);
+        }
+    }
+    save_grants(&store)
+}
+
 /// The engine of the window that called.
 struct Engine(Arc<Space>);
 
@@ -85,8 +238,13 @@ fn open_space(app: &tauri::AppHandle, label: &str, root: PathBuf) {
     let db = engine_db_path(&root);
     let root = Arc::new(Mutex::new(root));
     let engine_root = root.clone();
+    let grants_root = root.clone();
     let engine = EngineHandle::spawn_with(db, move |it| {
         it.editor.borrow_mut().current_dir = Some(Box::new(move || engine_root.lock().unwrap().display().to_string()));
+        // the folders this workspace was granted — read fresh, so one added a moment ago is there
+        it.editor.borrow_mut().roots = Some(Box::new(move || {
+            grants_for(&grants_root.lock().unwrap()).into_iter().map(|(n, p)| (n, p.display().to_string())).collect()
+        }));
     });
     let spaces = app.state::<Spaces>();
     spaces.by_label.lock().unwrap().insert(label.to_string(), Arc::new(Space { root, engine }));
@@ -489,13 +647,13 @@ fn fs_tree(ws: Workspace) -> Result<String, String> {
 
 #[tauri::command(async)]
 fn fs_read(ws: Workspace, path: String) -> Result<String, String> {
-    let p = resolve(&ws.0.lock().unwrap(), &path)?;
+    let p = ws.resolve(&path)?;
     read_text(&p)
 }
 
 #[tauri::command(async)]
 fn fs_write(ws: Workspace, path: String, content: String) -> Result<(), String> {
-    let p = resolve(&ws.0.lock().unwrap(), &path)?;
+    let p = ws.resolve(&path)?;
     refuse_sheet(&p)?;
     if let Some(parent) = p.parent() {
         let _ = fs::create_dir_all(parent);
@@ -505,7 +663,7 @@ fn fs_write(ws: Workspace, path: String, content: String) -> Result<(), String> 
 
 #[tauri::command(async)]
 fn fs_create(ws: Workspace, path: String, is_dir: bool) -> Result<(), String> {
-    let p = resolve(&ws.0.lock().unwrap(), &path)?;
+    let p = ws.resolve(&path)?;
     if p.exists() {
         return Err("already exists".into());
     }
@@ -521,9 +679,11 @@ fn fs_create(ws: Workspace, path: String, is_dir: bool) -> Result<(), String> {
 
 #[tauri::command(async)]
 fn fs_rename(ws: Workspace, from: String, to: String) -> Result<(), String> {
-    let root = ws.0.lock().unwrap();
-    let f = resolve(&root, &from)?;
-    let t = resolve(&root, &to)?;
+    if is_granted_folder_itself(&from) {
+        return Err(format!("{from} is a granted folder — it stays where it is"));
+    }
+    let f = ws.resolve(&from)?;
+    let t = ws.resolve(&to)?;
     if let Some(parent) = t.parent() {
         let _ = fs::create_dir_all(parent);
     }
@@ -532,7 +692,19 @@ fn fs_rename(ws: Workspace, from: String, to: String) -> Result<(), String> {
     if t.exists() && !same_file(&f, &t) {
         return Err(format!("{to} already exists"));
     }
-    fs::rename(f, t).map_err(|e| e.to_string())
+    move_across(&f, &t).map_err(|e| e.to_string())
+}
+
+/// rename(2) — or, across disks (a granted folder can be on another), a copy and then the
+/// original gone.
+fn move_across(from: &Path, to: &Path) -> std::io::Result<()> {
+    match fs::rename(from, to) {
+        Err(e) if e.raw_os_error() == Some(18) => {
+            copy_tree(from, to)?;
+            if from.is_dir() { fs::remove_dir_all(from) } else { fs::remove_file(from) }
+        }
+        r => r,
+    }
 }
 
 /// Whether two paths are one file on disk — on a case-insensitive volume "a.md" and "A.md" are.
@@ -546,9 +718,8 @@ fn same_file(a: &Path, b: &Path) -> bool {
 /// Copy a file or a whole folder to `to`, which must not exist yet.
 #[tauri::command(async)]
 fn fs_copy(ws: Workspace, from: String, to: String) -> Result<(), String> {
-    let root = ws.0.lock().unwrap().clone();
-    let f = resolve(&root, &from)?;
-    let t = resolve(&root, &to)?;
+    let f = ws.resolve(&from)?;
+    let t = ws.resolve(&to)?;
     if t.exists() {
         return Err(format!("{to} already exists"));
     }
@@ -583,12 +754,12 @@ fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
 /// there is none to use, so it is deleted.
 #[tauri::command(async)]
 fn fs_trash(ws: Workspace, path: String) -> Result<(), String> {
-    let p = resolve(&ws.0.lock().unwrap(), &path)?;
+    let p = ws.resolve(&path)?;
     if !p.exists() {
         return Err(format!("{path} isn't there"));
     }
-    if p == ws.0.lock().unwrap().as_path() {
-        return Err("the workspace itself can't go to the Trash".into());
+    if p == ws.0.lock().unwrap().as_path() || is_granted_folder_itself(&path) {
+        return Err("the workspace itself can't go to the Trash, nor a granted folder".into());
     }
     #[cfg(desktop)]
     return trash::delete(&p).map_err(|e| e.to_string());
@@ -598,7 +769,10 @@ fn fs_trash(ws: Workspace, path: String) -> Result<(), String> {
 
 #[tauri::command(async)]
 fn fs_delete(ws: Workspace, path: String) -> Result<(), String> {
-    let p = resolve(&ws.0.lock().unwrap(), &path)?;
+    let p = ws.resolve(&path)?;
+    if p == ws.0.lock().unwrap().as_path() || is_granted_folder_itself(&path) {
+        return Err("the workspace itself can't be deleted, nor a granted folder".into());
+    }
     if p.is_dir() {
         fs::remove_dir_all(p).map_err(|e| e.to_string())
     } else {
@@ -717,7 +891,7 @@ fn save_asset(root: &Path, dir: &str, name: &str, bytes: &[u8]) -> Result<String
 /// The bytes of an image in the workspace, handed over raw (an `ArrayBuffer` on the other side).
 #[tauri::command(async)]
 fn fs_read_image(ws: Workspace, path: String) -> Result<tauri::ipc::Response, String> {
-    let p = resolve(&ws.0.lock().unwrap(), &path)?;
+    let p = ws.resolve(&path)?;
     if !is_image(&p) {
         return Err(format!("{path} is not an image"));
     }
@@ -833,14 +1007,14 @@ fn external_write(ext: tauri::State<'_, ExternalFiles>, path: String, content: S
 /// the file. Goes through `resolve`, so it can only ever name something inside the workspace.
 #[tauri::command(async)]
 fn fs_abs_path(ws: Workspace, path: String) -> Result<String, String> {
-    let p = resolve(&ws.0.lock().unwrap(), &path)?;
+    let p = ws.resolve(&path)?;
     Ok(p.canonicalize().unwrap_or(p).to_string_lossy().to_string())
 }
 
 /// Show a workspace file in the system file manager.
 #[tauri::command(async)]
 fn fs_reveal(ws: Workspace, path: String) -> Result<(), String> {
-    let p = resolve(&ws.0.lock().unwrap(), &path)?;
+    let p = ws.resolve(&path)?;
     reveal(&p)
 }
 
@@ -1302,6 +1476,7 @@ pub fn run() {
                     tauri_plugin_log::Builder::default().level(log::LevelFilter::Info).build(),
                 )?;
             }
+            load_grants(app.handle());
             let ws = initial_workspace(app.handle());
             eprintln!("[eeditor] workspace: {}", ws.display());
             // The tables and agenda live in the workspace, so they survive a quit.
@@ -1332,6 +1507,9 @@ pub fn run() {
             fs_delete,
             fs_copy,
             fs_trash,
+            roots_list,
+            roots_add,
+            roots_remove,
             import_file,
             fs_read_image,
             fs_save_asset,
@@ -1443,6 +1621,40 @@ mod tests {
         assert!(resolve(&root, "notes/../../new/b.md").is_err());
         assert!(resolve(&root, "/etc/new.md").is_err());
         assert_eq!(resolve(&root, "notes/../b.md").unwrap(), root.join("notes/../b.md"));
+    }
+
+    #[test]
+    fn granted_folders_resolve_by_name_and_stay_inside() {
+        let t = Tmp::new("grants");
+        let root = t.0.join("ws");
+        let dl = t.0.join("Downloads");
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(dl.join("inv")).unwrap();
+        t.file("secret.md", "x");
+        {
+            let mut store = grant_store().lock().unwrap();
+            store.by_workspace.insert(grant_key(&root), vec![("Downloads".into(), dl.display().to_string())]);
+        }
+        assert_eq!(resolve_named(&root, "~Downloads/inv").unwrap(), dl.join("inv"));
+        assert_eq!(resolve_named(&root, "~Downloads").unwrap(), dl.clone());
+        assert_eq!(resolve_named(&root, "notes/a.md").unwrap(), root.join("notes/a.md"));
+        assert!(resolve_named(&root, "~Downloads/../secret.md").is_err());
+        assert!(resolve_named(&root, "~Other/x").unwrap_err().contains("no folder by that name"));
+        // another workspace has none of this one's grants
+        assert!(resolve_named(&t.0.join("elsewhere"), "~Downloads/inv").is_err());
+        grant_store().lock().unwrap().by_workspace.remove(&grant_key(&root));
+    }
+
+    #[test]
+    fn a_granted_folder_itself_is_spotted_and_names_are_unique() {
+        assert!(is_granted_folder_itself("~Downloads"));
+        assert!(is_granted_folder_itself("~Downloads/"));
+        assert!(!is_granted_folder_itself("~Downloads/a.md"));
+        assert!(!is_granted_folder_itself("notes"));
+        let taken = vec![("Downloads".to_string(), "/a".to_string())];
+        assert_eq!(grant_name(Path::new("/b/Downloads"), &taken), "Downloads 2");
+        assert_eq!(grant_name(Path::new("/b/My: Stuff"), &taken), "My Stuff");
+        assert_eq!(grant_name(Path::new("/"), &taken), "Folder");
     }
 
     #[test]

@@ -137,12 +137,53 @@ export function isMacPlatform(): boolean {
   return /Mac|iPhone|iPad|iPod/i.test(p);
 }
 
+/**
+ * One name per key, whichever way it was written: "Right" in a config and the browser's "ArrowRight"
+ * are the same key, as are "Space" and " ", "Esc" and "Escape".
+ */
+const KEY_ALIASES: Record<string, string> = {
+  arrowleft: "left",
+  arrowright: "right",
+  arrowup: "up",
+  arrowdown: "down",
+  " ": "space",
+  spacebar: "space",
+  esc: "escape",
+  return: "enter",
+  del: "delete",
+};
+const normKey = (k: string): string => KEY_ALIASES[k] ?? k;
+
+/** How `eventKeySpec` spells a named key — as a config would write it. */
+const KEY_NAMES: Record<string, string> = {
+  left: "Left", right: "Right", up: "Up", down: "Down", enter: "Enter", tab: "Tab", escape: "Escape",
+  backspace: "Backspace", delete: "Delete", home: "Home", end: "End", pageup: "PageUp", pagedown: "PageDown",
+  space: "Space", insert: "Insert",
+};
+
+/**
+ * A key press written the way `(bind …)` writes a key — "Mod-Right", "Mod-Alt-Left", "Tab", "F5" —
+ * with the modifiers always in the order Mod, Ctrl (or Meta), Alt, Shift. Mod is ⌘ on a Mac and
+ * Ctrl elsewhere. Null for a modifier pressed on its own.
+ */
+export function eventKeySpec(e: KeyboardEvent, mac: boolean = isMacPlatform()): string | null {
+  if (["Meta", "Control", "Alt", "Shift", "OS", "CapsLock"].includes(e.key)) return null;
+  const k = eventKeyId(e).split(":").slice(1).join(":");
+  const name = KEY_NAMES[k] ?? (/^f([1-9]|1[0-2])$/.test(k) ? k.toUpperCase() : k);
+  const mods: string[] = [];
+  if (mac ? e.metaKey : e.ctrlKey) mods.push("Mod");
+  if (mac ? e.ctrlKey : e.metaKey) mods.push(mac ? "Ctrl" : "Meta");
+  if (e.altKey) mods.push("Alt");
+  if (e.shiftKey) mods.push("Shift");
+  return [...mods, name].join("-");
+}
+
 function id(meta: boolean, ctrl: boolean, alt: boolean, shift: boolean, key: string): string {
   return `${meta ? "m" : ""}${ctrl ? "c" : ""}${alt ? "a" : ""}${shift ? "s" : ""}:${key}`;
 }
 
 /** "Mod-Shift-I" → a canonical id, or an error explaining why it isn't a usable shortcut. */
-export function parseKeySpec(spec: string, mac: boolean): { id: string } | { error: string } {
+export function parseKeySpec(spec: string, mac: boolean, opts: { bare?: boolean } = {}): { id: string } | { error: string } {
   const parts = spec.split(/[-+]/);
   let key = parts.pop() ?? "";
   if (key === "") key = spec.slice(-1); // "Mod--" / "Mod-+" — the punctuation itself is the key
@@ -163,15 +204,18 @@ export function parseKeySpec(spec: string, mac: boolean): { id: string } | { err
     else shift = true;
   }
 
-  const k = key.toLowerCase();
-  if (!meta && !ctrl && !alt && !BARE_OK.test(k)) {
+  const k = normKey(key.toLowerCase());
+  if (!meta && !ctrl && !alt && !(opts.bare || BARE_OK.test(k))) {
     return { error: `"${spec}" needs a modifier (Mod-, Ctrl-, Alt-)` };
   }
   return { id: id(meta, ctrl, alt, shift, k) };
 }
 
 const MAC_GLYPH: Record<ModName, string> = { mod: "⌘", meta: "⌘", ctrl: "⌃", alt: "⌥", shift: "⇧" };
-const KEY_GLYPH: Record<string, string> = { backspace: "⌫", delete: "⌦", enter: "↩", escape: "⎋", tab: "⇥", space: "Space" };
+const KEY_GLYPH: Record<string, string> = {
+  backspace: "⌫", delete: "⌦", enter: "↩", escape: "⎋", tab: "⇥", space: "Space",
+  left: "←", right: "→", up: "↑", down: "↓",
+};
 
 /** "Mod-Alt-u" as a person reads it: "⌘⌥U" on a Mac, "Ctrl+Alt+U" elsewhere. Unparseable → as written. */
 export function keyLabel(spec: string, mac: boolean): string {
@@ -179,7 +223,7 @@ export function keyLabel(spec: string, mac: boolean): string {
   const key = parts.pop() || spec.slice(-1);
   const mods = parts.filter((p) => p !== "").map((p) => MODIFIERS[p.toLowerCase()]);
   if (mods.some((m) => !m)) return spec;
-  const k = KEY_GLYPH[key.toLowerCase()] ?? (key.length === 1 ? key.toUpperCase() : key);
+  const k = KEY_GLYPH[normKey(key.toLowerCase())] ?? (key.length === 1 ? key.toUpperCase() : key);
   if (mac) return mods.map((m) => MAC_GLYPH[m]).join("") + k;
   const name: Record<ModName, string> = { mod: "Ctrl", meta: "Win", ctrl: "Ctrl", alt: "Alt", shift: "Shift" };
   return [...mods.map((m) => name[m]), k].join("+");
@@ -193,7 +237,7 @@ export function eventKeyId(e: KeyboardEvent): string {
   let key: string;
   if (/^Key[A-Z]$/.test(e.code)) key = e.code.slice(3).toLowerCase();
   else if (/^Digit[0-9]$/.test(e.code)) key = e.code.slice(5);
-  else key = e.key.toLowerCase();
+  else key = normKey(e.key.toLowerCase());
   return id(e.metaKey, e.ctrlKey, e.altKey, e.shiftKey, key);
 }
 

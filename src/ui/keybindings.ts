@@ -14,6 +14,7 @@ import type { Editor } from "./editor";
 import { promptModal, toast } from "./dialogs";
 import PRELUDE from "../keybindings/prelude.eelisp?raw";
 import DEFAULT_CONFIG from "../keybindings/default.eelisp?raw";
+import { formTakesKey } from "./formkeys";
 
 /** Where the user's config lives (dot-prefixed → hidden from the file tree). */
 export const KEYBINDINGS_PATH = ".eeditor/keybindings.eelisp";
@@ -38,6 +39,8 @@ export interface Keybindings {
   loadPrelude(): Promise<void>;
   /** Carry out a value that is an editor command (or a list of them). True when it was one. */
   applyResult(v: JsonValue): boolean;
+  /** Settles once the file commands queued so far (ed-write, ed-move, …) have been carried out. */
+  settled(): Promise<void>;
   /** Run the config's `(on-tick …)` forms now — what the minute timer does. For tests and the REPL. */
   tick(): Promise<void>;
   /** The config's `(button …)` forms, in order. */
@@ -451,6 +454,8 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
     (e) => {
       // A running form's screen control is a machine's keyboard: its keys are its own.
       if ((e.target as Element | null)?.closest?.(".formrun-screen")) return;
+      // A form's :on-key takes its own keys first (formrun.ts).
+      if (formTakesKey(e)) return;
       const binding = map.get(eventKeyId(e));
       if (!binding) return;
       // A running form that has windows to cycle keeps ⌃Tab for them (formrun.ts marks it).
@@ -525,5 +530,6 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
     press,
     actions: () => [...actions],
     runBinding: (b) => run(b),
+    settled: () => queue.then(() => {}),
   };
 }
