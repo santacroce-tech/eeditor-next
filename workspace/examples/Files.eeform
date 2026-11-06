@@ -1,0 +1,171 @@
+;; Files.eeform — two folders side by side, the way Norton Commander had it. Press ▶ run.
+;;
+;;   Tab          the other panel                ↵ / double-click   open a folder, or the file in a tab
+;;   ⌫ or ⌘↑      the folder above               ⌘→ / ⌘←            move the pick to the other panel
+;;   ⌥⌘→ / ⌥⌘←    copy it there instead          ⌘⌫                 into the Trash
+;;   ⇧⌘→ / ⇧⌘←    this folder in the other panel ⌘G                 go to a folder you type
+;;
+;; Rename, New folder and Go to use the box under the panels (↵ in it is Go to). Each panel remembers its folder between
+;; runs. At the top of each panel are the folders outside the workspace you've added (⋯ → Add a
+;; folder outside the workspace…), as ~Downloads/ — move and copy into and out of them the same way. Everything here is EELisp: (dir-list …) reads a folder, and the moves are (ed-move …),
+;; (ed-copy …) and (ed-delete …) handed to the app with ui-editor — which then runs :on-refresh, so
+;; both panels show the folders as they are now.
+
+(form "Files" :size (760 480) :on-load fm-load :on-refresh fm-refresh :on-key fm-key
+  :keys ("Tab" "Backspace" "Mod-Up" "Mod-Right" "Mod-Left" "Mod-Alt-Right" "Mod-Alt-Left" "Mod-Backspace"
+         "Mod-Shift-Right" "Mod-Shift-Left" "Mod-g")
+  (label lblLeft :text "/" :at (10 8) :size (365 20))
+  (label lblRight :text "/" :at (385 8) :size (365 20) :anchor "tlr")
+  (grid grdLeft :columns ("name" "size" "modified") :at (10 30) :size (365 340) :anchor "tlb" :on-change fm-pick-left :on-dblclick fm-open-left)
+  (grid grdRight :columns ("name" "size" "modified") :at (385 30) :size (365 340) :anchor "tlrb" :on-change fm-pick-right :on-dblclick fm-open-right)
+  (textbox txtName :placeholder "a name — or a folder to go to, like notes/2026" :at (10 380) :size (300 28) :anchor "bl")
+  (button btnRename :text "Rename" :at (316 380) :size (90 28) :anchor "bl" :on-click fm-rename)
+  (button btnFolder :text "New folder" :at (412 380) :size (110 28) :anchor "bl" :on-click fm-new-folder)
+  (button btnGo :text "Go to" :default true :at (528 380) :size (80 28) :anchor "bl" :on-click fm-go)
+  (label lblHelp :text "Tab other panel · ↵ open · ⌫ up · ⌘→ ⌘← move · ⌥⌘→ ⌥⌘← copy · ⇧⌘→ ⇧⌘← same folder · ⌘G go to · ⌘⌫ Trash" :at (10 418) :size (740 20) :anchor "blr")
+  (label lblStatus :text "" :at (10 444) :size (740 20) :anchor "blr"))
+
+;; Where each panel is (workspace-relative, "" the top), kept between runs; the panel last used.
+(public fm-left "" :persist true)
+(public fm-right "" :persist true)
+(local fm-side "left")
+
+;; ── paths ──
+(defn fm-join (dir name) (if (= dir "") name (str dir "/" name)))
+(defn fm-parent (dir) (str-join (reverse (tail (reverse (str-split dir "/")))) "/"))
+(defn fm-other (side) (if (= side "left") "right" "left"))
+(defn fm-grid (side) (if (= side "left") "grdLeft" "grdRight"))
+(defn fm-dir (side) (var (str "fm-" side)))
+;; How a folder reads over its panel: /notes in the workspace, ~Downloads/… outside it.
+(defn fm-where (dir) (if (str-starts-with dir "~") dir (str "/" dir)))
+
+;; ── a panel ──
+(defn fm-size (n)
+  (cond (< n 1024) (str n " B")
+        (< n 1048576) (str (/ (round (/ n 102.4)) 10) " KB")
+        true (str (/ (round (/ n 104857.6)) 10) " MB")))
+
+(defn fm-row (e)
+  {:name (if (dict-get e :dir) (str (dict-get e :name) "/") (dict-get e :name))
+   :size (if (dict-get e :dir) "" (fm-size (dict-get e :size)))
+   :modified (date-format (dict-get e :modified) "yyyy-MM-dd HH:mm")
+   :file (dict-get e :name) :path (dict-get e :path) :dir (dict-get e :dir)})
+
+;; Draw one panel at its folder — the folder above it first, as "../". A folder that has gone
+;; (moved away in the other panel, say) sends the panel back to the top.
+(defn fm-show (side)
+  (let (dir (fm-dir side) entries (dir-list dir))
+    (if (and (nil? entries) (not (= dir "")))
+      (do (var! (str "fm-" side) "") (fm-show side))
+      (do
+        (ui-set (if (= side "left") "lblLeft" "lblRight") :text (fm-where dir))
+        (ui-set (fm-grid side) :rows
+          (append (if (= dir "")
+                    ;; the top: the folders granted outside the workspace come first
+                    (map (fn (r) {:name (str r "/") :size "" :modified "" :file ".." :path r :dir true}) (roots))
+                    (list {:name "../" :size "" :modified "" :file ".." :path (fm-parent dir) :dir true}))
+                  (map fm-row (or entries '()))))))))
+
+(defn fm-load (f) (fm-show "left") (fm-show "right") (ui-focus "grdLeft"))
+(defn fm-refresh (f) (fm-show "left") (fm-show "right"))
+(defn fm-say (text) (ui-set "lblStatus" :text text))
+
+;; ── what is picked ──
+(defn fm-picked (f side) (ui-get f (fm-grid side)))
+(defn fm-real? (row) (and row (not (= (dict-get row :file) ".."))))
+(defn fm-pick (f side)
+  (var! "fm-side" side)
+  (let (row (fm-picked f side))
+    (when (fm-real? row) (ui-set "txtName" :value (dict-get row :file)))))
+(defn fm-pick-left (f) (fm-pick f "left"))
+(defn fm-pick-right (f) (fm-pick f "right"))
+
+;; ↵ or a double-click: into a folder, or the file opens in a tab beside the form.
+(defn fm-open (f side)
+  (var! "fm-side" side)
+  (let (row (fm-picked f side))
+    (cond (nil? row) nil
+          (dict-get row :dir) (do (var! (str "fm-" side) (dict-get row :path)) (fm-show side))
+          true (ui-editor (ed-open (dict-get row :path))))))
+(defn fm-open-left (f) (fm-open f "left"))
+(defn fm-open-right (f) (fm-open f "right"))
+
+(defn fm-up (side)
+  (unless (= (fm-dir side) "")
+    (var! (str "fm-" side) (fm-parent (fm-dir side)))
+    (fm-show side)))
+
+;; ── moving things across ──
+;; From one panel's pick into the other panel's folder: ed-move or ed-copy, never over a name
+;; that is taken (the app refuses, and says so).
+(defn fm-across (f from how)
+  (let (row (fm-picked f from) to (fm-other from))
+    (if (not (fm-real? row))
+      (fm-say "Pick something first")
+      (let (target (fm-join (fm-dir to) (dict-get row :file)))
+        (if (= (fm-parent (dict-get row :path)) (fm-dir to))
+          (fm-say "Both panels show the same folder")
+          (do
+            (ui-editor (if (= how "copy") (ed-copy (dict-get row :path) target) (ed-move (dict-get row :path) target)))
+            (fm-say (str (if (= how "copy") "Copied " "Moved ") (dict-get row :file) " to " (fm-where (fm-dir to))))))))))
+
+(defn fm-trash (f side)
+  (let (row (fm-picked f side))
+    (if (fm-real? row)
+      (do (ui-editor (ed-delete (dict-get row :path))) (fm-say (str (dict-get row :file) " is in the Trash")))
+      (fm-say "Pick something first"))))
+
+;; ── the keys ──
+(defn fm-key (f)
+  (let (key (ui-get f "$pressed")
+        side (cond (= (ui-get f "$control") "grdRight") "right" (= (ui-get f "$control") "grdLeft") "left" true (var "fm-side")))
+    (cond (= key "Tab") (do (var! "fm-side" (fm-other side)) (ui-focus (fm-grid (fm-other side))))
+          (or (= key "Backspace") (= key "Mod-Up")) (fm-up side)
+          (= key "Mod-Right") (fm-across f "left" "move")
+          (= key "Mod-Left") (fm-across f "right" "move")
+          (= key "Mod-Alt-Right") (fm-across f "left" "copy")
+          (= key "Mod-Alt-Left") (fm-across f "right" "copy")
+          (= key "Mod-Backspace") (fm-trash f side)
+          ;; the other panel shows this one's folder — ⇧⌘→ from the left, ⇧⌘← from the right
+          (= key "Mod-Shift-Right") (fm-same "left")
+          (= key "Mod-Shift-Left") (fm-same "right")
+          (= key "Mod-g") (do (ui-set "txtName" :value "") (ui-focus "txtName"))
+          true nil)))
+
+;; ── the box under the panels ──
+(defn fm-name (f) (str-trim (or (ui-get f "txtName") "")))
+
+(defn fm-rename (f)
+  (let (side (var "fm-side") row (fm-picked f side) name (fm-name f))
+    (cond (not (fm-real? row)) (fm-say "Pick what to rename")
+          (= name "") (fm-say "Type the new name in the box")
+          (str-contains name "/") (fm-say "A name, not a path")
+          true (do (ui-editor (ed-move (dict-get row :path) (fm-join (fm-dir side) name)))
+                   (fm-say (str "Renamed to " name))))))
+
+(defn fm-same (from)
+  (let (to (fm-other from))
+    (var! (str "fm-" to) (fm-dir from))
+    (fm-show to)
+    (fm-say (str "Both panels at " (fm-where (fm-dir from))))))
+
+;; Go to: the folder typed in the box, in the panel last used — "notes/2026", "/projects" (from the
+;; top) or "~Downloads/invoices". Only a folder that is there.
+(defn fm-go (f)
+  (let (side (var "fm-side")
+        typed (fm-name f)
+        dir (str-join (filter (fn (p) (not (= p ""))) (str-split typed "/")) "/")
+        info (if (= dir "") nil (file-info dir)))
+    (cond (= typed "") (fm-say "Type a folder in the box, like notes/2026")
+          (= dir "") (do (var! (str "fm-" side) "") (fm-show side) (ui-focus (fm-grid side)))
+          (nil? info) (fm-say (str "There is no " (fm-where dir)))
+          (not (dict-get info :dir)) (fm-say (str (fm-where dir) " is a file, not a folder"))
+          true (do (var! (str "fm-" side) dir) (fm-show side) (ui-focus (fm-grid side))
+                   (fm-say (str "At " (fm-where dir)))))))
+
+(defn fm-new-folder (f)
+  (let (side (var "fm-side") name (fm-name f))
+    (cond (= name "") (fm-say "Type the folder's name in the box")
+          (str-contains name "/") (fm-say "A name, not a path")
+          true (do (ui-editor (ed-mkdir (fm-join (fm-dir side) name)))
+                   (fm-say (str "Made " (fm-where (fm-join (fm-dir side) name))))))))

@@ -142,12 +142,12 @@ a { color: var(--accent); }
     </div></div>
     <div class="phase"><span class="n">3</span><div>
       <h3>Keys in a form</h3>
-      <div class="repo">eeditor-next · src/ui/formrun.ts · src/core/form.ts · in review</div>
+      <div class="repo">eeditor-next · src/ui/formrun.ts · src/core/form.ts · in review (#76)</div>
       <p><code>:on-key</code> on the form, with <code>:keys</code> naming the keys it takes, receives each as <code>$pressed</code> in the notation <code>(bind …)</code> uses, such as <code>"Mod-Left"</code>, and <code>$control</code>, before the app's own shortcuts. It fires outside text boxes only, since <kbd>⌘←</kbd> in a text box means “go to the start of the line”. Listboxes and grids move their pick with the arrow keys, and Enter opens. After a form's file commands, its <code>:on-refresh</code> runs.</p>
     </div></div>
     <div class="phase"><span class="n">4</span><div>
       <h3>The form: <code>workspace/examples/Files.eeform</code></h3>
-      <div class="repo">eeditor-next · plus a page in the manual</div>
+      <div class="repo">eeditor-next · workspace/examples/Files.eeform · in the manual, the welcome note and on the home page · in review</div>
       <p>Two grids, a path over each, a status line. <kbd>Tab</kbd> switches panel, <kbd>Enter</kbd> opens, <kbd>⌘→</kbd> / <kbd>⌘←</kbd> move the selection to the other panel, <kbd>⌥⌘→</kbd> / <kbd>⌥⌘←</kbd> copy it, <kbd>⌘⌫</kbd> sends it to the trash.</p>
 <pre>(defn fm-key (f key)
   (cond (= key "Mod-Right") (fm-transfer f "left" "right" ed-move)
@@ -156,7 +156,7 @@ a { color: var(--accent); }
     </div></div>
     <div class="phase"><span class="n">5</span><div>
       <h3>Folders outside the workspace</h3>
-      <div class="repo">both repos · later</div>
+      <div class="repo">both repos · in review (eelisp-rs #31) — named roots, ~Downloads/…</div>
       <p>Engine and app keep every path inside the workspace today. A file manager wants <code>~/Downloads</code> too, so the user grants extra folders, the way Open With already grants single files. On macOS the first read of a protected folder waits for the privacy dialog, so these calls run asynchronously and never on the main thread.</p>
     </div></div>
   </div>
