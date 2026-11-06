@@ -5,7 +5,8 @@
 ;;   ⌥⌘→ / ⌥⌘←    copy it there instead          ⌘⌫                 into the Trash
 ;;
 ;; Rename and New folder use the box under the panels. Each panel remembers its folder between
-;; runs. Everything here is EELisp: (dir-list …) reads a folder, and the moves are (ed-move …),
+;; runs. At the top of each panel are the folders outside the workspace you've added (⋯ → Add a
+;; folder outside the workspace…), as ~Downloads/ — move and copy into and out of them the same way. Everything here is EELisp: (dir-list …) reads a folder, and the moves are (ed-move …),
 ;; (ed-copy …) and (ed-delete …) handed to the app with ui-editor — which then runs :on-refresh, so
 ;; both panels show the folders as they are now.
 
@@ -32,6 +33,8 @@
 (defn fm-other (side) (if (= side "left") "right" "left"))
 (defn fm-grid (side) (if (= side "left") "grdLeft" "grdRight"))
 (defn fm-dir (side) (var (str "fm-" side)))
+;; How a folder reads over its panel: /notes in the workspace, ~Downloads/… outside it.
+(defn fm-where (dir) (if (str-starts-with dir "~") dir (str "/" dir)))
 
 ;; ── a panel ──
 (defn fm-size (n)
@@ -52,9 +55,12 @@
     (if (and (nil? entries) (not (= dir "")))
       (do (var! (str "fm-" side) "") (fm-show side))
       (do
-        (ui-set (if (= side "left") "lblLeft" "lblRight") :text (str "/" dir))
+        (ui-set (if (= side "left") "lblLeft" "lblRight") :text (fm-where dir))
         (ui-set (fm-grid side) :rows
-          (append (if (= dir "") '() (list {:name "../" :size "" :modified "" :file ".." :path (fm-parent dir) :dir true}))
+          (append (if (= dir "")
+                    ;; the top: the folders granted outside the workspace come first
+                    (map (fn (r) {:name (str r "/") :size "" :modified "" :file ".." :path r :dir true}) (roots))
+                    (list {:name "../" :size "" :modified "" :file ".." :path (fm-parent dir) :dir true}))
                   (map fm-row (or entries '()))))))))
 
 (defn fm-load (f) (fm-show "left") (fm-show "right") (ui-focus "grdLeft"))
@@ -98,7 +104,7 @@
           (fm-say "Both panels show the same folder")
           (do
             (ui-editor (if (= how "copy") (ed-copy (dict-get row :path) target) (ed-move (dict-get row :path) target)))
-            (fm-say (str (if (= how "copy") "Copied " "Moved ") (dict-get row :file) " to /" (fm-dir to)))))))))
+            (fm-say (str (if (= how "copy") "Copied " "Moved ") (dict-get row :file) " to " (fm-where (fm-dir to))))))))))
 
 (defn fm-trash (f side)
   (let (row (fm-picked f side))
@@ -135,4 +141,4 @@
     (cond (= name "") (fm-say "Type the folder's name in the box")
           (str-contains name "/") (fm-say "A name, not a path")
           true (do (ui-editor (ed-mkdir (fm-join (fm-dir side) name)))
-                   (fm-say (str "Made /" (fm-join (fm-dir side) name)))))))
+                   (fm-say (str "Made " (fm-where (fm-join (fm-dir side) name))))))))

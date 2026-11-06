@@ -40,7 +40,9 @@
 ;; Reading other notes: (notes) lists every .md in the workspace, (notes "reviews") those in a
 ;; folder; (read-note "inbox.md") is one's text as saved (nil if there's none). (dir-list "notes")
 ;; is one folder's entries as a file manager shows them — name, size, when it changed — and
-;; (file-info "inbox.md") is one of them. Unsaved tabs are
+;; (file-info "inbox.md") is one of them. A folder outside the workspace you added (⋯ → Add a folder
+;; outside the workspace…) is "~Downloads/…" in any of these, and in the ed- file commands; (roots)
+;; lists them. Unsaved tabs are
 ;; saved before any binding runs, so what you read is what's on screen.
 ;;
 ;; A binding may list several commands; they run in order against the live document.

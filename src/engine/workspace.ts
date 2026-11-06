@@ -34,6 +34,12 @@ export interface ExternalFile {
   writable: boolean;
 }
 
+/** A folder outside the workspace, granted to it: `~name/…` in a path. */
+export interface GrantedFolder {
+  name: string;
+  path: string;
+}
+
 export interface WorkspaceClient {
   tree(): Promise<FileNode>;
   read(path: string): Promise<string>;
@@ -48,6 +54,12 @@ export interface WorkspaceClient {
   copy(from: string, to: string): Promise<void>;
   /** Into the system Trash, where it can be put back (deleted outright where there is none). */
   trash(path: string): Promise<void>;
+  /** Folders outside the workspace the person granted it — a path names one as `~name/…`. */
+  roots(): Promise<GrantedFolder[]>;
+  /** Ask for a folder and grant it: its name, or null when cancelled. Rejects where it can't be done. */
+  addRoot(): Promise<string | null>;
+  /** Take a granted folder away (the folder itself stays as it is). */
+  removeRoot(name: string): Promise<void>;
   /** Native folder dialog → the chosen root, or null (unavailable in a plain browser). */
   pickWorkspace(): Promise<string | null>;
   /** iOS: re-open the folder picked last session (updates the workspace), or null. */
@@ -154,6 +166,15 @@ class HttpWorkspace implements WorkspaceClient {
   }
   async trash(path: string): Promise<void> {
     await post<{ ok: boolean }>(this.base + "/fs/trash", { path });
+  }
+  roots(): Promise<GrantedFolder[]> {
+    return post<GrantedFolder[]>(this.base + "/fs/roots", {});
+  }
+  async addRoot(): Promise<string | null> {
+    throw new Error("the dev bridge grants folders from EEDITOR_ROOTS (Name=/path;…) — the desktop app asks with a folder picker");
+  }
+  async removeRoot(): Promise<void> {
+    throw new Error("the dev bridge's folders come from EEDITOR_ROOTS");
   }
   async pickWorkspace(): Promise<string | null> {
     return null; // no native folder dialog in the browser
@@ -265,6 +286,18 @@ class TauriWorkspace implements WorkspaceClient {
   async trash(path: string): Promise<void> {
     const { invoke } = await import("@tauri-apps/api/core");
     await invoke("fs_trash", { path });
+  }
+  async roots(): Promise<GrantedFolder[]> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return invoke<GrantedFolder[]>("roots_list");
+  }
+  async addRoot(): Promise<string | null> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return (await invoke<string | null>("roots_add")) ?? null;
+  }
+  async removeRoot(name: string): Promise<void> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("roots_remove", { name });
   }
   async pickWorkspace(): Promise<string | null> {
     const { invoke } = await import("@tauri-apps/api/core");
