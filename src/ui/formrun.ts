@@ -541,6 +541,8 @@ export function createFormRunner(opts: FormRunnerOptions): FormRunner {
   /** The `:default` button on Enter in a single-line box, the `:cancel` one on Escape — as VB had it. */
   canvas.addEventListener("keydown", (e) => {
     if (e.key !== "Enter" && e.key !== "Escape") return;
+    // a listbox or grid has used ↵ already — it opened its pick — so it isn't the default button's
+    if (e.defaultPrevented) return;
     const target = e.target as HTMLElement;
     // A key pressed in a form running inside one of this form's frames is that form's business.
     if (target.closest(".formrun") !== root) return;

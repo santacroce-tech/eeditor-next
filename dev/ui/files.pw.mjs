@@ -137,6 +137,37 @@ test("Rename and New folder take the name in the box; ⌘⌫ sends the pick to t
   await expect(ctl(form, "lblStatus")).toHaveText("deux.md is in the Trash");
 });
 
+test("⇧⌘→ shows this folder in the other panel; ⌘G and Go to take a panel to a typed folder", async ({ page }) => {
+  const form = await run(page);
+  await go(form, "left", "fmt/a");
+  await go(form, "right", "");
+  await row(form, "left", "../").click();
+  await page.keyboard.press(`${MOD}+Shift+ArrowRight`);
+  await expect(label(form, "right")).toHaveText("/fmt/a");
+  await expect(ctl(form, "lblStatus")).toHaveText("Both panels at /fmt/a");
+
+  // ⌘G: the caret in the box; ↵ there is Go to, in the panel last used
+  await row(form, "left", "../").click();
+  await page.keyboard.press(`${MOD}+g`);
+  await expect(ctl(form, "txtName").locator("input")).toBeFocused();
+  await page.keyboard.type("/fmt/b");
+  await page.keyboard.press("Enter");
+  await expect(label(form, "left")).toHaveText("/fmt/b");
+  await expect(grid(form, "left").locator(".formrun-grid")).toBeFocused();
+  // a folder that isn't there, or a file, is said so — the panel stays
+  await ctl(form, "txtName").locator("input").fill("fmt/nowhere");
+  await ctl(form, "btnGo").locator("button").click();
+  await expect(ctl(form, "lblStatus")).toHaveText("There is no /fmt/nowhere");
+  await ctl(form, "txtName").locator("input").fill("fmt/b/three.md");
+  await ctl(form, "btnGo").locator("button").click();
+  await expect(ctl(form, "lblStatus")).toHaveText("/fmt/b/three.md is a file, not a folder");
+  await expect(label(form, "left")).toHaveText("/fmt/b");
+  // ↵ in a panel still opens its pick, and isn't taken for Go to
+  await row(form, "left", "../").click();
+  await page.keyboard.press("Enter");
+  await expect(label(form, "left")).toHaveText("/fmt");
+});
+
 test("each panel's folder is remembered between runs", async ({ page }) => {
   const form = await run(page);
   await go(form, "left", "fmt/b");
