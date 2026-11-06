@@ -5,7 +5,8 @@
 ;;
 ;; Key: modifiers joined with "-" or "+", then the key. Mod = ⌘ on macOS, Ctrl elsewhere;
 ;; Cmd, Ctrl, Alt (Option) and Shift can also be named directly.  e.g. "Mod-i", "Mod-Shift-f",
-;; "Ctrl-Alt-t". Every binding needs a modifier (function keys and Escape may go bare).
+;; "Ctrl-Alt-t". Every binding needs a modifier (function keys and Escape may go bare). Named keys:
+;; Left Right Up Down, Enter, Tab, Escape, Space, Backspace, Delete, Home End, PageUp PageDown.
 ;;
 ;; The body is EELisp, evaluated on the engine when the key fires. It returns editor commands:
 ;;

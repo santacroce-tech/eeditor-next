@@ -877,7 +877,7 @@ sequenceDiagram
       <tr><td><code>button</code></td><td><code>:text</code></td><td><code>:submit</code> checks the form first; <code>:default</code> is pressed by <kbd>↵</kbd> in a box, <code>:cancel</code> by <kbd>Esc</kbd></td></tr>
       <tr><td><code>checkbox</code></td><td><code>:value</code>, true or false</td><td></td></tr>
       <tr><td><code>radio</code></td><td>the chosen one of <code>:items</code></td><td></td></tr>
-      <tr><td><code>dropdown</code> · <code>listbox</code></td><td>the chosen one of <code>:items</code></td><td>a listbox also fires <code>on-dblclick</code></td></tr>
+      <tr><td><code>dropdown</code> · <code>listbox</code></td><td>the chosen one of <code>:items</code></td><td>a listbox also fires <code>on-dblclick</code> (or <kbd>↵</kbd>)</td></tr>
       <tr><td><code>grid</code></td><td>the selected row, a dict</td><td><code>:columns</code>; <code>:rows</code> from a query; <code>:sortable</code> headers; a <code>:filter</code> box; <code>:page-size</code> pages; <code>:editable</code> cells, with <code>on-edit</code> handed the row as edited</td></tr>
       <tr><td><code>board</code></td><td>the card picked, a dict</td><td>a kanban: <code>:rows</code> as cards in a column per value of their <code>:lane-by</code> field; <code>:lanes</code> orders the columns; <code>:card</code> and <code>:sub</code> name what a card shows. A drag to another column, or <kbd>⌥←</kbd>/<kbd>⌥→</kbd>, fires <code>on-move</code> with <code>$from</code> and <code>$to</code></td></tr>
       <tr><td><code>date</code></td><td><code>:value</code>, <code>yyyy-mm-dd</code></td><td><code>:min</code>, <code>:max</code></td></tr>
@@ -922,6 +922,43 @@ sequenceDiagram
       on a running tab. The window floats over the app, drags by its title bar, and comes back where
       you left it. <code>(ui-open …)</code> from another form opens one the same way.
     </p>
+    <h3 id="form-keys">Keys in a form</h3>
+    <p>
+      In a listbox or a grid, <kbd>↑</kbd> <kbd>↓</kbd>, <kbd>Home</kbd> <kbd>End</kbd> and
+      <kbd>PageUp</kbd> <kbd>PageDown</kbd> move the pick, and <code>:on-change</code> hears it;
+      <kbd>↵</kbd> is a double-click. A form can take keys of its own as well: <code>:on-key</code>
+      names the handler, and <code>:keys</code> the keys it takes, written as a
+      <code>(bind …)</code> writes them. The key arrives as <code>$pressed</code> and the control
+      that had the focus as <code>$control</code>, both read with <code>ui-get</code>.
+    </p>
+<pre><code>(form <span class="st">"Two folders"</span> :size (520 320) :on-load fill :on-refresh fill
+  :on-key on-key :keys (<span class="st">"Mod-Right"</span> <span class="st">"Mod-Left"</span> <span class="st">"Tab"</span>)
+  (listbox lstLeft :at (10 10) :size (245 300))
+  (listbox lstRight :at (265 10) :size (245 300)))
+
+(defn fill (f)
+  (ui-set <span class="st">"lstLeft"</span> :items (map (fn (e) (dict-get e :name)) (dir-list <span class="st">"inbox"</span>)))
+  (ui-set <span class="st">"lstRight"</span> :items (map (fn (e) (dict-get e :name)) (dir-list <span class="st">"archive"</span>))))
+
+(defn on-key (f)
+  (let (key (ui-get f <span class="st">"$pressed"</span>) left (ui-get f <span class="st">"lstLeft"</span>) right (ui-get f <span class="st">"lstRight"</span>))
+    (cond (and (= key <span class="st">"Mod-Right"</span>) left)
+            (ui-editor (ed-move (str <span class="st">"inbox/"</span> left) (str <span class="st">"archive/"</span> left)))
+          (and (= key <span class="st">"Mod-Left"</span>) right)
+            (ui-editor (ed-move (str <span class="st">"archive/"</span> right) (str <span class="st">"inbox/"</span> right)))
+          (= key <span class="st">"Tab"</span>)
+            (ui-focus (cond (= (ui-get f <span class="st">"$control"</span>) <span class="st">"lstLeft"</span>) <span class="st">"lstRight"</span> true <span class="st">"lstLeft"</span>)))))</code></pre>
+    <p>
+      The keys a form names are its own while it has the focus, even one the app uses —
+      <kbd>⌘B</kbd>, say — but never while the caret is in a text box, where typing comes first.
+      With no <code>:keys</code>, the form takes every key with <kbd>⌘</kbd>, <kbd>⌃</kbd> or
+      <kbd>⌥</kbd>, and <kbd>F1</kbd>–<kbd>F12</kbd>. The modifiers come in the order Mod, Ctrl,
+      Alt, Shift: <code>"Mod-Alt-Left"</code>. After file commands a form hands to
+      <code>ui-editor</code> — <code>ed-move</code>, <code>ed-copy</code>, <code>ed-delete</code>,
+      <code>ed-mkdir</code>, <code>ed-write</code>, <code>ed-append</code> — its
+      <code>:on-refresh</code> runs once they are done, so a listing shows the folder as it is now.
+    </p>
+
     <h3>Maximizing, and controls that stretch</h3>
     <p>
       <strong>⤢</strong> in a window's title bar — or a double-click on the title — fills the app
@@ -1306,7 +1343,10 @@ zzalinhar — function
       macOS and <kbd>Ctrl</kbd> elsewhere, and <code>Cmd</code>, <code>Ctrl</code>, <code>Alt</code>
       (Option) and <code>Shift</code> can be named directly: <code>"Mod-Shift-f"</code>,
       <code>"Ctrl-Alt-t"</code>. Every binding needs at least one modifier — function keys and
-      <kbd>Esc</kbd> may go bare. A later binding wins the same key, and unbinding one hands the key
+      <kbd>Esc</kbd> may go bare. Named keys are <code>Left</code> <code>Right</code>
+      <code>Up</code> <code>Down</code>, <code>Enter</code>, <code>Tab</code>, <code>Escape</code>,
+      <code>Space</code>, <code>Backspace</code>, <code>Delete</code>, <code>Home</code>
+      <code>End</code> and <code>PageUp</code> <code>PageDown</code>. A later binding wins the same key, and unbinding one hands the key
       back to the editor's own behaviour.
     </p>
 

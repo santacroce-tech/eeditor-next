@@ -565,6 +565,13 @@ export interface FormSpec {
   onRefresh?: string;
   /** `:on-close` — asked before the form closes: a message refuses ("unsaved changes"), nil lets it go. */
   onClose?: string;
+  /**
+   * `:on-key` — a key pressed in the form, outside a text box: the key is `$pressed` ("Mod-Right"), the
+   * control that had the focus `$control`. `:keys ("Mod-Left" "Tab")` names the keys it takes; with
+   * no `:keys`, every key with ⌘/Ctrl/Alt and F1–F12.
+   */
+  onKey?: string;
+  keys?: string[];
   /** `:menu (("File" ("New" new-item) ("-") ("Quit" quit)) …)` — a menu bar under the title. */
   menu: Menu[];
   controls: Control[];
@@ -738,6 +745,9 @@ export function parseFormSpec(x: Sx): FormSpec | { error: string } {
     else if (k === "on-public" && fnName(v) !== undefined) spec.onPublic = fnName(v);
     else if (k === "on-close" && fnName(v) !== undefined) spec.onClose = fnName(v);
     else if (k === "on-refresh" && fnName(v) !== undefined) spec.onRefresh = fnName(v);
+    else if (k === "on-key" && fnName(v) !== undefined) spec.onKey = fnName(v);
+    else if (k === "keys" && v.t === "list" && v.v.every((x) => x.t === "str"))
+      spec.keys = v.v.map((x) => (x as { v: string }).v);
     else if (k === "main" && v.t === "bool") spec.main = v.v || undefined;
     else if (k === "menu") spec.menu = parseMenu(v);
     else spec.extra.push([k, v]);
@@ -798,6 +808,8 @@ export function printFormSpec(spec: FormSpec): string {
   if (spec.onPublic) head.push(kw("on-public"), sym(spec.onPublic));
   if (spec.onClose) head.push(kw("on-close"), sym(spec.onClose));
   if (spec.onRefresh) head.push(kw("on-refresh"), sym(spec.onRefresh));
+  if (spec.onKey) head.push(kw("on-key"), sym(spec.onKey));
+  if (spec.keys) head.push(kw("keys"), list(...spec.keys.map(str)));
   if (spec.menu.length) head.push(kw("menu"), menuSx(spec.menu));
   for (const [k, v] of spec.extra) head.push(kw(k), v);
   const lines = [printSx(list(...head)).slice(0, -1), ...spec.controls.map((c) => "  " + printSx(controlSx(c)))];
