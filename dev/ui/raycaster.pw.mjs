@@ -6,8 +6,8 @@ import { expect, test } from "@playwright/test";
 async function run(page) {
   await page.goto("/");
   await page.locator(".tree-file", { hasText: "Raycaster.eeform" }).click();
-  await page.waitForSelector(".fd-canvas");
-  await page.locator(".form-modes .head-btn", { hasText: "run" }).click();
+  // opening asks — the default (forms-open "ask") — and this one is to run
+  await page.locator(".dlg-panel .dlg-btn", { hasText: "Run" }).click();
   await page.waitForSelector(".formrun-screen");
   return page.locator(".formrun-host");
 }

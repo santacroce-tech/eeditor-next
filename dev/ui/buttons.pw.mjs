@@ -89,8 +89,7 @@ test("writing a header button takes the header over: order, labels, and what's l
   await expect(buttons.first()).toHaveAttribute("aria-pressed", "true");
   // an unlabelled one is labelled by the app, and follows the state
   await buttons.nth(2).click();
-  await expect(buttons.nth(2)).toHaveText("▦ VB6");
-  await buttons.nth(2).click();
+  await expect(buttons.nth(2)).toHaveText("☾ dark");
   await buttons.nth(2).click(); // back to dark for the specs after this one
   await expect(buttons.nth(2)).toHaveText("☀ light");
   await writeFile(CONFIG, config("number it"));

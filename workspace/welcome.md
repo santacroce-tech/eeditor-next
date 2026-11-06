@@ -36,4 +36,5 @@ Tags like #welcome and #demo are indexed from your notes, and [[todo]] is a wiki
   closes the one in front.
 - ⌘B hides and shows the sidebar; drag its right edge to make it wider (double-click the edge to
   put it back).
+- Opening a form asks: ▶ Run, or Design (which runs nothing). F5 runs the form in front.
 - ⌘⇧K opens the shortcut table — which is EELisp too, so every key here can be changed.

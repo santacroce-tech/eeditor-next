@@ -13,6 +13,7 @@
     - ⌘⇧I new note stamped with date and time
     - ⌘B show/hide the sidebar — drag its edge to resize
     - ⌃Tab ⌃⇧Tab next / previous tab · ⌘1…⌘9 pick one
+    - F5 run the form in front
     - All of these live in keybindings.eelisp
   - App menu
     - ⌘Q quit — unsaved work is saved first

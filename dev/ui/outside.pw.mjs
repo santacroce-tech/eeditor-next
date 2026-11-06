@@ -22,6 +22,7 @@ const config = `
 (bind "Ctrl-Alt-e" (ed-move "ot/x.md" "~Outside/../escaped.md"))
 (bind "Ctrl-Alt-n" (ed-move "ot/x.md" "~Nowhere/x.md"))
 (bind "Ctrl-Alt-p" (ed-open "~Outside/report.md"))
+(forms-open "run")
 `;
 
 test.beforeAll(async () => {
@@ -84,8 +85,7 @@ test("a note in it opens in a tab and saves back there", async ({ page }) => {
 test("Files shows it at the top of a panel, and moves into it", async ({ page }) => {
   await page.goto("/");
   await page.locator(".tree-file", { hasText: "Files.eeform" }).click();
-  await page.waitForSelector(".fd-canvas");
-  await page.locator(".form-modes .head-btn", { hasText: "run" }).click();
+  // this spec's keybindings say (forms-open "run"): no question, it runs
   const form = page.locator(".formrun-host");
   const grid = (side) => form.locator(`.formrun-ctl[data-name=${side === "left" ? "grdLeft" : "grdRight"}]`);
   const label = (side) => form.locator(`.formrun-ctl[data-name=${side === "left" ? "lblLeft" : "lblRight"}]`);

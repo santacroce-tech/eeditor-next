@@ -32,7 +32,7 @@ import { createAgendaSetup } from "./ui/agenda-setup";
 import { createSnippets } from "./ui/snippets";
 import { openHelp, LISP_HELP } from "./ui/help";
 import { createKeybindings, type CommandTable } from "./ui/keybindings";
-import { clockDefs, isMacPlatform, keyLabel, lispString, parseKeySpec, type Panel } from "./core/keybindings";
+import { clockDefs, isMacPlatform, keyLabel, lispString, parseKeySpec, type FormsOpen, type Panel } from "./core/keybindings";
 import { createSheetFunctions, FUNCTIONS_PATH, FUNCTIONS_TEMPLATE } from "./sheets/functions";
 import { createOpenWith } from "./ui/openwith";
 import { exportPdf } from "./ui/pdf";
@@ -41,7 +41,7 @@ import { imageMime, resolveNoteRelative } from "./core/mdmedia";
 import { FORM_SLOT, collectApp, exportAppHtml, isExportedPage, readExportedApp, unpackPlan } from "./core/export";
 import { exportPanel } from "./ui/exportdialog";
 import { createImages } from "./ui/images";
-import { promptModal, confirmModal, infoModal, showContextMenu, toast, type MenuItem } from "./ui/dialogs";
+import { choiceModal, promptModal, confirmModal, infoModal, showContextMenu, toast, type MenuItem } from "./ui/dialogs";
 import { resolveWikiLink } from "./core/fuzzy";
 import { backlinksTo } from "./core/backlinks";
 import { linkifyWikiLinks } from "./ui/wikilinks";
@@ -941,8 +941,9 @@ function main(): void {
     else toast(`No note matching "${name}"`);
   };
 
-  // the theme walks dark → light → vb6 → dark; its button shows the theme you'd switch TO
-  const THEME_LABEL: Record<ThemeName, string> = { dark: "☾ dark", light: "☀ light", vb6: "▦ VB6" };
+  // the theme flips dark ⇄ light; its button shows the theme you'd switch TO. (A "vb6" saved before
+  // that theme went is not a theme any more, so it opens dark.)
+  const THEME_LABEL: Record<ThemeName, string> = { dark: "☾ dark", light: "☀ light" };
   const nextTheme = (): ThemeName => THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
   const applyTheme = (t: ThemeName): void => {
     theme = t;
@@ -1080,23 +1081,45 @@ function main(): void {
     toast("No agenda window here yet — right-click the workspace → Install the PIM keys… adds pim/Agenda");
   });
 
-  const openFile = async (path: string): Promise<void> => {
+  /**
+   * (forms-open "ask"): Run or Design, for this form, now. Design is the one ↵ picks, and what
+   * Escape or Cancel leave you with — it runs nothing.
+   */
+  async function askRunOrDesign(path: string): Promise<FormsOpen> {
+    const r = await choiceModal(
+      `Open ${basename(path)}`,
+      "Run it, or open it in the designer? Running a form runs its code — the designer runs nothing.",
+      [
+        { id: "run", label: "▶ Run" },
+        { id: "design", label: "Design", primary: true },
+      ],
+    );
+    return r.id === "run" ? "run" : "design";
+  }
+  /** How a form opens in its tab — the keybindings' (forms-open …), the designer without one. */
+  let formsOpen: FormsOpen = "design";
+  /** Open a file in a tab — a form as (forms-open …) says, unless `formMode` says otherwise. */
+  const openFile = async (path: string, formMode?: FormsOpen): Promise<void> => {
     const existing = tabs.findIndex((t) => t.path === path);
     if (existing >= 0) {
       switchTab(existing);
       return;
     }
+    let opensAs = formMode ?? formsOpen;
+    if (isFormPath(path) && opensAs === "ask") opensAs = await askRunOrDesign(path);
     if (isSheetPath(path)) return openSheet(path);
     const content = await ws.read(path);
     contentCache.set(path, content);
     tabs.push(
       isFormPath(path)
-        ? { path, content, dirty: false, form: true, mode: "design" }
+        ? { path, content, dirty: false, form: true, mode: opensAs === "code" ? "code" : "design" }
         : isMindmapPath(path)
           ? { path, content, dirty: false, mindmap: true, mapMode: "map" }
           : { path, content, dirty: false },
     );
     switchTab(tabs.length - 1);
+    // (forms-open "run"): straight into it, as ▶ run (or F5) would
+    if (isFormPath(path) && opensAs === "run") await setFormMode("run");
   };
 
   /** A sheet tab. `external` for one opened in place from outside the workspace, by absolute path. */
@@ -1203,7 +1226,7 @@ function main(): void {
       return;
     }
     await sidebar.refresh();
-    await openFile(path);
+    await openFile(path, "design"); // a new form is empty: there is nothing to run yet
   }
   async function newMindmap(dir: string): Promise<void> {
     const name = await promptModal("New mind map", "Untitled", "Create");
@@ -1491,7 +1514,7 @@ function main(): void {
         if (!env.ok) toast(`${basename(p)}: ${env.error}`);
       }
       await sidebar.refresh();
-      await openFile(plan.main);
+      await openFile(plan.main, "design"); // it came from outside: look at it before it runs
       const n = plan.forms.length;
       toast(`Unpacked ${n} form${n > 1 ? "s" : ""}${plan.images.length ? ` and ${plan.images.length} image${plan.images.length > 1 ? "s" : ""}` : ""} into ${basename(folder)}`);
     } catch (e) {
@@ -2241,7 +2264,6 @@ function main(): void {
     "toggle-theme": () => applyTheme(nextTheme()),
     "theme-dark": () => applyTheme("dark"),
     "theme-light": () => applyTheme("light"),
-    "theme-vb6": () => applyTheme("vb6"),
     "export-pdf": () => void exportCurrentPdf(),
     "insert-image": () => void images.pick(),
     snippets: () => snippets.open(),
@@ -2441,6 +2463,7 @@ function main(): void {
       refreshHeader();
     },
     onPanels: (panels) => void applyPanels(panels),
+    onFormsOpen: (how) => (formsOpen = how),
   });
 
   const sheetFns = createSheetFunctions({ engine, ws, note: (t) => repl.note(t) });
