@@ -427,6 +427,9 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
       runCommand(binding.command); // no engine round-trip for a plain (ed-cmd "…")
       return;
     }
+    // Where the focus is now: the engine answers later, and by then the person may have moved on —
+    // opened ⌘P, a dialog, a form. The note gets its focus back only if it still has it, or nobody does.
+    const focusedAtStart = document.activeElement;
     if (!(await ensurePrelude())) return;
     await opts.flush?.();
     const env = await engine.evalSrc(`${context(binding)}\n${binding.source}`);
@@ -436,7 +439,13 @@ export function createKeybindings(opts: KeybindingsOptions): Keybindings {
       return;
     }
     if (env.output) opts.note(env.output.replace(/\n$/, ""));
-    if (apply(env.result)) (opts.focus ?? (() => editor.view.focus()))();
+    if (apply(env.result) && focusStayed(focusedAtStart)) (opts.focus ?? (() => editor.view.focus()))();
+  }
+
+  /** The focus is where it was, or in the note, or nowhere — nothing else has taken it meanwhile. */
+  function focusStayed(was: Element | null): boolean {
+    const now = document.activeElement;
+    return now === was || now === null || now === document.body || editor.view.dom.contains(now);
   }
 
   async function press(button: Button): Promise<void> {

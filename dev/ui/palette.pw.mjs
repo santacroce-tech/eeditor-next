@@ -92,7 +92,8 @@ test("the one picked last comes first; backspacing the > is the file finder agai
   await input(page).press("Enter");
   await page.keyboard.press(`${MOD}+Shift+p`);
   await expect(rows(page).first().locator(".qo-title")).toHaveText("Insert the palz greeting");
-  await page.keyboard.press("Backspace");
+  // to the box itself: on a slow machine a key sent to the page can land before the box has the focus
+  await input(page).press("Backspace");
   await expect(input(page)).toHaveValue("");
   await page.keyboard.type("pal-no");
   await expect(rows(page).first()).toHaveText("pal-note.md");

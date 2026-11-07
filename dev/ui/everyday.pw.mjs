@@ -30,6 +30,8 @@ const active = (page) => page.locator(".etab.active .etab-label");
 
 async function openNote(page) {
   await page.goto("/");
+  // the launch note first: a click before the app has opened it is undone when it does
+  await expect(active(page)).toHaveText("welcome.md");
   await page.locator(".tree-file", { hasText: NOTE }).click();
   await expect(active(page)).toHaveText(NOTE);
   await page.locator(".cm-content").click();
