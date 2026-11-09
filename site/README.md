@@ -23,7 +23,7 @@ structural changes in step if you want them to stay siblings.
 Code samples use three classes for colour: `.cm` comment, `.st` string, `.kw` keyword.
 
 **Everything on these pages is checked against the real engine.** If you change a code sample, run it
-first — `../../eelisp-rs/target/release/eelisp yourfile.eelisp` — because several of the obvious-looking
+first — `eelisp-rs/target/release/eelisp yourfile.eelisp` (the submodule, built with `cargo build --release`) — because several of the obvious-looking
 forms are wrong (`insert` takes a dict, not keyword arguments; a rule condition uses `str-matches`,
 while `match` returns capture groups).
 

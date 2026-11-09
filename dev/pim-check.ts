@@ -18,7 +18,7 @@ import { parseKeybindings, lispString, clockDefs, type Binding } from "../src/co
 import { appendUnder } from "../src/core/append";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const BIN = process.env.EELISP_BIN ?? path.join(root, "../eelisp-rs/target/release/eelisp");
+const BIN = process.env.EELISP_BIN ?? path.join(root, "eelisp-rs/target/release/eelisp");
 
 type Env = { ok: boolean; result: unknown; output?: string; error?: string };
 

@@ -11,7 +11,7 @@ import { readFile, writeFile, readdir, mkdir, rename, rm, stat, realpath, cp } f
 import path from "node:path";
 import readline from "node:readline";
 
-const BIN = process.env.EELISP_BIN ?? fileURLToPath(new URL("../../eelisp-rs/target/release/eelisp", import.meta.url));
+const BIN = process.env.EELISP_BIN ?? fileURLToPath(new URL("../eelisp-rs/target/release/eelisp", import.meta.url));
 const WS = path.resolve(process.env.WORKSPACE_ROOT ?? fileURLToPath(new URL("../workspace", import.meta.url)));
 const PORT = process.env.BRIDGE_PORT ? Number(process.env.BRIDGE_PORT) : 8787;
 // Mirrors src-tauri's BINARY_EXT: any file is editable unless its bytes plainly aren't text.

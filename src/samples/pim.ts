@@ -171,7 +171,7 @@ The keys only work in a build of EEditor that has the PIM, with this folder open
 
 **If ⌘⌥K does nothing:**
 
-1. **The app is too old.** The PIM landed on 2026-10-05; an app built before that has none of it. From the repo: \`git pull\`, then \`(cd ../eelisp-rs && git pull)\` — the app compiles the engine from that checkout — then \`npm run tauri build\`, and copy \`src-tauri/target/release/bundle/macos/eeditor-next.app\` over the one in /Applications.
+1. **The app is too old.** The PIM landed on 2026-10-05; an app built before that has none of it. From the repo: \`git pull && git submodule update --init\` — the app compiles the engine from its eelisp-rs submodule — then \`npm run tauri build\`, and copy \`src-tauri/target/release/bundle/macos/eeditor-next.app\` over the one in /Applications.
 2. **Another app took the key.** Window managers and launchers sometimes claim ⌘⌥ + a letter for the whole system; quit the app or change its shortcut.
 3. **The config didn't load.** A toast says *keybindings: N problem(s)*; open the REPL (⌘J) to see which line. Save the file again (⌘S) after fixing it — it reloads on every save.
 4. **The caret isn't in a note.** Click into the text first. Keys pressed while the agenda or a form has focus go there.

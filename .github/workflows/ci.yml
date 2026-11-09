@@ -29,18 +29,15 @@ jobs:
   # The parts the frontend job can't see: the Tauri shell compiles, and the app's
   # contract with the real engine binary still holds.
   #
-  # `src-tauri` depends on the engine by path (`../../eelisp-rs`), so both repos are
-  # checked out side by side, exactly as they sit on a dev machine.
+  # The engine is the eelisp-rs submodule: `src-tauri` compiles it, the dev scripts run its binary, and
+  # it is built at the commit this one pins — not whatever eelisp-rs main is today.
   native:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
         with:
           path: eeditor-next
-      - uses: actions/checkout@v4
-        with:
-          repository: santacroce-tech/eelisp-rs
-          path: eelisp-rs
+          submodules: true
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -51,8 +48,8 @@ jobs:
         with:
           workspaces: |
             eeditor-next/src-tauri
-            eelisp-rs
-            eelisp-rs/web
+            eeditor-next/eelisp-rs
+            eeditor-next/eelisp-rs/web
       - name: System dependencies (webkit2gtk for Tauri)
         run: |
           sudo apt-get update
@@ -61,7 +58,7 @@ jobs:
             libayatana-appindicator3-dev libxdo-dev build-essential
 
       - name: Build the engine binary
-        working-directory: eelisp-rs
+        working-directory: eeditor-next/eelisp-rs
         run: cargo build --release --bin eelisp
 
       - name: Install app dependencies
@@ -71,16 +68,16 @@ jobs:
       # The engine compiled to WebAssembly, for dev/ui/wasm.pw.mjs (which skips without it). Only
       # once eelisp-rs has its web/ crate; wasm-bindgen must match the version web/Cargo.toml pins.
       - name: WebAssembly toolchain
-        if: hashFiles('eelisp-rs/web/build.sh') != ''
+        if: hashFiles('eeditor-next/eelisp-rs/web/build.sh') != ''
         run: |
           rustup target add wasm32-unknown-unknown
           rustup component add llvm-tools
       - uses: taiki-e/install-action@v2
-        if: hashFiles('eelisp-rs/web/build.sh') != ''
+        if: hashFiles('eeditor-next/eelisp-rs/web/build.sh') != ''
         with:
           tool: wasm-bindgen@0.2.126
       - name: Build the WebAssembly engine, and the template forms are exported into
-        if: hashFiles('eelisp-rs/web/build.sh') != ''
+        if: hashFiles('eeditor-next/eelisp-rs/web/build.sh') != ''
         working-directory: eeditor-next
         run: |
           npm run engine:wasm
@@ -94,7 +91,7 @@ jobs:
       - name: Engine contract (smoke)
         working-directory: eeditor-next
         env:
-          EELISP_BIN: ${{ github.workspace }}/eelisp-rs/target/release/eelisp
+          EELISP_BIN: ${{ github.workspace }}/eeditor-next/eelisp-rs/target/release/eelisp
         run: npm run smoke
 
       # The ZX Spectrum written in EELisp: the machine around its Z80 (the Z80 itself is checked
@@ -102,21 +99,21 @@ jobs:
       - name: The Spectrum machine
         working-directory: eeditor-next
         env:
-          EELISP_BIN: ${{ github.workspace }}/eelisp-rs/target/release/eelisp
+          EELISP_BIN: ${{ github.workspace }}/eeditor-next/eelisp-rs/target/release/eelisp
         run: npm run spectrum:test
 
       # The spreadsheet functions every sheet formula can call (src/sheets/functions.eelisp).
       - name: The sheet functions
         working-directory: eeditor-next
         env:
-          EELISP_BIN: ${{ github.workspace }}/eelisp-rs/target/release/eelisp
+          EELISP_BIN: ${{ github.workspace }}/eeditor-next/eelisp-rs/target/release/eelisp
         run: npm run sheets:test
 
       # The grid only exists in a browser: scrolling, the clipboard and a drag have no unit test.
       - name: The grid, in a browser
         working-directory: eeditor-next
         env:
-          EELISP_BIN: ${{ github.workspace }}/eelisp-rs/target/release/eelisp
+          EELISP_BIN: ${{ github.workspace }}/eeditor-next/eelisp-rs/target/release/eelisp
         run: |
           npx playwright install --with-deps chromium
           npm run test:ui

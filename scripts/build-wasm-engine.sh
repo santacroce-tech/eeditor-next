@@ -3,13 +3,13 @@
 #
 #   npm run engine:wasm
 #
-# Needs eelisp-rs beside this repo (../eelisp-rs), with its web/ crate — see eelisp-rs/web/build.sh
+# Needs the eelisp-rs submodule (git submodule update --init), with its web/ crate — see eelisp-rs/web/build.sh
 # for the one-time setup (the wasm32 target, wasm-bindgen-cli, llvm-tools). Then open the app with
 # ?engine=wasm, or build it with VITE_ENGINE=wasm.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-WEB="${EELISP_WEB:-../eelisp-rs/web}"
+WEB="${EELISP_WEB:-eelisp-rs/web}"
 if [ ! -x "$WEB/build.sh" ]; then
   echo "no $WEB/build.sh — the WebAssembly engine needs eelisp-rs with its web/ crate" >&2
   exit 1

@@ -6,7 +6,9 @@ export default defineConfig({
   clearScreen: false,
   // the About box's version — package.json is the one CI checks a release tag against
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },
-  server: { port: 5173, strictPort: true },
+  // eelisp-rs/ is the engine's submodule: Rust, and a target/ folder of build output — nothing the
+  // dev server should watch.
+  server: { port: 5173, strictPort: true, watch: { ignored: ["**/eelisp-rs/**", "**/src-tauri/target/**"] } },
   build: {
     outDir: "dist",
     target: "es2022",

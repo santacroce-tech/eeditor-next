@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import readline from "node:readline";
 
-const BIN = process.env.EELISP_BIN ?? fileURLToPath(new URL("../../eelisp-rs/target/release/eelisp", import.meta.url));
+const BIN = process.env.EELISP_BIN ?? fileURLToPath(new URL("../eelisp-rs/target/release/eelisp", import.meta.url));
 
 /** Start `eelisp --serve …`; `ev(src)` sends one request, `close()` ends the process. */
 function serve(args = []) {

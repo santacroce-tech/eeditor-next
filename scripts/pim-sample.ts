@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 import { addSamples } from "../src/samples/workspace";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const BIN = process.env.EELISP_BIN ?? path.join(root, "../eelisp-rs/target/release/eelisp");
+const BIN = process.env.EELISP_BIN ?? path.join(root, "eelisp-rs/target/release/eelisp");
 const out = path.resolve(process.argv[2] ?? "pim-sample");
 
 type Env = { ok: boolean; result: unknown; error?: string };

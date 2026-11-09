@@ -2,7 +2,7 @@
 
 The next-version EEditor UI — **TypeScript + CodeMirror 6**, packaged with **Tauri** for
 desktop (macOS/Linux/Windows) and shipped as a **PWA** for the web. It embeds the Rust
-`eelisp` engine (`../eelisp-rs`) as a native command (Tauri) or as WebAssembly (browser).
+`eelisp` engine (the `eelisp-rs/` submodule) as a native command (Tauri) or as WebAssembly (browser).
 
 > This directory is a **plan**, not yet an app. It captures the target structure and the
 > engine boundary so the build can start cleanly. See `../eeditor/docs/ANALYSIS.md` (§5, §7).
@@ -34,7 +34,7 @@ eeditor-next/
   index.html  vite.config.ts  package.json  tsconfig.json
 ```
 
-## The engine boundary — BUILT ✅ (in `../eelisp-rs`, ANALYSIS §5)
+## The engine boundary — BUILT ✅ (in the `eelisp-rs/` submodule, ANALYSIS §5)
 
 The Rust engine already exposes the whole contract. The Tauri backend is a single command:
 
@@ -177,6 +177,20 @@ or unreadable the bundled defaults still apply.
 
 The real target: a native window (macOS/Linux/Windows), engine compiled in, **no browser, no bridge**.
 
+The engine is a git submodule, `eelisp-rs/`, pinned to one commit of
+[eelisp-rs](https://github.com/santacroce-tech/eelisp-rs). Clone with it, or fetch it afterwards:
+
+```bash
+git clone --recursive https://github.com/santacroce-tech/eeditor-next.git
+git submodule update --init            # in a clone made without --recursive, and after a pull that moves it
+```
+
+To take a newer engine, move the pointer and commit it — a change like any other, reviewed in a PR:
+
+```bash
+git -C eelisp-rs pull origin main && git add eelisp-rs && git commit -m "Engine: …"
+```
+
 ```bash
 npm install
 npm run tauri dev      # opens the native window; hot-reloads the UI (Vite behind the scenes)
@@ -184,7 +198,7 @@ npm run tauri build    # distributable app → src-tauri/target/release/bundle/�
 ```
 
 `src-tauri/` is a full Tauri v2 project (config, icons, capabilities). The engine is a path
-dependency (`eelisp = { path = "../../eelisp-rs" }`) linked in-process via `EngineHandle`; commands
+dependency on the submodule (`eelisp = { path = "../eelisp-rs" }`) linked in-process via `EngineHandle`; commands
 `eelisp_eval` + `fs_tree/read/write` + `pick_workspace` back the UI. The **workspace root is
 remembered** across launches (saved to the app config dir) — resolution order: last-picked folder →
 `$EEDITOR_WORKSPACE` → `./workspace` → home. Use the "open…" button to pick a different folder.
@@ -207,7 +221,7 @@ Studio + SDK + NDK; not yet attempted.)
 ### Optional: browser dev + CI checks (no native build)
 
 ```bash
-cargo build --release --manifest-path ../eelisp-rs/Cargo.toml   # engine binary for the dev bridge
+cargo build --release --manifest-path eelisp-rs/Cargo.toml   # engine binary for the dev bridge
 npm run smoke      # engine ↔ TS contract test (10/10)
 npm test           # unit tests (15)
 npm run dev        # Node bridge + Vite → http://localhost:5173  (the frontend auto-uses HTTP here)

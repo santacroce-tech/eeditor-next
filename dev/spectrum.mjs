@@ -3,7 +3,7 @@
 //   node dev/spectrum.mjs          run src/spectrum/zx.test.eelisp
 //   node dev/spectrum.mjs bench    run a busy Z80 loop for 50 frames and report the speed
 //
-// Both run on the real engine binary (EELISP_BIN, default ../eelisp-rs/target/release/eelisp).
+// Both run on the real engine binary (EELISP_BIN, default eelisp-rs/target/release/eelisp — the submodule).
 // Real time is 50 frames a second — 3.5 million T-states.
 
 import { spawnSync } from "node:child_process";
@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const BIN = process.env.EELISP_BIN ?? fileURLToPath(new URL("../../eelisp-rs/target/release/eelisp", import.meta.url));
+const BIN = process.env.EELISP_BIN ?? fileURLToPath(new URL("../eelisp-rs/target/release/eelisp", import.meta.url));
 const src = (p) => readFileSync(fileURLToPath(new URL(p, import.meta.url)), "utf8");
 const work = mkdtempSync(join(tmpdir(), "zx-"));
 

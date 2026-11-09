@@ -1,5 +1,5 @@
 // The MSX's own tests (src/msx/msx.test.eelisp) on the real engine binary, with the Z80, the MSX
-// and C-BIOS loaded first. EELISP_BIN, default ../eelisp-rs/target/release/eelisp.
+// and C-BIOS loaded first. EELISP_BIN, default eelisp-rs/target/release/eelisp — the submodule.
 //
 //   node dev/msx.mjs          run the tests
 //   node dev/msx.mjs bench    C-BIOS and the demo cartridge for 300 frames, and the speed
@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assemble } from "./z80asm.mjs";
 
-const BIN = process.env.EELISP_BIN ?? fileURLToPath(new URL("../../eelisp-rs/target/release/eelisp", import.meta.url));
+const BIN = process.env.EELISP_BIN ?? fileURLToPath(new URL("../eelisp-rs/target/release/eelisp", import.meta.url));
 const src = (p) => readFileSync(fileURLToPath(new URL(p, import.meta.url)), "utf8");
 const work = mkdtempSync(join(tmpdir(), "msx-"));
 const machine = ["../src/spectrum/zx.eelisp", "../src/msx/msx.eelisp", "../src/msx/cbios.eelisp"].map(src).join("\n");
