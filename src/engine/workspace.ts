@@ -116,6 +116,21 @@ export interface WorkspaceClient {
   exitApp(): Promise<void>;
   /** This window is flushed and may close: just it — or the app, when it's the last window. */
   closeWindow(): Promise<void>;
+  /**
+   * The app this build carries, when it is an exported Mac app (Export as Mac app…): its app.json,
+   * as text — a `DesktopApp` (core/export.ts). Null for EEditor itself. The dev bridge serves the
+   * file EEDITOR_APP names, so the runtime's desktop mode can be tried in a browser.
+   */
+  hostedApp(): Promise<string | null>;
+  /** Open a file with the app the system opens it with — what `(ed-open …)` does in an exported app. */
+  openWithSystem(path: string): Promise<void>;
+  /** Whether this build can make a Mac app out of a form — the installed macOS app only. */
+  canExportMacApp(): boolean;
+  /**
+   * Ask where, then write `<name>.app`: a copy of EEditor that runs only the app in `appJson`. The
+   * path it was written to, or null when the save dialog was cancelled.
+   */
+  exportMacApp(name: string, appJson: string): Promise<string | null>;
 }
 
 /** The bridge answers a failure with {ok:false,error} — that message is the useful part. */
@@ -251,6 +266,22 @@ class HttpWorkspace implements WorkspaceClient {
   }
   async closeWindow(): Promise<void> {
     /* likewise */
+  }
+  async hostedApp(): Promise<string | null> {
+    try {
+      return await post<string | null>(this.base + "/app/hosted", {});
+    } catch {
+      return null; // no bridge: an exported page opened from disk, say
+    }
+  }
+  async openWithSystem(path: string): Promise<void> {
+    await post<{ ok: boolean }>(this.base + "/fs/open-with-system", { path });
+  }
+  canExportMacApp(): boolean {
+    return false;
+  }
+  async exportMacApp(): Promise<string | null> {
+    throw new Error("making a Mac app needs the desktop app");
   }
 }
 
@@ -392,6 +423,21 @@ class TauriWorkspace implements WorkspaceClient {
   async closeWindow(): Promise<void> {
     const { invoke } = await import("@tauri-apps/api/core");
     await invoke("close_window");
+  }
+  async hostedApp(): Promise<string | null> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return (await invoke<string | null>("hosted_app")) ?? null;
+  }
+  async openWithSystem(path: string): Promise<void> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("fs_open_with_system", { path });
+  }
+  canExportMacApp(): boolean {
+    return /Mac/i.test(navigator.platform) && !/iPhone|iPad/i.test(navigator.userAgent) && navigator.maxTouchPoints === 0;
+  }
+  async exportMacApp(name: string, appJson: string): Promise<string | null> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return (await invoke<string | null>("export_mac_app", { name, appJson })) ?? null;
   }
 }
 

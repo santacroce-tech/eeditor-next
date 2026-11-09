@@ -41,6 +41,9 @@ rl.on("line", (line) => pending.shift()?.(line));
 const evalSrc = (src) =>
   new Promise((resolve) => (pending.push(resolve), child.stdin.write(JSON.stringify({ src }) + "\n")));
 
+/** What /fs/open-with-system was last asked to open — the dev bridge's stand-in for another app. */
+let lastOpenedWithSystem = null;
+
 // ── workspace fs (confined) ──
 const exists = (abs) => stat(abs).then(() => true, () => false);
 /** rename(2), or across disks — a granted folder can be on another — a copy, then the original gone. */
@@ -172,6 +175,21 @@ const routes = {
   // Mirrors roots_list. Adding or removing one is the desktop app's (a folder picker); here they
   // come from EEDITOR_ROOTS.
   "/fs/roots": async () => JSON.stringify([...ROOTS].map(([name, dir]) => ({ name, path: dir }))),
+  // Mirrors hosted_app: the app an exported Mac app carries — here the file EEDITOR_APP names, read
+  // fresh each time (a test writes it), or null. runtime.html then runs it as the Mac app would.
+  "/app/hosted": async () => {
+    const file = process.env.EEDITOR_APP;
+    return JSON.stringify(file ? await readFile(path.resolve(file), "utf8").catch(() => null) : null);
+  },
+  // Mirrors fs_open_with_system. A browser can't hand a file to another app: the bridge notes which
+  // one it was asked for last, which /fs/opened-with-system tells a test.
+  "/fs/open-with-system": async ({ path: rel }) => {
+    const abs = safe(rel);
+    if (!(await exists(abs))) throw new Error(`${rel} isn't there`);
+    lastOpenedWithSystem = rel;
+    return JSON.stringify({ ok: true });
+  },
+  "/fs/opened-with-system": async () => JSON.stringify(lastOpenedWithSystem),
   // Mirrors fs_copy: a file or a whole folder, never over something that is there.
   "/fs/copy": async ({ from, to }) => {
     const a = safe(from);

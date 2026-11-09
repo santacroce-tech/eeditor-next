@@ -105,3 +105,106 @@ export function exportPanel(s: ExportSummary): Promise<ExportChoice> {
     go.focus();
   });
 }
+
+// ── a Mac app ──
+
+export interface MacAppSummary {
+  /** The main form's title — the name it starts with. */
+  title: string;
+  forms: string[];
+  images: string[];
+  missing: string[];
+  /** Where its files start, as first offered. */
+  folder: "own" | "home";
+}
+
+export type MacAppChoice = { name: string; folder: "own" | "home" } | null;
+
+/** Export as Mac app…: its name, where its files start, what goes in — then the Save dialog. */
+export function macAppPanel(s: MacAppSummary): Promise<MacAppChoice> {
+  return new Promise((resolve) => {
+    const overlay = el("div", "qo-overlay");
+    const panel = el("div", "dlg-panel export-panel");
+    const rows = el("div", "export-rows");
+    const row = (k: string, v: HTMLElement | string) => {
+      rows.append(el("div", "k", k));
+      const cell = typeof v === "string" ? el("div", "v", v) : v;
+      cell.classList.add("v");
+      rows.append(cell);
+    };
+
+    const nameBox = el("input", "dlg-input");
+    nameBox.value = s.title;
+    nameBox.spellcheck = false;
+    nameBox.setAttribute("aria-label", "The app's name");
+    row("Name", nameBox);
+
+    const forms = el("div");
+    s.forms.forEach((p, i) => {
+      if (i) forms.append(" · ");
+      forms.append(el("span", i === 0 ? "main-form" : undefined, i === 0 ? `${name(p)} (main)` : name(p)));
+    });
+    row("Forms", forms);
+    if (s.images.length) row("Images", s.images.map(name).join(" · "));
+    if (s.missing.length) row("Missing", el("span", "warn", `${s.missing.join(", ")} — can't be read, left out`));
+
+    let folder = s.folder;
+    const where = el("div", "export-save");
+    const option = (label: string, value: "own" | "home") => {
+      const l = el("label");
+      const r = el("input");
+      r.type = "radio";
+      r.name = "macapp-folder";
+      r.value = value;
+      r.checked = value === folder;
+      r.addEventListener("change", () => (folder = value));
+      l.append(r, label);
+      return l;
+    };
+    where.append(
+      option("a folder of its own — for an app that keeps its own records", "own"),
+      option("your home folder — for an app that works with your files, like Files", "home"),
+    );
+    row("Its files", where);
+
+    const actions = el("div", "dlg-actions");
+    const cancel = el("button", "dlg-btn", "Cancel");
+    const go = el("button", "dlg-btn dlg-primary", "Save…");
+    actions.append(cancel, go);
+
+    panel.append(
+      el("div", "dlg-title", `Make ${s.title} a Mac app`),
+      rows,
+      el(
+        "div",
+        "export-note",
+        "A copy of EEditor (about 20 MB) that opens this form and nothing else, with the same engine and a database of its own. It runs on this Mac; on another one, the first time, right-click it and choose Open.",
+      ),
+      actions,
+    );
+    overlay.append(panel);
+    document.body.append(overlay);
+
+    const close = (choice: MacAppChoice) => {
+      document.removeEventListener("keydown", onKey, true);
+      overlay.remove();
+      resolve(choice);
+    };
+    const accept = () => close({ name: nameBox.value, folder });
+    function onKey(e: KeyboardEvent): void {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        close(null);
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        accept();
+      }
+    }
+    cancel.addEventListener("click", () => close(null));
+    go.addEventListener("click", accept);
+    overlay.addEventListener("click", (e) => e.target === overlay && close(null));
+    document.addEventListener("keydown", onKey, true);
+    nameBox.focus();
+    nameBox.select();
+  });
+}

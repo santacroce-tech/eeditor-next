@@ -38,8 +38,8 @@ import { createOpenWith } from "./ui/openwith";
 import { exportPdf } from "./ui/pdf";
 import { dataUrl, parseMarkdown, renderMedia } from "./ui/markdown";
 import { imageMime, resolveNoteRelative } from "./core/mdmedia";
-import { FORM_SLOT, collectApp, exportAppHtml, isExportedPage, readExportedApp, unpackPlan } from "./core/export";
-import { exportPanel } from "./ui/exportdialog";
+import { FORM_SLOT, collectApp, desktopApp, exportAppHtml, isExportedPage, macAppName, readExportedApp, unpackPlan } from "./core/export";
+import { exportPanel, macAppPanel } from "./ui/exportdialog";
 import { createImages } from "./ui/images";
 import { choiceModal, promptModal, confirmModal, infoModal, showContextMenu, toast, type MenuItem } from "./ui/dialogs";
 import { resolveWikiLink } from "./core/fuzzy";
@@ -247,10 +247,17 @@ function main(): void {
   const exportBtn = document.createElement("button");
   exportBtn.className = "head-btn form-export";
   exportBtn.textContent = "⇪ export";
-  exportBtn.title = "Export this form — and the forms it opens — as one HTML file that runs anywhere, offline";
-  exportBtn.addEventListener("click", () => {
+  exportBtn.title = "Export this form — and the forms it opens — as one HTML file that runs anywhere, offline, or as a Mac app";
+  exportBtn.addEventListener("click", async () => {
     const t = activeForm();
-    if (t) void exportFormAsHtml(t.path, true);
+    if (!t) return;
+    if (!ws.canExportMacApp()) return void exportFormAsHtml(t.path, true);
+    const how = await choiceModal(`Export ${basename(t.path).replace(/\.eeform$/i, "")}`, "One HTML file runs in any browser, offline. A Mac app runs it in a window of its own, with the files on this Mac.", [
+      { id: "html", label: "One HTML file", primary: true },
+      { id: "mac", label: "A Mac app" },
+    ]);
+    if (how.id === "html") void exportFormAsHtml(t.path, true);
+    else if (how.id === "mac") void exportFormAsMacApp(t.path);
   });
   formModes.append(exportBtn);
   // A mind map tab: the map, or the same file as its markdown outline. Shown for .mindmap.md only.
@@ -1412,33 +1419,44 @@ function main(): void {
    * last export if there is one, else a new file. Only a file that *is* an earlier export is ever
    * replaced — a page of someone's own called Office.html gets a new name instead.
    */
+  /** A form and every form it opens, their images and sheets — what either export carries. */
+  async function collectForExport(path: string) {
+    const read = async (p: string) => {
+      const tab = tabs.find((t) => t.path === p);
+      return tab ? (tabs[activeIdx] === tab ? editor.getDoc() : tab.content) : ws.read(p);
+    };
+    const r = readFormSpec(await read(path));
+    if ("error" in r) {
+      toast(`${basename(path)} can't be exported: ${r.error}`);
+      return null;
+    }
+    const known = new Set(sidebar.files().map((f) => f.path));
+    const { bundle, missing } = await collectApp(path, {
+      read,
+      exists: (p) => known.has(p),
+      image: async (p) => dataUrl(await ws.readImage(p), imageMime(p)),
+      // a sheet is a database file: the engine hands it over as base64
+      sheet: async (p) => {
+        const env = await engine.evalSrc(`(sheet-bytes ${JSON.stringify(p)})`);
+        if (!env.ok || typeof env.result !== "string") throw new Error(env.ok ? "no bytes" : env.error);
+        return env.result;
+      },
+    });
+    return { spec: r.spec, bundle, missing, known };
+  }
+
   async function exportFormAsHtml(path: string, ask: boolean): Promise<void> {
     try {
-      const read = async (p: string) => {
-        const tab = tabs.find((t) => t.path === p);
-        return tab ? (tabs[activeIdx] === tab ? editor.getDoc() : tab.content) : ws.read(p);
-      };
-      const r = readFormSpec(await read(path));
-      if ("error" in r) return toast(`${basename(path)} can't be exported: ${r.error}`);
       const res = await fetch(`${import.meta.env.BASE_URL}runtime/eeform-runtime.html`);
       // A dev server answers a missing file with the app's own page, so look for the form's slot.
       const template = res.ok ? await res.text() : "";
       if (!template.includes(FORM_SLOT)) {
         return toast("Exporting needs the runtime, which this build doesn't have — npm run engine:wasm && npm run runtime:template");
       }
-      const known = new Set(sidebar.files().map((f) => f.path));
-      const { bundle, missing } = await collectApp(path, {
-        read,
-        exists: (p) => known.has(p),
-        image: async (p) => dataUrl(await ws.readImage(p), imageMime(p)),
-        // a sheet is a database file: the engine hands it over as base64
-        sheet: async (p) => {
-          const env = await engine.evalSrc(`(sheet-bytes ${JSON.stringify(p)})`);
-          if (!env.ok || typeof env.result !== "string") throw new Error(env.ok ? "no bytes" : env.error);
-          return env.result;
-        },
-      });
-      const html = exportAppHtml({ template, bundle, title: r.spec.title, app: basename(path) });
+      const got = await collectForExport(path);
+      if (!got) return;
+      const { spec, bundle, missing, known } = got;
+      const html = exportAppHtml({ template, bundle, title: spec.title, app: basename(path) });
 
       const stem = basename(path).replace(/\.eeform$/i, "");
       const beside = (n: string) => joinPath(parentDir(path), n);
@@ -1448,7 +1466,7 @@ function main(): void {
       let target = last ?? fresh;
       if (ask) {
         const choice = await exportPanel({
-          title: r.spec.title,
+          title: spec.title,
           forms: Object.keys(bundle.forms),
           images: [...Object.keys(bundle.assets), ...Object.keys(bundle.sheets ?? {})],
           missing,
@@ -1470,6 +1488,39 @@ function main(): void {
       );
     } catch (e) {
       toast(`Could not export: ${String(e instanceof Error ? e.message : e)}`);
+    }
+  }
+
+  /**
+   * A form as a Mac app of its own: a copy of EEditor that runs it and nothing else (see
+   * export_mac_app in src-tauri and the desktop mode of runtime.ts). The panel asks its name and
+   * where its files start; then the Save dialog, and the Finder shows the app.
+   */
+  async function exportFormAsMacApp(path: string): Promise<void> {
+    if (!ws.canExportMacApp()) return toast("Making a Mac app needs EEditor on a Mac");
+    try {
+      const got = await collectForExport(path);
+      if (!got) return;
+      const { spec, bundle, missing } = got;
+      const sheets = Object.keys(bundle.sheets ?? {});
+      if (sheets.length) {
+        return toast(`${spec.title} shows ${sheets.map(basename).join(", ")} — a Mac app can't carry sheets yet; Export as HTML can`);
+      }
+      // One that lists folders works with the person's files: start it at their home folder.
+      const filesApp = Object.values(bundle.forms).some((src) => /\((dir-list|file-info|roots)[\s)]/.test(src));
+      const choice = await macAppPanel({
+        title: macAppName(spec.title),
+        forms: Object.keys(bundle.forms),
+        images: Object.keys(bundle.assets),
+        missing,
+        folder: filesApp ? "home" : "own",
+      });
+      if (!choice) return;
+      const app = desktopApp(choice.name, choice.folder, bundle);
+      const at = await ws.exportMacApp(app.name, JSON.stringify(app));
+      if (at) toast(`Made ${basename(at)} — the Finder is showing it`);
+    } catch (e) {
+      toast(`Could not make the app: ${String(e instanceof Error ? e.message : e)}`);
     }
   }
 
@@ -1610,6 +1661,7 @@ function main(): void {
     }
     if (isFormPath(node.path)) {
       items.push({ label: "Export as HTML…", action: () => void exportFormAsHtml(node.path, true) });
+      if (ws.canExportMacApp()) items.push({ label: "Export as Mac app…", action: () => void exportFormAsMacApp(node.path) });
     }
     if (/\.html?$/i.test(node.path)) {
       items.push({ label: "Import forms from this page…", action: () => void importAppFromHtml(node.path) });
@@ -2248,6 +2300,11 @@ function main(): void {
       const t = activeForm();
       if (t) void exportFormAsHtml(t.path, true);
       else toast("Open a form to export it");
+    },
+    "export-mac-app": () => {
+      const t = activeForm();
+      if (t) void exportFormAsMacApp(t.path);
+      else toast("Open a form to make it an app");
     },
     "open-keys": () => void keys.openConfig(),
     "reload-keys": () => void keys.reload(),

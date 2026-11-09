@@ -131,6 +131,18 @@ reach through `ui-open` (found by reading the files, plus any the author lists i
 the `lib/` files, the sheets and images they refer to, and optionally the tables they use with
 their current rows.
 
+> **Built (Nov 2026): Export as Mac app.** Not the `.eeapp` folder below but the same bundle an HTML
+> export carries (`AppBundle`), written as `Contents/Resources/eeform-app/app.json` into a copy of
+> EEditor.app — renamed, given its own identifier (`com.eeditor.form.<name>`), stripped of EEditor's
+> file types, re-signed ad hoc (`export_mac_app` / `make_mac_app` in `src-tauri/src/lib.rs`). At
+> launch the copy finds the file (`hosted()`), opens its window on `runtime.html` instead of the
+> editor, and keeps its database and granted folders in `~/Library/Application Support/<id>/`. Its
+> paths start in `Files/` there, or at the home folder for an app that works with files.
+> `runtime.ts` runs it on the native engine and carries out `(ui-editor …)` file commands
+> (`ui/appcommands.ts`); `(ed-open …)` hands a file to the system. Sheets aren't carried yet. Tried
+> without building: `EEDITOR_APP=app.json` makes the dev bridge (and a dev build) serve one, and
+> `dev/ui/macapp.pw.mjs` runs Files that way.
+
 ### Three ways to run one — in the order to build them
 
 **1. EEditor Runtime (desktop) — build first.** A second Tauri app from this repo: the same engine

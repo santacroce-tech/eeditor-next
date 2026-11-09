@@ -142,12 +142,12 @@ a { color: var(--accent); }
     </div></div>
     <div class="phase"><span class="n">3</span><div>
       <h3>Keys in a form</h3>
-      <div class="repo">eeditor-next · src/ui/formrun.ts · src/core/form.ts · in review (#76)</div>
+      <div class="repo">eeditor-next · src/ui/formrun.ts · src/core/form.ts · done (#76)</div>
       <p><code>:on-key</code> on the form, with <code>:keys</code> naming the keys it takes, receives each as <code>$pressed</code> in the notation <code>(bind …)</code> uses, such as <code>"Mod-Left"</code>, and <code>$control</code>, before the app's own shortcuts. It fires outside text boxes only, since <kbd>⌘←</kbd> in a text box means “go to the start of the line”. Listboxes and grids move their pick with the arrow keys, and Enter opens. After a form's file commands, its <code>:on-refresh</code> runs.</p>
     </div></div>
     <div class="phase"><span class="n">4</span><div>
       <h3>The form: <code>workspace/examples/Files.eeform</code></h3>
-      <div class="repo">eeditor-next · workspace/examples/Files.eeform · in the manual, the welcome note and on the home page · in review</div>
+      <div class="repo">eeditor-next · workspace/examples/Files.eeform · in the manual, the welcome note and on the home page · done (#77–#81)</div>
       <p>Two grids, a path over each, a status line. <kbd>Tab</kbd> switches panel, <kbd>Enter</kbd> opens, <kbd>⌘→</kbd> / <kbd>⌘←</kbd> move the selection to the other panel, <kbd>⌥⌘→</kbd> / <kbd>⌥⌘←</kbd> copy it, <kbd>⌘⌫</kbd> sends it to the trash.</p>
 <pre>(defn fm-key (f key)
   (cond (= key "Mod-Right") (fm-transfer f "left" "right" ed-move)
@@ -156,7 +156,7 @@ a { color: var(--accent); }
     </div></div>
     <div class="phase"><span class="n">5</span><div>
       <h3>Folders outside the workspace</h3>
-      <div class="repo">both repos · in review (eelisp-rs #31) — named roots, ~Downloads/…</div>
+      <div class="repo">both repos · done (eelisp-rs #31) — named roots, ~Downloads/…</div>
       <p>Engine and app keep every path inside the workspace today. A file manager wants <code>~/Downloads</code> too, so the user grants extra folders, the way Open With already grants single files. On macOS the first read of a protected folder waits for the privacy dialog, so these calls run asynchronously and never on the main thread.</p>
     </div></div>
   </div>
@@ -165,9 +165,11 @@ a { color: var(--accent); }
   <p class="section-note">An exported page can't touch files today. The WebAssembly engine connects no filesystem, and the exported runtime ignores <code>ui-editor</code> commands.</p>
   <div class="choice">
     <div class="card pick">
-      <span class="pick-label">Recommended</span>
+      <span class="pick-label">Built · Mac</span>
       <h3>Desktop export</h3>
-      <p>A small app that opens one form as its main window, with no editor, using the native engine and file commands. It has full power. It needs builds and signing for each platform, and the release CI already does most of that.</p>
+      <p>A small app that opens one form as its main window, with no editor, using the native engine and file commands. It has full power.</p>
+      <p><strong>Export as Mac app…</strong> copies EEditor, puts the form's app inside it, renames it, gives it an identifier and a data folder of its own, and signs it ad hoc on the spot, so nothing has to be compiled. The copy opens the form at the form's size, and the form fills the window. A file manager starts at the home folder. Windows and Linux would carry the app beside the program in the same way; that isn't built yet.</p>
+      <div class="where">src-tauri/src/lib.rs (export_mac_app, hosted) · src/runtime.ts · src/ui/appcommands.ts</div>
     </div>
     <div class="card">
       <span class="pick-label" style="color:var(--muted)">Extra</span>

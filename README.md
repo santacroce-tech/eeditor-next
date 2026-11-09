@@ -146,6 +146,12 @@ controls stretch), and a `(panel "agenda" "pim/Side.eeform")` line in the keybin
 sidebar. `workspace/Contacts.eeform`
 is the worked example; `docs/FORMS.md` has the plan and the reference.
 
+A form leaves EEditor two ways. **Export as HTML…** writes one file that runs it in any browser,
+offline, on the engine compiled to WebAssembly. **Export as Mac app…** writes `Name.app`: a copy of
+EEditor that runs only that form, on the native engine, with a database of its own and real files —
+Files exported this way is a file manager. It's signed ad hoc, so nothing is compiled
+(`docs/FORM-APPS.md`).
+
 ### Keyboard shortcuts are a lisp file
 
 `.eeditor/keybindings.eelisp` in the workspace **is** the shortcut table (the ⌘ button in the editor

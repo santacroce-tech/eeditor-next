@@ -15,6 +15,7 @@ workspace/.eeditor/eeditor.db*
 .ui-workspace/
 .ui-empty/
 .ui-outside/
+.ui-app/
 playwright-report/
 test-results/
 

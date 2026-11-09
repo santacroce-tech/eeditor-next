@@ -858,6 +858,14 @@ body.runtime { margin: 0; min-height: 100vh; background: var(--bg-2); color: var
 body.runtime #app { min-height: 100vh; display: flex; flex-direction: column; }
 .rt-stage { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px 16px 8px; }
 .rt-stage > .formrun { flex: none; max-width: 100%; overflow: auto; }
+/* A Mac app (runtime.ts fillWindow): the window is the form's — no title bar of the form's own, no
+   margin; then, rt-fill, the form takes the whole window and its anchored controls follow it. */
+body.rt-app .rt-stage { padding: 0; gap: 0; }
+body.rt-app .formrun-title { display: none; }
+body.rt-fill .rt-stage { align-items: stretch; justify-content: stretch; }
+body.rt-fill .rt-stage > .formrun, body.rt-fill .rt-stage .formrun-stage, body.rt-fill .rt-stage .formrun-window { flex: 1; min-height: 0; display: flex; flex-direction: column; max-width: none; }
+body.rt-fill .rt-stage .formrun-window { box-shadow: none; border: 0; border-radius: 0; }
+body.rt-fill .rt-stage .formrun-window > .formrun-canvas { flex: 1; min-height: 0; width: auto !important; height: auto !important; }
 .rt-bar { display: flex; gap: 8px; justify-content: center; padding: 8px 16px 16px; }
 .rt-btn { background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; padding: 4px 12px; font: inherit; cursor: pointer; }
 .rt-btn:hover { border-color: var(--accent); }
