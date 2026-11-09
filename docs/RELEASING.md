@@ -50,8 +50,9 @@ rebuilds that tag's code and re-uploads to its release, replacing the fixed-name
 
 ## Notes
 
-- The engine (`eelisp-rs`) is checked out at its `main`, not at a version. A rebuild of an old tag
-  gets today's engine.
+- The engine is the `eelisp-rs/` submodule: a release builds the engine commit its tag pins, so a
+  rebuild of an old tag gets the engine it shipped with. Move the pointer (a commit) before tagging
+  to ship a newer engine.
 - macOS builds are ad-hoc signed and Windows builds are unsigned. The download page tells users how
   to open them the first time.
 - iOS is not in CI. It is still built by hand and uploaded through Transporter.

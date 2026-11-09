@@ -1,5 +1,5 @@
 // The spreadsheet functions sheets get at launch (src/sheets/functions.eelisp), checked on the real
-// engine binary (EELISP_BIN, default ../eelisp-rs/target/release/eelisp).
+// engine binary (EELISP_BIN, default eelisp-rs/target/release/eelisp — the submodule).
 //
 //   node dev/sheetfns.mjs          run src/sheets/functions.test.eelisp
 
@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const BIN = process.env.EELISP_BIN ?? fileURLToPath(new URL("../../eelisp-rs/target/release/eelisp", import.meta.url));
+const BIN = process.env.EELISP_BIN ?? fileURLToPath(new URL("../eelisp-rs/target/release/eelisp", import.meta.url));
 const src = (p) => readFileSync(fileURLToPath(new URL(p, import.meta.url)), "utf8");
 // the test makes a sheet, which lands in the current folder
 const work = mkdtempSync(join(tmpdir(), "sheetfns-"));

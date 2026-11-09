@@ -88,10 +88,7 @@ jobs:
         with:
           path: eeditor-next
           ref: ${{ needs.preflight.outputs.ref }}
-      - uses: actions/checkout@v4
-        with:
-          repository: santacroce-tech/eelisp-rs
-          path: eelisp-rs
+          submodules: true  # the engine, eelisp-rs, at the commit this release pins
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -145,11 +142,7 @@ jobs:
         with:
           path: eeditor-next
           ref: ${{ needs.preflight.outputs.ref }}
-      # The Tauri crate depends on the engine by path (`../../eelisp-rs`).
-      - uses: actions/checkout@v4
-        with:
-          repository: santacroce-tech/eelisp-rs
-          path: eelisp-rs
+          submodules: true  # the engine, eelisp-rs, at the commit this release pins
 
       - uses: actions/setup-node@v4
         with:

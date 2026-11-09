@@ -29,7 +29,7 @@ tauri-plugin-dialog = "2"
 # Local plugin: native iOS folder picker (external folder as workspace) with security-scoped bookmarks.
 tauri-plugin-ios-files = { path = "plugins" }
 # The Rust EELisp engine — the reusable core. EngineHandle is Send+Sync for Tauri state.
-eelisp = { path = "../../eelisp-rs" }
+eelisp = { path = "../eelisp-rs" }
 tauri-plugin-notification = "2.5"
 
 # A deleted file goes to the system Trash, where it can be put back (fs_trash). Desktop only.

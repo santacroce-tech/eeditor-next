@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const BIN = process.env.EELISP_BIN ?? fileURLToPath(new URL("../../eelisp-rs/target/release/eelisp", import.meta.url));
+const BIN = process.env.EELISP_BIN ?? fileURLToPath(new URL("../eelisp-rs/target/release/eelisp", import.meta.url));
 const ZX = fileURLToPath(new URL("../src/spectrum/zx.eelisp", import.meta.url));
 const [dir, filter] = process.argv.slice(2);
 if (!dir) {
