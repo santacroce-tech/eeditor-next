@@ -39,7 +39,7 @@ import { exportPdf } from "./ui/pdf";
 import { dataUrl, parseMarkdown, renderMedia } from "./ui/markdown";
 import { imageMime, resolveNoteRelative } from "./core/mdmedia";
 import { FORM_SLOT, collectApp, desktopApp, exportAppHtml, isExportedPage, macAppName, readExportedApp, unpackPlan } from "./core/export";
-import { exportPanel, macAppPanel } from "./ui/exportdialog";
+import { exportPanel, appPanel } from "./ui/exportdialog";
 import { createImages } from "./ui/images";
 import { choiceModal, promptModal, confirmModal, infoModal, showContextMenu, toast, type MenuItem } from "./ui/dialogs";
 import { resolveWikiLink } from "./core/fuzzy";
@@ -247,17 +247,22 @@ function main(): void {
   const exportBtn = document.createElement("button");
   exportBtn.className = "head-btn form-export";
   exportBtn.textContent = "⇪ export";
-  exportBtn.title = "Export this form — and the forms it opens — as one HTML file that runs anywhere, offline, or as a Mac app";
+  exportBtn.title = "Export this form — and the forms it opens — as one HTML file that runs anywhere, offline, or as an app of its own";
   exportBtn.addEventListener("click", async () => {
     const t = activeForm();
     if (!t) return;
-    if (!ws.canExportMacApp()) return void exportFormAsHtml(t.path, true);
-    const how = await choiceModal(`Export ${basename(t.path).replace(/\.eeform$/i, "")}`, "One HTML file runs in any browser, offline. A Mac app runs it in a window of its own, with the files on this Mac.", [
-      { id: "html", label: "One HTML file", primary: true },
-      { id: "mac", label: "A Mac app" },
-    ]);
+    const kind = ws.appKind();
+    if (!kind) return void exportFormAsHtml(t.path, true);
+    const how = await choiceModal(
+      `Export ${basename(t.path).replace(/\.eeform$/i, "")}`,
+      `One HTML file runs in any browser, offline. A ${kind} app runs it in a window of its own, with the files on this computer.`,
+      [
+        { id: "html", label: "One HTML file", primary: true },
+        { id: "app", label: `A ${kind} app` },
+      ],
+    );
     if (how.id === "html") void exportFormAsHtml(t.path, true);
-    else if (how.id === "mac") void exportFormAsMacApp(t.path);
+    else if (how.id === "app") void exportFormAsApp(t.path);
   });
   formModes.append(exportBtn);
   // A mind map tab: the map, or the same file as its markdown outline. Shown for .mindmap.md only.
@@ -1492,33 +1497,35 @@ function main(): void {
   }
 
   /**
-   * A form as a Mac app of its own: a copy of EEditor that runs it and nothing else (see
-   * export_mac_app in src-tauri and the desktop mode of runtime.ts). The panel asks its name and
-   * where its files start; then the Save dialog, and the Finder shows the app.
+   * A form as an app of its own: a copy of EEditor that runs it and nothing else (see export_app in
+   * src-tauri and the desktop mode of runtime.ts) — Name.app on a Mac, a Name folder with the
+   * program in it on Windows and Linux. The panel asks its name and where its files start; then the
+   * Save dialog, and the file manager shows the app.
    */
-  async function exportFormAsMacApp(path: string): Promise<void> {
-    if (!ws.canExportMacApp()) return toast("Making a Mac app needs EEditor on a Mac");
+  async function exportFormAsApp(path: string): Promise<void> {
+    const kind = ws.appKind();
+    if (!kind) return toast("Making an app needs EEditor on a Mac, Windows or Linux computer");
     try {
       const got = await collectForExport(path);
       if (!got) return;
       const { spec, bundle, missing } = got;
       const sheets = Object.keys(bundle.sheets ?? {});
-      if (sheets.length) {
-        return toast(`${spec.title} shows ${sheets.map(basename).join(", ")} — a Mac app can't carry sheets yet; Export as HTML can`);
-      }
-      // One that lists folders works with the person's files: start it at their home folder.
+      // One that lists folders works with the person's files: start it at their home folder. One
+      // with sheets keeps them in a folder of its own — they are files, and its paths name them.
       const filesApp = Object.values(bundle.forms).some((src) => /\((dir-list|file-info|roots)[\s)]/.test(src));
-      const choice = await macAppPanel({
+      const choice = await appPanel({
+        kind,
         title: macAppName(spec.title),
         forms: Object.keys(bundle.forms),
         images: Object.keys(bundle.assets),
+        sheets,
         missing,
-        folder: filesApp ? "home" : "own",
+        folder: filesApp && !sheets.length ? "home" : "own",
       });
       if (!choice) return;
       const app = desktopApp(choice.name, choice.folder, bundle);
-      const at = await ws.exportMacApp(app.name, JSON.stringify(app));
-      if (at) toast(`Made ${basename(at)} — the Finder is showing it`);
+      const at = await ws.exportApp(app.name, JSON.stringify(app));
+      if (at) toast(`Made ${basename(at)} — ${kind === "Mac" ? "the Finder" : "the file manager"} is showing it`);
     } catch (e) {
       toast(`Could not make the app: ${String(e instanceof Error ? e.message : e)}`);
     }
@@ -1661,7 +1668,8 @@ function main(): void {
     }
     if (isFormPath(node.path)) {
       items.push({ label: "Export as HTML…", action: () => void exportFormAsHtml(node.path, true) });
-      if (ws.canExportMacApp()) items.push({ label: "Export as Mac app…", action: () => void exportFormAsMacApp(node.path) });
+      const kind = ws.appKind();
+      if (kind) items.push({ label: `Export as ${kind} app…`, action: () => void exportFormAsApp(node.path) });
     }
     if (/\.html?$/i.test(node.path)) {
       items.push({ label: "Import forms from this page…", action: () => void importAppFromHtml(node.path) });
@@ -2301,9 +2309,9 @@ function main(): void {
       if (t) void exportFormAsHtml(t.path, true);
       else toast("Open a form to export it");
     },
-    "export-mac-app": () => {
+    "export-app": () => {
       const t = activeForm();
-      if (t) void exportFormAsMacApp(t.path);
+      if (t) void exportFormAsApp(t.path);
       else toast("Open a form to make it an app");
     },
     "open-keys": () => void keys.openConfig(),

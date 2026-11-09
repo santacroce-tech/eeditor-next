@@ -373,18 +373,6 @@ The list that used to be here, in order of value, and what each became:
 | **No prompt.** | `(ed-prompt "When?" callback default choices)` asks, then runs `(callback answer)` like a key. ⌘⌥E (a date), ⌘⌥G (a category) and ⌘⌥F (refile, with every heading as a choice) use it. |
 | **No reminders.** | `(on-tick …)` once a minute plus `(ed-notify title body)` — a toast, and a system notification when EEditor isn't in front. Items for today with a time (`at 15:00`, or `:remind`) fire once each. |
 
-Still missing, in order of value:
-
-1. **Reminders only while EEditor runs.** Nothing is scheduled with the OS, so a closed app is a
-   silent one; a reminder up to `pim-remind-grace` minutes late still fires when it opens.
-2. **"Live" is a minute.** The sweep runs on the tick, not when the agenda changes. The agenda panel
-   could raise an event the config listens to — an `(on-agenda …)` hook — to make it immediate.
-3. **Refile moves a line, not a subtree.** Org carries a heading's children along; a heading's
-   section (to the next heading of its level) would be the natural unit.
-4. **A date set with ⌘⌥E lives in the item, not the line.** ⌘⌥A re-reads the line's words, so a
-   line that still says `tomorrow` puts that date back. The line could carry an ISO date the
-   parser reads (`2026-10-12`), rewritten by ⌘⌥E.
-5. **The agenda's parser knows `tomorrow`, `in 3 days`, ISO dates — not weekdays** (`friday`) nor
-   times (`at 3pm` stays in the text; the reminder reads `15:00` from it).
-
-None of these is needed for the config above to work.
+What's still missing is in the roadmap, as P1–P4: [ROADMAP.md, P — the PIM](ROADMAP.md#p--the-pim).
+Reminders fire only while EEditor runs, by decision (*No* there). None of these is needed for the
+config above to work.

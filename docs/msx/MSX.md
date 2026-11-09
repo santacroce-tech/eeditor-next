@@ -111,6 +111,6 @@ frame halted, waiting for the interrupt, and run at 60 frames a second (`npm run
 
 ## Not yet
 
-- **The key click** (port 0xAA, bit 7), and samples played by changing a channel's volume very
-  fast — a frame's sound is made at its end, from the registers as they are then.
-- **MSX BASIC, disks, cassettes** — they need Microsoft's ROMs, which aren't free, or a disk system.
+In the roadmap: the key click and samples (M5), MSX2 (M6), and why there's no MSX BASIC, disks or
+cassettes (*No*) — [ROADMAP.md](../ROADMAP.md#m--the-machines).
+

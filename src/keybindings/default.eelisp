@@ -187,4 +187,4 @@
 ;; about               who makes EEditor, and which version this is
 ;; insert-image        pick images; each is copied into assets/ beside the note and linked at the caret
 ;; export-html         the form in front as one HTML file that runs in any browser
-;; export-mac-app      …or as a Mac app of its own (EEditor on a Mac)
+;; export-app          …or as an app of its own: a Mac app, or a Windows or Linux one

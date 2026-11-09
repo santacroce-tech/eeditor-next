@@ -35,6 +35,7 @@ import { toast } from "./ui/dialogs";
 import { createFormRunner, type FormRunner } from "./ui/formrun";
 import { createFormWindow, type FormWindow } from "./ui/formwindow";
 import { createSheetView } from "./ui/sheet";
+import ED_COMMANDS from "./keybindings/prelude.eelisp?raw";
 
 const app = document.getElementById("app") as HTMLElement;
 
@@ -136,6 +137,18 @@ async function hostedApp(): Promise<Hosted | null> {
 }
 
 /**
+ * A desktop app's sheets, as files in its own folder: written from what it carries the first time
+ * it opens, then left alone — they are its data from then on, as its database is.
+ */
+async function placeSheets(h: Hosted): Promise<void> {
+  for (const [path, data] of Object.entries(h.app.bundle.sheets ?? {})) {
+    // sheet-from-bytes never writes over a file: one already there is the app's own, kept
+    const r = await h.engine.evalSrc(`(sheet-from-bytes ${JSON.stringify(path)} ${JSON.stringify(data)})`);
+    if (!r.ok && !/already exists/.test(r.error)) toast(`${path}: ${r.error}`);
+  }
+}
+
+/**
  * A Mac app quits the way EEditor does: the backend holds the quit until the page says nothing is
  * left unsaved (`app-exiting`, then exitApp). Nothing is, here — the engine writes as it goes.
  */
@@ -227,7 +240,19 @@ async function main(): Promise<void> {
     // The real grid, over the page's engine — opened from what this browser kept, or the page.
     sheetView: (file: string) => {
       const path = sheetPath(p, file);
-      if (!path || !watched || !engine) return null;
+      if (!path || !watched) return null;
+      if (!engine) {
+        // A desktop app: the sheet is a file in its folder, which the native engine opens by path.
+        const view = createSheetView({ client: createSheetClient(watched), path, onError: toast, onEditing: () => {} });
+        return {
+          el: view.el,
+          load: () => view.load(),
+          commit: () => view.commit(),
+          refreshIfChanged: () => view.refreshIfChanged(),
+          focus: () => view.focus(),
+          destroy: () => view.destroy(),
+        };
+      }
       const view = createSheetView({ client: createSheetClient(watched), path, onError: toast, onEditing: () => {} });
       return {
         el: view.el,
@@ -310,10 +335,15 @@ async function main(): Promise<void> {
       note,
     });
     await hostedExit(hosted.ws);
+    await placeSheets(hosted);
   } else {
     engine = await engineFor(`eeform:${document.body.dataset.app || title}`, keep);
     await keepSheetsIn(engine);
   }
+  // (ed-move …), (ed-message …) and the rest — what a form's (ui-editor …) is written with. The
+  // editor loads them with its keys; an app's engine has never seen the editor, so it loads them here.
+  const lib = await (watched as EngineClient).evalSrc(ED_COMMANDS);
+  if (!lib.ok) note(`the editor commands couldn't be loaded — ${lib.error}`);
   const forms = createFormClient(watched as EngineClient);
 
   const closeWindow = (p: string) => {

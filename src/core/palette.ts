@@ -45,7 +45,7 @@ export const COMMAND_TITLES: Record<string, string> = {
   "mindmap-map": "Mind map: map view",
   "mindmap-text": "Mind map: text view",
   "export-html": "Export the form as HTML",
-  "export-mac-app": "Export the form as a Mac app",
+  "export-app": "Export the form as an app of its own (Mac, Windows, Linux)",
   "export-pdf": "Export as PDF",
   "open-keys": "Open the keybindings",
   "reload-keys": "Reload the keybindings",

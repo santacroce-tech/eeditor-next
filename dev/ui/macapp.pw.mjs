@@ -2,7 +2,11 @@
 // the Mac app's backend serves its own, and runtime.html runs it the way the app's window does —
 // the form filling the page, on the bridge's engine, with (ui-editor …) carried out on real files.
 // Files is the app: ⌘→ moves a file on disk, ↵ on a note hands it to the system (the bridge notes
-// which), and the page has none of the editor's chrome nor an HTML export's Save data….
+// which), and the page has none of the editor's chrome nor an HTML export's Save data…. Then an app
+// with a sheet: the sheet it carries becomes a file in its folder the first time, and stays its own.
+//
+// Run on its own (npx playwright test dev/ui/macapp.pw.mjs) as well as in the suite: the bridge's
+// engine is shared, and an earlier test that loads the editor would hide anything the app forgot.
 
 import { expect, test } from "@playwright/test";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
@@ -26,6 +30,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await rm(DIR, { recursive: true, force: true });
+  await rm(`${UI_WORKSPACE}/deskcalc`, { recursive: true, force: true });
   await rm(UI_APP, { force: true });
 });
 
@@ -79,4 +84,45 @@ test("↵ on a note hands it to the system — an app has no editor to open it i
   await expect
     .poll(async () => (await request.post("http://localhost:8787/fs/opened-with-system", { data: {} })).json())
     .toBe("macapp/b/one.md");
+});
+
+const CALC = `(form "Calc" :size (520 340) :main true
+  (sheet shtRates :file "Rates" :toolbar false :at (8 8) :size (500 240))
+  (button btnBump :text "Double A1" :at (8 260) :size (120 30) :on-click calc-bump)
+  (label lblTotal :at (140 264) :size (360 24)))
+
+(defn calc-bump (f)
+  (sheet-set "deskcalc/Rates" "A1" (str (* 2 (sheet-get "deskcalc/Rates" "A1"))))
+  (ui-set "lblTotal" :text (str "A3 is " (sheet-get "deskcalc/Rates" "A3"))))
+`;
+
+test("an app's sheet is placed in its folder the first time, then kept as its own", async ({ page, request }) => {
+  // the sheet's bytes, as an export carries them — made on the engine, then the file taken away
+  await mkdir(`${UI_WORKSPACE}/deskcalc`, { recursive: true });
+  const ev = async (src) => JSON.parse(await (await request.post("http://localhost:8787/eval", { data: { src } })).text());
+  const made = await ev(
+    '(sheet-new "deskcalc/Rates") (sheet-set "deskcalc/Rates" "A1" "20") (sheet-set "deskcalc/Rates" "A2" "1") (sheet-set "deskcalc/Rates" "A3" "=(+ A1 A2)") (sheet-bytes "deskcalc/Rates")',
+  );
+  expect(made.error).toBeUndefined();
+  await ev('(sheet-close "deskcalc/Rates")');
+  await rm(`${UI_WORKSPACE}/deskcalc/Rates.eesheet`);
+  const app = {
+    name: "Calc",
+    id: "com.eeditor.form.calc",
+    folder: "own",
+    bundle: { main: "deskcalc/Calc.eeform", forms: { "deskcalc/Calc.eeform": CALC }, assets: {}, sheets: { "deskcalc/Rates.eesheet": made.result } },
+  };
+  await writeFile(UI_APP, JSON.stringify(app));
+
+  await page.goto("/runtime.html");
+  await expect(page.locator(".formrun-ctl[data-name=shtRates] .sheet")).toBeVisible();
+  expect(await there("deskcalc/Rates.eesheet")).toBe(true);
+  await page.locator(".formrun-ctl[data-name=btnBump] button").click();
+  await expect(page.locator(".formrun-ctl[data-name=lblTotal]")).toHaveText("A3 is 41");
+
+  // opened again: the file is the app's now — what it carries doesn't write over it
+  await page.goto("/runtime.html");
+  await expect(page.locator(".formrun-ctl[data-name=shtRates] .sheet")).toBeVisible();
+  await page.locator(".formrun-ctl[data-name=btnBump] button").click();
+  await expect(page.locator(".formrun-ctl[data-name=lblTotal]")).toHaveText("A3 is 81");
 });
