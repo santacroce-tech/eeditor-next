@@ -38,6 +38,23 @@ async function openNote(page) {
   await page.keyboard.press("ControlOrMeta+End");
 }
 
+test("a note opened while the workspace is still arriving stays in front", async ({ page }) => {
+  // the engine slow to answer at launch, as on a busy machine: the tree is there, the keys aren't yet
+  let slow = true;
+  await page.route("**/eval", async (route) => {
+    if (slow) await new Promise((r) => setTimeout(r, 400));
+    await route.continue();
+  });
+  await page.goto("/");
+  await page.locator(".tree-file", { hasText: NOTE }).click();
+  await expect(active(page)).toHaveText(NOTE);
+  slow = false;
+  // the launch note (welcome.md) had its turn by now — and left the one you opened alone
+  await page.waitForTimeout(1500);
+  await expect(active(page)).toHaveText(NOTE);
+  await expect(page.locator(".etab .etab-label", { hasText: "welcome.md" })).toHaveCount(0);
+});
+
 test("⌘I types the date and time at the caret", async ({ page }) => {
   await openNote(page);
   await page.keyboard.press("ControlOrMeta+i");

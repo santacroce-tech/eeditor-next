@@ -1706,6 +1706,9 @@ function main(): void {
    * (no notes, an empty agenda) is offered the sample notes before anything opens.
    */
   async function enterWorkspace(): Promise<void> {
+    // What is in front now. Opening a workspace takes a moment — the tree, the keys, the engine — and
+    // a note opened meanwhile is where the person wants to be: the launch note mustn't replace it.
+    const inFront = tabs[activeIdx]?.path ?? null;
     void agenda.refresh();
     void checkDatabase();
     await sidebar.refresh().catch(() => {}); // an unreadable tree must not cost us the shortcuts
@@ -1722,8 +1725,10 @@ function main(): void {
       );
       if (yes) await addSampleNotes();
     }
-    // the config's (on-start …), if it has one, decides what to open instead of openFirstFile
-    if (!(await keys.runStart().catch(() => false))) await openFirstFile();
+    // the config's (on-start …), if it has one, decides what to open instead of openFirstFile — unless
+    // something was opened while the workspace was arriving
+    const movedOn = (tabs[activeIdx]?.path ?? null) !== inFront;
+    if (!movedOn && !(await keys.runStart().catch(() => false))) await openFirstFile();
     void tags.refresh();
   }
 
