@@ -116,6 +116,25 @@ export interface WorkspaceClient {
   exitApp(): Promise<void>;
   /** This window is flushed and may close: just it — or the app, when it's the last window. */
   closeWindow(): Promise<void>;
+  /**
+   * The app this build carries, when it is an exported one (Export as Mac app…): its app.json,
+   * as text — a `DesktopApp` (core/export.ts). Null for EEditor itself. The dev bridge serves the
+   * file EEDITOR_APP names, so the runtime's desktop mode can be tried in a browser.
+   */
+  hostedApp(): Promise<string | null>;
+  /** Open a file with the app the system opens it with — what `(ed-open …)` does in an exported app. */
+  openWithSystem(path: string): Promise<void>;
+  /**
+   * The kind of app this build can make out of a form — a Mac app, or a Windows or Linux one (a
+   * folder with the program in it) — or null: the browser, a phone, an iPad.
+   */
+  appKind(): AppKind | null;
+  /**
+   * Ask where, then write the app: a copy of EEditor that runs only the app in `appJson` (`Name.app`
+   * on a Mac, a `Name` folder elsewhere). The path it was written to, or null when the save dialog
+   * was cancelled.
+   */
+  exportApp(name: string, appJson: string): Promise<string | null>;
 }
 
 /** The bridge answers a failure with {ok:false,error} — that message is the useful part. */
@@ -251,6 +270,22 @@ class HttpWorkspace implements WorkspaceClient {
   }
   async closeWindow(): Promise<void> {
     /* likewise */
+  }
+  async hostedApp(): Promise<string | null> {
+    try {
+      return await post<string | null>(this.base + "/app/hosted", {});
+    } catch {
+      return null; // no bridge: an exported page opened from disk, say
+    }
+  }
+  async openWithSystem(path: string): Promise<void> {
+    await post<{ ok: boolean }>(this.base + "/fs/open-with-system", { path });
+  }
+  appKind(): AppKind | null {
+    return null;
+  }
+  async exportApp(): Promise<string | null> {
+    throw new Error("making an app needs the desktop app");
   }
 }
 
@@ -393,7 +428,31 @@ class TauriWorkspace implements WorkspaceClient {
     const { invoke } = await import("@tauri-apps/api/core");
     await invoke("close_window");
   }
+  async hostedApp(): Promise<string | null> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return (await invoke<string | null>("hosted_app")) ?? null;
+  }
+  async openWithSystem(path: string): Promise<void> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("fs_open_with_system", { path });
+  }
+  appKind(): AppKind | null {
+    const ua = navigator.userAgent;
+    if (/iPhone|iPad|Android/i.test(ua)) return null;
+    // an iPad says it's a Mac; it has a touch screen, which no Mac has
+    if (/Mac/i.test(navigator.platform)) return navigator.maxTouchPoints === 0 ? "Mac" : null;
+    if (/Win/i.test(navigator.platform)) return "Windows";
+    if (/Linux/i.test(navigator.platform) || /Linux/i.test(ua)) return "Linux";
+    return null;
+  }
+  async exportApp(name: string, appJson: string): Promise<string | null> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return (await invoke<string | null>("export_app", { name, appJson })) ?? null;
+  }
 }
+
+/** What Export as … app makes, by the computer EEditor runs on. */
+export type AppKind = "Mac" | "Windows" | "Linux";
 
 export function inTauri(): boolean {
   const w = globalThis as Record<string, unknown>;

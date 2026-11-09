@@ -12,6 +12,8 @@ export const UI_EMPTY = ".ui-empty";
 export const EMPTY_URL = "http://localhost:5174";
 /** A folder beside the workspace, granted to it as ~Outside (dev/ui/outside.pw.mjs); wiped with it. */
 export const UI_OUTSIDE = ".ui-outside";
+/** The app.json the bridge serves as a Mac app's (dev/ui/macapp.pw.mjs writes it; absent, there's none). */
+export const UI_APP = ".ui-app/app.json";
 
 export default defineConfig({
   testDir: "dev/ui",
@@ -25,7 +27,7 @@ export default defineConfig({
     {
       command: "node dev/ui/setup.mjs && node dev/bridge.mjs",
       port: 8787,
-      env: { WORKSPACE_ROOT: UI_WORKSPACE, EEDITOR_ROOTS: `Outside=${UI_OUTSIDE}` },
+      env: { WORKSPACE_ROOT: UI_WORKSPACE, EEDITOR_ROOTS: `Outside=${UI_OUTSIDE}`, EEDITOR_APP: UI_APP },
       stdout: "pipe",
       reuseExistingServer: false,
     },

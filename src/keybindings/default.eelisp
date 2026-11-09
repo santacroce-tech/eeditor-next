@@ -186,3 +186,5 @@
 ;; install-pim         the PIM's keys and library into this file (again: updates them, keeps yours)
 ;; about               who makes EEditor, and which version this is
 ;; insert-image        pick images; each is copied into assets/ beside the note and linked at the caret
+;; export-html         the form in front as one HTML file that runs in any browser
+;; export-app          …or as an app of its own: a Mac app, or a Windows or Linux one

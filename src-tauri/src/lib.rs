@@ -119,7 +119,11 @@ fn grant_key(root: &Path) -> String {
 /// Read roots.json from the app's config folder, once, at launch.
 fn load_grants(app: &tauri::AppHandle) {
     let Ok(dir) = app.path().app_config_dir() else { return };
-    let file = dir.join("roots.json");
+    load_grants_from(dir.join("roots.json"));
+}
+
+/// The same from a given file — an exported app keeps its own (see `hosted_places`).
+fn load_grants_from(file: PathBuf) {
     let by_workspace = fs::read_to_string(&file)
         .ok()
         .and_then(|t| serde_json::from_str::<HashMap<String, Vec<(String, String)>>>(&t).ok())
@@ -222,6 +226,308 @@ fn roots_remove(ws: Workspace, name: String) -> Result<(), String> {
     save_grants(&store)
 }
 
+// ── an exported app ─────────────────────────────────────────────────────────────────────────────
+//
+// Export as Mac app… (export_app) copies EEditor and puts a form's app in the copy's
+// Contents/Resources/eeform-app/app.json (a `DesktopApp`, src/core/export.ts). On Windows and Linux
+// the app is a folder instead: EEditor's program renamed (Files.exe — or the AppImage, Files.AppImage)
+// with eeform-app/app.json beside it. A copy that finds its app.json is that app: its window opens
+// runtime.html, which runs the app's main form filling it, on the native engine; its database and
+// its granted folders live in a folder of its own (Application Support, %APPDATA%, ~/.local/share),
+// named by its identifier; its paths start there — or at the home folder, for an app that works
+// with the person's files. No editor, no other windows, nothing of EEditor's settings.
+
+/// Where an exported app keeps its app, inside its bundle's Resources.
+const APP_RESOURCE: &str = "eeform-app/app.json";
+
+/// What the backend needs from app.json; the frontend reads the rest (the forms).
+#[derive(serde::Deserialize, Clone, Debug)]
+struct HostedApp {
+    name: String,
+    id: String,
+    #[serde(default)]
+    folder: String,
+}
+
+struct Hosted {
+    app: HostedApp,
+    file: PathBuf,
+}
+
+static HOSTED: std::sync::OnceLock<Option<Hosted>> = std::sync::OnceLock::new();
+
+/// The app this build carries, if it is an exported one: the file $EEDITOR_APP names — how a dev
+/// build is tried as one (`EEDITOR_APP=… npm run tauri dev`) — or the first of `app_json_places`
+/// that is there.
+fn hosted() -> Option<&'static Hosted> {
+    HOSTED
+        .get_or_init(|| {
+            let places = match std::env::var_os("EEDITOR_APP") {
+                Some(f) => vec![PathBuf::from(f)],
+                None => app_json_places(&std::env::current_exe().ok()?, std::env::var_os("APPIMAGE").map(PathBuf::from).as_deref()),
+            };
+            let file = places.into_iter().find(|f| f.is_file())?;
+            let app: HostedApp = serde_json::from_str(&fs::read_to_string(&file).ok()?).ok()?;
+            Some(Hosted { app, file })
+        })
+        .as_ref()
+}
+
+/// Where an exported app's app.json can be, for the program at `exe`: in a Mac bundle's Resources
+/// (…/Contents/MacOS/x → …/Contents/Resources/eeform-app/app.json); beside the program (Files.exe,
+/// eeform-app/); or beside the AppImage it was started from — `exe` is then inside the image's mount.
+fn app_json_places(exe: &Path, appimage: Option<&Path>) -> Vec<PathBuf> {
+    let mut at = Vec::new();
+    if let Some(dir) = exe.parent() {
+        if let Some(contents) = dir.parent() {
+            at.push(contents.join("Resources").join(APP_RESOURCE));
+        }
+        at.push(dir.join(APP_RESOURCE));
+    }
+    if let Some(dir) = appimage.and_then(Path::parent) {
+        at.push(dir.join(APP_RESOURCE));
+    }
+    at
+}
+
+/// An exported app's own places: (where its paths start, its database, its granted folders' list).
+fn hosted_places(app: &tauri::AppHandle, h: &HostedApp) -> (PathBuf, PathBuf, PathBuf) {
+    let base = app.path().data_dir().unwrap_or_else(|_| std::env::temp_dir()).join(&h.id);
+    let root = if h.folder == "home" { app.path().home_dir().unwrap_or_else(|_| base.join("Files")) } else { base.join("Files") };
+    (root, base.join("data.db"), base.join("roots.json"))
+}
+
+/// app.json, for the runtime page to run — None in EEditor itself.
+#[tauri::command(async)]
+fn hosted_app() -> Option<String> {
+    hosted().and_then(|h| fs::read_to_string(&h.file).ok())
+}
+
+/// An exported app's window takes its form's size, once, at launch (runtime.ts `fillWindow`) — and
+/// may then be made smaller than EEditor's minimum, since a form can be small. EEditor's own windows
+/// are left as they are.
+#[tauri::command]
+fn fit_window(window: tauri::WebviewWindow, width: f64, height: f64) {
+    if hosted().is_none() || window.label() != "main" {
+        return;
+    }
+    let _ = window.set_min_size(Some(tauri::LogicalSize::new(320.0, 200.0)));
+    let _ = window.set_size(tauri::LogicalSize::new(width.clamp(320.0, 4000.0), height.clamp(200.0, 3000.0)));
+    let _ = window.center();
+}
+
+/// Open a file with the app the system opens it with — `(ed-open …)` in an exported app.
+#[tauri::command(async)]
+fn fs_open_with_system(ws: Workspace, path: String) -> Result<(), String> {
+    let p = ws.resolve(&path)?;
+    if !p.exists() {
+        return Err(format!("{path} isn't there"));
+    }
+    open_with_system(&p)
+}
+
+#[cfg(target_os = "macos")]
+fn open_with_system(p: &Path) -> Result<(), String> {
+    std::process::Command::new("open").arg(p).status().map_err(|e| e.to_string()).map(|_| ())
+}
+
+#[cfg(target_os = "windows")]
+fn open_with_system(p: &Path) -> Result<(), String> {
+    std::process::Command::new("cmd").args(["/C", "start", ""]).arg(p).status().map_err(|e| e.to_string()).map(|_| ())
+}
+
+#[cfg(all(desktop, not(any(target_os = "macos", target_os = "windows"))))]
+fn open_with_system(p: &Path) -> Result<(), String> {
+    std::process::Command::new("xdg-open").arg(p).status().map_err(|e| e.to_string()).map(|_| ())
+}
+
+#[cfg(mobile)]
+fn open_with_system(_p: &Path) -> Result<(), String> {
+    Err("opening a file in another app isn't available here".into())
+}
+
+/// The .app this process runs from (…/X.app/Contents/MacOS/exe), or None — a dev build isn't one.
+#[cfg(target_os = "macos")]
+fn running_bundle() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let app = exe.parent()?.parent()?.parent()?;
+    (app.extension().is_some_and(|e| e.eq_ignore_ascii_case("app")) && app.join("Contents/Info.plist").is_file()).then(|| app.to_path_buf())
+}
+
+/// Ask where, then make the app (`make_mac_app`, or `make_folder_app` on Windows and Linux) and show
+/// it in the file manager. The path it was made at, or None when the save dialog was cancelled.
+#[cfg(desktop)]
+#[tauri::command]
+async fn export_app(app: tauri::AppHandle, name: String, app_json: String) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    if hosted().is_some() {
+        return Err("This is an exported app; make apps from EEditor".into());
+    }
+    let meta: HostedApp = serde_json::from_str(&app_json).map_err(|e| format!("that isn't an app: {e}"))?;
+    #[cfg(target_os = "macos")]
+    let (me, suggested) = (
+        running_bundle().ok_or("Making a Mac app works from the installed EEditor — this one isn't running from an .app (a dev build?)")?,
+        format!("{name}.app"),
+    );
+    #[cfg(not(target_os = "macos"))]
+    let (me, suggested) = (running_program()?, name.clone());
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.dialog().file().set_title("Save the app").set_file_name(suggested).save_file(move |picked| {
+        let _ = tx.send(picked);
+    });
+    let picked = tauri::async_runtime::spawn_blocking(move || rx.recv().unwrap_or(None)).await.map_err(|e| e.to_string())?;
+    let Some(mut dest) = picked.and_then(|fp| fp.into_path().ok()) else { return Ok(None) };
+    #[cfg(target_os = "macos")]
+    if !dest.extension().is_some_and(|e| e.eq_ignore_ascii_case("app")) {
+        dest.set_extension("app");
+    }
+    #[cfg(not(target_os = "macos"))]
+    if dest.extension().is_some_and(|e| e.eq_ignore_ascii_case("exe")) {
+        dest.set_extension(""); // a folder, named as the app
+    }
+    let at = dest.clone();
+    #[cfg(target_os = "macos")]
+    let shown = dest.clone();
+    #[cfg(not(target_os = "macos"))]
+    let shown = dest.join(program_name(&meta.name, &me));
+    tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(target_os = "macos")]
+        return make_mac_app(&me, &at, &meta, &app_json);
+        #[cfg(not(target_os = "macos"))]
+        return make_folder_app(&me, &at, &meta, &app_json);
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    let _ = reveal(&shown);
+    Ok(Some(dest.display().to_string()))
+}
+
+#[cfg(mobile)]
+#[tauri::command]
+async fn export_app() -> Result<Option<String>, String> {
+    Err("Making an app needs EEditor on a computer".into())
+}
+
+/// The program to copy on Windows and Linux: the AppImage when EEditor runs from one (its own
+/// program is inside the image, and needs the libraries the image carries), else this executable.
+#[cfg(all(desktop, not(target_os = "macos")))]
+fn running_program() -> Result<PathBuf, String> {
+    match std::env::var_os("APPIMAGE") {
+        Some(img) => Ok(PathBuf::from(img)),
+        None => std::env::current_exe().map_err(|e| e.to_string()),
+    }
+}
+
+/// The copied program's name in the app's folder: the app's name, with the program's extension
+/// (Files.exe, Files.AppImage, or plain Files for an installed Linux build).
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+fn program_name(app: &str, program: &Path) -> String {
+    let safe: String = app.chars().map(|c| if "/\\:*?\"<>|".contains(c) || c.is_control() { '-' } else { c }).collect();
+    let safe = safe.trim().trim_matches('.').to_string();
+    let stem = if safe.is_empty() { "App".to_string() } else { safe };
+    match program.extension().and_then(|e| e.to_str()) {
+        Some(ext) => format!("{stem}.{ext}"),
+        None => stem,
+    }
+}
+
+/// The app as a folder at `dest`: `program` copied in under the app's name, and the app beside it
+/// in eeform-app/app.json — what `hosted` looks for on Windows and Linux. An earlier export at
+/// `dest` is replaced; anything else there is left alone.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+fn make_folder_app(program: &Path, dest: &Path, meta: &HostedApp, app_json: &str) -> Result<(), String> {
+    if dest.exists() {
+        if !dest.join(APP_RESOURCE).is_file() {
+            return Err(format!("{} is there already, and isn't an app made from a form — pick another name", dest.display()));
+        }
+        fs::remove_dir_all(dest).map_err(|e| format!("couldn't replace the earlier {}: {e}", dest.display()))?;
+    }
+    let made = (|| -> Result<(), String> {
+        let res = dest.join(APP_RESOURCE);
+        fs::create_dir_all(res.parent().unwrap()).map_err(|e| format!("{}: {e}", dest.display()))?;
+        fs::write(&res, app_json).map_err(|e| e.to_string())?;
+        let exe = dest.join(program_name(&meta.name, program));
+        fs::copy(program, &exe).map_err(|e| format!("couldn't copy EEditor: {e}"))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&exe, fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    })();
+    if made.is_err() {
+        let _ = fs::remove_dir_all(dest); // half an app is worse than none
+    }
+    made
+}
+
+/// Run a tool that comes with macOS; its own words when it fails.
+#[cfg(target_os = "macos")]
+fn macos_tool(tool: &str, args: &[&std::ffi::OsStr]) -> Result<(), String> {
+    let out = std::process::Command::new(tool).args(args).output().map_err(|e| format!("{tool}: {e}"))?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(format!("{tool}: {}", String::from_utf8_lossy(&out.stderr).trim()))
+    }
+}
+
+/// `src` (EEditor.app) copied to `dest` as the app in `app_json`: the app put in its Resources, its
+/// Info.plist renamed and given an identifier of its own and none of EEditor's file types, then
+/// signed again — ad hoc, which is what a Mac needs to run it here. An earlier export at `dest` is
+/// replaced; anything else there is left alone.
+#[cfg(target_os = "macos")]
+fn make_mac_app(src: &Path, dest: &Path, meta: &HostedApp, app_json: &str) -> Result<(), String> {
+    use std::ffi::OsStr;
+    let os = |s: &str| s.to_owned().into();
+    let (cs, cd) = (src.canonicalize().unwrap_or(src.to_path_buf()), dest.parent().and_then(|p| p.canonicalize().ok()).unwrap_or_default());
+    if cd.starts_with(&cs) || cs == cd.join(dest.file_name().unwrap_or_default()) {
+        return Err("Pick a place outside EEditor itself".into());
+    }
+    if dest.exists() {
+        if !dest.join("Contents/Resources").join(APP_RESOURCE).is_file() {
+            return Err(format!("{} is there already, and isn't an app made from a form — pick another name", dest.display()));
+        }
+        fs::remove_dir_all(dest).map_err(|e| format!("couldn't replace the earlier {}: {e}", dest.display()))?;
+    }
+    // ditto keeps what a bundle needs (links, permissions); --noqtn leaves out a downloaded
+    // EEditor's quarantine mark, which a copy signed again would be refused with.
+    macos_tool("ditto", &[OsStr::new("--noqtn"), src.as_os_str(), dest.as_os_str()])?;
+    let made = (|| -> Result<(), String> {
+        let res = dest.join("Contents/Resources").join(APP_RESOURCE);
+        fs::create_dir_all(res.parent().unwrap()).map_err(|e| e.to_string())?;
+        fs::write(&res, app_json).map_err(|e| e.to_string())?;
+        let plist = dest.join("Contents/Info.plist");
+        let set = |key: &str, value: &str| -> Result<(), String> {
+            let v: [std::ffi::OsString; 5] = [os("-replace"), os(key), os("-string"), os(value), plist.clone().into_os_string()];
+            macos_tool("plutil", &v.iter().map(|s| s.as_os_str()).collect::<Vec<_>>())
+        };
+        set("CFBundleName", &meta.name)?;
+        set("CFBundleDisplayName", &meta.name)?;
+        set("CFBundleIdentifier", &meta.id)?;
+        // EEditor's file types (Markdown, .eelisp, sheets…) are EEditor's: the app opens none of them.
+        for key in ["CFBundleDocumentTypes", "UTExportedTypeDeclarations", "UTImportedTypeDeclarations"] {
+            let v: [std::ffi::OsString; 3] = [os("-remove"), os(key), plist.clone().into_os_string()];
+            let _ = macos_tool("plutil", &v.iter().map(|s| s.as_os_str()).collect::<Vec<_>>());
+        }
+        // The privacy dialogs name the app asking, and say why in its own name.
+        for (key, what) in [
+            ("NSDocumentsFolderUsageDescription", "your Documents folder"),
+            ("NSDesktopFolderUsageDescription", "your Desktop"),
+            ("NSDownloadsFolderUsageDescription", "your Downloads folder"),
+            ("NSRemovableVolumesUsageDescription", "removable volumes"),
+            ("NSNetworkVolumesUsageDescription", "network volumes"),
+        ] {
+            set(key, &format!("{} needs access to {what} to work with the files you keep there.", meta.name))?;
+        }
+        macos_tool("codesign", &[OsStr::new("--force"), OsStr::new("--deep"), OsStr::new("--sign"), OsStr::new("-"), dest.as_os_str()])
+    })();
+    if made.is_err() {
+        let _ = fs::remove_dir_all(dest); // half an app is worse than none
+    }
+    made
+}
+
 /// The engine of the window that called.
 struct Engine(Arc<Space>);
 
@@ -236,6 +542,11 @@ impl<'de, R: Runtime> CommandArg<'de, R> for Engine {
 /// thread), and its editor RPC reads the same root handle the fs commands write to.
 fn open_space(app: &tauri::AppHandle, label: &str, root: PathBuf) {
     let db = engine_db_path(&root);
+    open_space_with(app, label, root, db);
+}
+
+/// The same with the database somewhere else — an exported app's, in its own folder.
+fn open_space_with(app: &tauri::AppHandle, label: &str, root: PathBuf, db: String) {
     let root = Arc::new(Mutex::new(root));
     let engine_root = root.clone();
     let grants_root = root.clone();
@@ -341,14 +652,18 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::
     use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 
     let pkg = app.package_info();
-    let name = pkg.name.clone();
+    let made = hosted().map(|h| h.app.name.clone());
+    let name = made.clone().unwrap_or_else(|| pkg.name.clone());
     let about = AboutMetadata {
         name: Some(name.clone()),
         version: Some(pkg.version.to_string()),
         copyright: app.config().bundle.copyright.clone(),
         authors: app.config().bundle.publisher.clone().map(|p| vec![p]),
         // macOS shows `credits`; Windows and Linux show `comments` and the website
-        credits: Some("Developed by Roberto Santacroce Martins.\nhttps://eeditor.app".into()),
+        credits: Some(match &made {
+            Some(_) => "Made with EEditor — https://eeditor.app".into(),
+            None => "Developed by Roberto Santacroce Martins.\nhttps://eeditor.app".into(),
+        }),
         comments: Some("Notes, an agenda, sheets and forms — with a Lisp inside.".into()),
         website: Some("https://eeditor.app".into()),
         website_label: Some("eeditor.app".into()),
@@ -367,6 +682,14 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::
     // would keep ⌘W for itself, and a menu shortcut never reaches the page.
     let close_tab = MenuItem::with_id(app, MENU_CLOSE_TAB, "Close Tab", true, Some("CmdOrCtrl+W"))?;
     let close_window = MenuItem::with_id(app, MENU_CLOSE_WINDOW, "Close Window", true, Some("CmdOrCtrl+Shift+W"))?;
+    // An exported app has one window and no tabs: ⌘W closes it.
+    let close_only = MenuItem::with_id(app, MENU_CLOSE_WINDOW, "Close Window", true, Some("CmdOrCtrl+W"))?;
+    let separator = PredefinedMenuItem::separator(app)?;
+    #[allow(unused_mut)]
+    let mut file_items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> =
+        if made.is_some() { vec![&close_only] } else { vec![&new_window, &separator, &close_tab, &close_window] };
+    #[cfg(not(target_os = "macos"))]
+    file_items.push(&quit);
 
     Menu::with_items(
         app,
@@ -387,19 +710,7 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::
                     &quit,
                 ],
             )?,
-            &Submenu::with_items(
-                app,
-                "File",
-                true,
-                &[
-                    &new_window,
-                    &PredefinedMenuItem::separator(app)?,
-                    &close_tab,
-                    &close_window,
-                    #[cfg(not(target_os = "macos"))]
-                    &quit,
-                ],
-            )?,
+            &Submenu::with_items(app, "File", true, &file_items)?,
             &Submenu::with_items(
                 app,
                 "Edit",
@@ -1476,6 +1787,25 @@ pub fn run() {
                     tauri_plugin_log::Builder::default().level(log::LevelFilter::Info).build(),
                 )?;
             }
+            if let Some(h) = hosted() {
+                // An exported app: its own folder, database and granted folders, and its window
+                // runs the app (runtime.html) rather than the editor.
+                let (root, db, grants) = hosted_places(app.handle(), &h.app);
+                let _ = fs::create_dir_all(grants.parent().unwrap_or(&root));
+                if h.app.folder != "home" {
+                    let _ = fs::create_dir_all(&root);
+                }
+                load_grants_from(grants);
+                eprintln!("[eeditor] {} — files {}, data {}", h.app.name, root.display(), db.display());
+                open_space_with(app.handle(), "main", root, db.display().to_string());
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.set_title(&h.app.name);
+                    if let Ok(url) = w.url().and_then(|u| u.join("runtime.html").map_err(|e| tauri::Error::Anyhow(e.into()))) {
+                        let _ = w.navigate(url);
+                    }
+                }
+                return Ok(());
+            }
             load_grants(app.handle());
             let ws = initial_workspace(app.handle());
             eprintln!("[eeditor] workspace: {}", ws.display());
@@ -1525,7 +1855,11 @@ pub fn run() {
             pick_workspace,
             restore_workspace,
             new_window,
-            close_window
+            close_window,
+            hosted_app,
+            fit_window,
+            fs_open_with_system,
+            export_app
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
@@ -1578,6 +1912,92 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    /// On Windows and Linux an app is a folder: the program renamed, the app beside it — found
+    /// there by the copy, as a Mac app's is in its Resources and an AppImage's beside the image.
+    #[test]
+    fn a_folder_app_is_the_program_renamed_with_the_app_beside_it() {
+        let t = Tmp::new("folderapp");
+        let program = t.0.join("eeditor-next.exe");
+        fs::write(&program, b"MZ stand-in").unwrap();
+        let dest = t.0.join("out").join("My Files");
+        let meta = HostedApp { name: "My Files".into(), id: "com.eeditor.form.my-files".into(), folder: "home".into() };
+        let json = r#"{"name":"My Files","id":"com.eeditor.form.my-files","folder":"home","bundle":{}}"#;
+        make_folder_app(&program, &dest, &meta, json).unwrap();
+
+        let exe = dest.join("My Files.exe");
+        assert_eq!(fs::read(&exe).unwrap(), b"MZ stand-in");
+        assert_eq!(fs::read_to_string(dest.join(APP_RESOURCE)).unwrap(), json);
+        assert!(app_json_places(&exe, None).contains(&dest.join(APP_RESOURCE)));
+        // made again: the earlier one is replaced; something else by that name is left alone
+        make_folder_app(&program, &dest, &meta, json).unwrap();
+        let other = t.0.join("Other");
+        fs::create_dir_all(&other).unwrap();
+        assert!(make_folder_app(&program, &other, &meta, json).unwrap_err().contains("pick another name"));
+        assert!(other.is_dir());
+
+        // the names a program can take
+        assert_eq!(program_name("My Files", Path::new("/x/EEditor.AppImage")), "My Files.AppImage");
+        assert_eq!(program_name("My Files", Path::new("/usr/bin/eeditor-next")), "My Files");
+        assert_eq!(program_name("a/b: c?", Path::new("e.exe")), "a-b- c-.exe");
+        assert_eq!(program_name("..", Path::new("e.exe")), "App.exe");
+        // a Mac bundle's place, and an AppImage's
+        let places = app_json_places(Path::new("/A/X.app/Contents/MacOS/x"), Some(Path::new("/home/u/Apps/Files/Files.AppImage")));
+        assert!(places.contains(&PathBuf::from("/A/X.app/Contents/Resources").join(APP_RESOURCE)));
+        assert!(places.contains(&PathBuf::from("/home/u/Apps/Files").join(APP_RESOURCE)));
+    }
+
+    /// A Mac app made from a stand-in EEditor.app: renamed, its own identifier, none of EEditor's
+    /// file types, the app inside, signed so macOS runs it — and only an earlier export replaced.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_mac_app_is_eeditor_renamed_with_the_app_inside() {
+        let t = Tmp::new("macapp");
+        let src = t.0.join("EEditor.app");
+        fs::create_dir_all(src.join("Contents/MacOS")).unwrap();
+        fs::create_dir_all(src.join("Contents/Resources")).unwrap();
+        fs::copy("/usr/bin/true", src.join("Contents/MacOS/eeditor-next")).unwrap();
+        fs::write(
+            src.join("Contents/Info.plist"),
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleExecutable</key><string>eeditor-next</string>
+<key>CFBundleIdentifier</key><string>com.eeditor.app</string>
+<key>CFBundleName</key><string>eeditor-next</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleDocumentTypes</key><array><dict><key>CFBundleTypeName</key><string>Markdown</string></dict></array>
+<key>NSDownloadsFolderUsageDescription</key><string>EEditor needs it.</string>
+</dict></plist>"#,
+        )
+        .unwrap();
+        let out = t.0.join("out");
+        fs::create_dir_all(&out).unwrap();
+        let dest = out.join("My Files.app");
+        let meta = HostedApp { name: "My Files".into(), id: "com.eeditor.form.my-files".into(), folder: "home".into() };
+        let json = r#"{"name":"My Files","id":"com.eeditor.form.my-files","folder":"home","bundle":{}}"#;
+        make_mac_app(&src, &dest, &meta, json).unwrap();
+
+        assert_eq!(fs::read_to_string(dest.join("Contents/Resources").join(APP_RESOURCE)).unwrap(), json);
+        let plist = fs::read_to_string(dest.join("Contents/Info.plist")).unwrap();
+        assert!(plist.contains("<string>com.eeditor.form.my-files</string>"), "{plist}");
+        assert!(plist.contains("<string>My Files</string>"));
+        assert!(!plist.contains("CFBundleDocumentTypes"));
+        assert!(plist.contains("My Files needs access to your Downloads folder"));
+        assert!(std::process::Command::new("codesign").arg("--verify").arg(&dest).status().unwrap().success());
+        // the original is as it was
+        assert!(fs::read_to_string(src.join("Contents/Info.plist")).unwrap().contains("CFBundleDocumentTypes"));
+
+        // made again: the earlier one is replaced
+        make_mac_app(&src, &dest, &meta, json).unwrap();
+        // something else by that name is left alone
+        let other = out.join("Other.app");
+        fs::create_dir_all(other.join("Contents")).unwrap();
+        assert!(make_mac_app(&src, &other, &meta, json).unwrap_err().contains("pick another name"));
+        assert!(other.join("Contents").is_dir());
+        // and never inside EEditor itself
+        assert!(make_mac_app(&src, &src.join("Contents/Inner.app"), &meta, json).unwrap_err().contains("outside EEditor"));
     }
 
     #[test]

@@ -47,7 +47,7 @@
         <li><a href="#outside">7. Files from outside</a></li>
         <li><a href="#agenda">8. The agenda</a></li>
         <li><a href="#sheets">9. Sheets</a></li>
-        <li><a href="#forms">10. Forms</a> · <a href="#form-examples">examples</a> · <a href="#screens">screens</a> · <a href="#export-html">export</a></li>
+        <li><a href="#forms">10. Forms</a> · <a href="#form-examples">examples</a> · <a href="#screens">screens</a> · <a href="#export-html">export</a> · <a href="#export-mac">an app of its own</a></li>
         <li><a href="#repl">11. The REPL</a></li>
         <li><a href="#keybindings">12. Keybindings</a></li>
         <li><a href="#mobile">13. iPhone and iPad</a></li>
@@ -1138,7 +1138,8 @@ sequenceDiagram
     <p>
       It works on the workspace and the folders you add outside it (⋯ → Add a folder outside the
       workspace…), which head each panel as <code>~Downloads/</code> — not the whole disk — and only
-      in the app: an exported page has no folder to read.
+      in the app: an exported page has no folder to read. Exported as
+      <a href="#export-mac">an app of its own</a>, it starts at your home folder instead.
     </p>
 
     <h4>Tables — any table, dBASE-style</h4>
@@ -1300,6 +1301,30 @@ sequenceDiagram
       data…</strong> under the app downloads it all as a SQLite file, and <strong>Open data…</strong>
       loads one back — how data moves to another computer or another person. Change the forms in
       EEditor and export again: the new file finds the data the old one kept, in the same browser.
+    </p>
+
+    <h3 id="export-mac">An app of its own</h3>
+    <p>
+      <strong>Export as Mac app…</strong> on the same menu (or <strong>⇪ export</strong> in a form's
+      tab, then <em>A Mac app</em>) makes <code>Files.app</code>: a copy of EEditor that opens that
+      form filling its window and nothing else — no notes, no tree, no REPL. It runs on the same native
+      engine as EEditor, with a database of its own, and the form's file commands work: the
+      <a href="#form-examples">Files</a> browser exported this way moves real files, and ↵ on a file
+      opens it in the app the computer opens it with. On Windows and Linux the menu says
+      <strong>Export as Windows app…</strong> or <strong>Export as Linux app…</strong>, and makes a
+      folder: <code>Files/Files.exe</code> (or <code>Files.AppImage</code>) with the app beside it in
+      <code>eeform-app/</code>. Move or copy the whole folder.
+    </p>
+    <p>
+      EEditor asks for the app's name and where its files start. <em>A folder of its own</em> suits
+      an app that keeps records, like Books; <em>your home folder</em> suits one that works with your
+      files, like Files — EEditor picks that one when the form lists folders. Its data lives in a
+      folder named <code>com.eeditor.form.&lt;name&gt;</code>: on a Mac in
+      <code>~/Library/Application Support/</code>, on Windows in <code>%APPDATA%</code>, on Linux in
+      <code>~/.local/share/</code>. A form that shows a sheet takes the sheet along: the app writes it
+      into its own folder the first time it opens, and from then on it's the app's — changes stay, and
+      exporting again doesn't write over them. The app is about 20&nbsp;MB. A Mac app is signed for
+      this Mac only: on another one, the first time, right-click it and choose <strong>Open</strong>.
     </p>
   </div></div>
 </section>
@@ -1564,6 +1589,7 @@ zzalinhar — function
       <tr><td><code>toggle-preview</code></td><td>editor ⇄ rendered Markdown</td></tr>
       <tr><td><code>toggle-theme</code></td><td>dark ⇄ light</td></tr>
       <tr><td><code>export-pdf</code></td><td>print the current note to PDF</td></tr>
+      <tr><td><code>export-html</code> / <code>export-app</code></td><td>the form in front as one HTML file, or as <a href="#export-mac">an app of its own</a> (Mac, Windows, Linux)</td></tr>
       <tr><td><code>insert-image</code></td><td>pick images; each is copied into <code>assets/</code> beside the note and linked</td></tr>
       <tr><td><code>snippets</code></td><td>load the standard EELisp bundle</td></tr>
       <tr><td><code>calendar</code></td><td>open the month grid</td></tr>
