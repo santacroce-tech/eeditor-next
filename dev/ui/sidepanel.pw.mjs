@@ -12,6 +12,9 @@ import { UI_WORKSPACE } from "../../playwright.config.mjs";
 
 test.describe.configure({ mode: "serial" });
 
+/** The sidebar shows one section at a time: bring this one in front, by its icon in the rail. */
+const section = (page, key) => page.locator(`.side-rail [data-key="${key}"]`).click();
+
 const CONFIG = `${UI_WORKSPACE}/.eeditor/keybindings.eelisp`;
 const MOD = process.platform === "darwin" ? "Meta" : "Control";
 let pim = "";
@@ -50,17 +53,19 @@ async function repl(page, src) {
 
 test("the form takes the agenda's place, as wide as the sidebar", async ({ page }) => {
   await page.goto("/");
+  await section(page, "agenda");
   await expect(panel(page)).toBeVisible();
   await expect(page.locator(".agenda-section .agenda-add")).toBeHidden();
   await expect(panel(page).locator(".formrun-title")).toBeHidden();
   await expect(ctl(page, "lstCats").locator(".formrun-item").first()).toHaveText(/^all · \d+$/);
-  const section = await page.locator(".agenda-section").boundingBox();
+  const box = await page.locator(".agenda-section").boundingBox();
   const grid = await ctl(page, "grdItems").boundingBox();
-  expect(grid.width).toBeGreaterThan(section.width - 24); // anchored left and right: it stretched
+  expect(grid.width).toBeGreaterThan(box.width - 24); // anchored left and right: it stretched
 });
 
 test("its box adds, a category lists its own, ✓ finishes", async ({ page }) => {
   await page.goto("/");
+  await section(page, "agenda");
   await ctl(page, "txtAdd").locator("input").fill("water the ficus sidez #plants");
   await ctl(page, "txtAdd").locator("input").press("Enter");
   await expect(rows(page).filter({ hasText: "water the ficus sidez" })).toHaveCount(1);
@@ -78,8 +83,10 @@ test("its box adds, a category lists its own, ✓ finishes", async ({ page }) =>
 test("the REPL adding an item reruns :on-refresh; another name is a section of its own", async ({ page }) => {
   await writeFile(CONFIG, `${pim}\n(panel "Count" "pim/Count")\n(on-start (ed-open "welcome.md"))\n`);
   await page.goto("/");
+  await section(page, "agenda");
   const count = page.locator(".side-panel-section .formrun-ctl[data-name=lblCount]");
   await expect(page.locator(".side-panel-section .side-head")).toContainText("Count");
+  await expect(page.locator('.side-rail [data-key="panel:count"]')).toHaveText("C"); // its own icon, by its letter
   await expect(count).toHaveText(/^\d+ items$/);
   const before = Number((await count.textContent()).split(" ")[0]);
   await ctl(page, "lstCats").locator(".formrun-item").first().click(); // back to every item
@@ -91,6 +98,7 @@ test("the REPL adding an item reruns :on-refresh; another name is a section of i
 test("without the line, the built-in list is back", async ({ page }) => {
   await writeFile(CONFIG, `${pim.replace(/^\(panel "agenda".*$/m, "")}\n(on-start (ed-open "welcome.md"))\n`);
   await page.goto("/");
+  await section(page, "agenda");
   await expect(page.locator(".agenda-section .agenda-add")).toBeVisible();
   await expect(page.locator(".ag-item .ag-text", { hasText: "from the repl sidez" })).toHaveCount(1);
   await expect(panel(page)).toHaveCount(0);

@@ -12,6 +12,9 @@ import { UI_WORKSPACE } from "../../playwright.config.mjs";
 
 test.describe.configure({ mode: "serial" });
 
+/** The sidebar shows one section at a time: bring this one in front, by its icon in the rail. */
+const section = (page, key) => page.locator(`.side-rail [data-key="${key}"]`).click();
+
 const CONFIG = `${UI_WORKSPACE}/.eeditor/keybindings.eelisp`;
 const NOTE = `${UI_WORKSPACE}/brd-note.md`;
 const MOD = process.platform === "darwin" ? "Meta" : "Control";
@@ -84,6 +87,7 @@ test("the Agenda window's Board: a category's children as columns, a drag refile
   await repl(page, '(pim-add "answer Ana brdz #wk/mail" (list))');
   await repl(page, '(ed-open "brd-note.md")');
   await expect(page.locator(".etab.active .etab-label")).toHaveText("brd-note.md");
+  await section(page, "agenda");
   await page.locator(".agenda-section .side-btn", { hasText: "⤢" }).click();
   const win = page.locator(".formwin").filter({ has: page.locator(".formrun-name", { hasText: /^Agenda$/ }) });
   await win.locator(".formrun-tab", { hasText: "Board" }).click();

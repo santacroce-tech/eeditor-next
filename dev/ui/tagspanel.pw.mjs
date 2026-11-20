@@ -11,6 +11,9 @@ import { UI_WORKSPACE } from "../../playwright.config.mjs";
 
 test.describe.configure({ mode: "serial" });
 
+/** The sidebar shows one section at a time: bring this one in front, by its icon in the rail. */
+const section = (page, key) => page.locator(`.side-rail [data-key="${key}"]`).click();
+
 const CONFIG = `${UI_WORKSPACE}/.eeditor/keybindings.eelisp`;
 const DIR = `${UI_WORKSPACE}/tgz`;
 let pim = "";
@@ -40,6 +43,7 @@ const tag = (page, label) => ctl(page, "lstTags").locator(".formrun-item", { has
 
 test("the form takes the cloud's place; a tag lists its notes and a click opens one", async ({ page }) => {
   await page.goto("/");
+  await section(page, "tags");
   await expect(panel(page)).toBeVisible();
   await expect(page.locator(".tags-section .tags-panel")).toBeHidden();
   await ctl(page, "txtFind").locator("input").fill("tgzq");
@@ -61,6 +65,7 @@ test("⇩ puts the links in the note in front; a note saved with the tag joins t
   // saved (autosave), then the panels' refresh after a save — which waits while focus is in one
   await expect.poll(() => readFile(`${DIR}/tgz-index.md`, "utf8")).toContain("#tgzq");
   await page.waitForTimeout(900);
+  await section(page, "tags");
   await ctl(page, "txtFind").locator("input").fill("tgzq");
   await ctl(page, "txtFind").locator("input").press("Tab");
   await expect(tag(page, "#tgzq · 3")).toBeVisible(); // saved, and counted
@@ -77,6 +82,7 @@ test("⇩ puts the links in the note in front; a note saved with the tag joins t
 test("without the line, the cloud is back", async ({ page }) => {
   await writeFile(CONFIG, `${pim.replace(/^\(panel "tags".*$/m, "")}\n(on-start (ed-open "welcome.md"))\n`);
   await page.goto("/");
+  await section(page, "tags");
   await expect(page.locator(".tags-section .tag-chip", { hasText: "#tgzq" })).toBeVisible();
   await expect(panel(page)).toHaveCount(0);
 });

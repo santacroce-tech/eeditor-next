@@ -22,6 +22,7 @@ import { createWorkspaceClient, inTauri, type ExternalFile, type FileNode } from
 import { createEditor, isThemeName, THEMES, type ThemeName } from "./ui/editor";
 import { createRepl } from "./ui/repl";
 import { createSidebar } from "./ui/sidebar";
+import { createSideNav, SIDE_LAYOUTS } from "./ui/sidenav";
 import { createAgendaPanel } from "./ui/agenda";
 import { createQuickOpen } from "./ui/quickopen";
 import { paletteItems, type PaletteItem } from "./core/palette";
@@ -140,7 +141,8 @@ function main(): void {
   sidebarEl.className = "sidebar";
   shell.appendChild(sidebarEl);
   const filesSec = section(sidebarEl, "files", "files-section");
-  const tagsBody = section(sidebarEl, "tags", "tags-section").body;
+  const tagsSec = section(sidebarEl, "tags", "tags-section");
+  const tagsBody = tagsSec.body;
   const agendaSec = section(sidebarEl, "agenda", "agenda-section");
   const agendaBody = agendaSec.body;
 
@@ -394,9 +396,18 @@ function main(): void {
   function toggleSidebar(): void {
     // one pane at a time on a narrow screen: flip between the files and the editor
     if (narrow()) setMobileView(shell.dataset.mobileView === "files" ? "editor" : "files");
-    else setSidebarVisible(shell.dataset.sidebar === "off");
+    else if (!sideNav.toggle()) setSidebarVisible(shell.dataset.sidebar === "off");
   }
   setSidebarVisible(localStorage.getItem("sidebar.visible") !== "0");
+  // the sections by icon: stacked (as ever), a rail at the left edge, or a strip atop the sidebar
+  const sideNav = createSideNav(shell, sidebarEl, {
+    visible: () => shell.dataset.sidebar !== "off",
+    setVisible: setSidebarVisible,
+  });
+  const wrapOf = (head: HTMLElement): HTMLElement => head.parentElement as HTMLElement;
+  sideNav.add("files", "Files", wrapOf(filesSec.head));
+  sideNav.add("tags", "Tags", wrapOf(tagsSec.head));
+  sideNav.add("agenda", "Agenda", wrapOf(agendaSec.head));
 
   // ── state ── (currentPath/dirty mirror the active tab)
   interface Tab {
@@ -1029,6 +1040,7 @@ function main(): void {
     sidePanels = sidePanels.filter((x) => x !== p);
     builtInSection(p)?.setPanel(null);
     p.runner.destroy();
+    if (p.section) sideNav.remove("panel:" + p.name.toLowerCase());
     p.section?.remove();
   }
   async function startPanel(pn: Panel): Promise<void> {
@@ -1055,6 +1067,7 @@ function main(): void {
       const sec = section(sidebarEl, pn.name, "side-panel-section");
       sec.body.append(runner.el);
       live.section = sec.body.parentElement ?? undefined;
+      if (live.section) sideNav.add("panel:" + pn.name.toLowerCase(), pn.name, live.section);
     }
     sidePanels.push(live);
     await runner.start(r.spec);
@@ -2283,6 +2296,7 @@ function main(): void {
     "remove-folder": () => void removeGrantedFolder(),
     "close-tab": () => void (tabs.length === 0 && inTauri() ? saveAndClose() : closeTab(activeIdx)),
     "toggle-sidebar": toggleSidebar,
+    ...Object.fromEntries(SIDE_LAYOUTS.map((l) => [`sidebar-${l}`, () => sideNav.setLayout(l)])),
     "next-tab": () => {
       if (tabs.length > 1) goToTab((activeIdx + 1) % tabs.length);
     },
