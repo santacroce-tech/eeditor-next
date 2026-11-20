@@ -50,21 +50,23 @@ node scripts/site-msx-page.mjs
 
 ## Deploying
 
-```bash
-npm run deploy:site -- --dry-run   # what would change
-npm run deploy:site                # deploy
-```
+There is no deploy step: **merging to `main` publishes the site.** `.github/workflows/pages.yml`
+runs on every push to `main` that touches `site/`, copies the folder (leaving this README out) and
+hands it to GitHub Pages, which serves it at eeditor.app. Watch it in the repo's Actions tab, or run
+it by hand there (*Pages → Run workflow*).
 
-`scripts/deploy-site.sh` mirrors `site/` onto the server (`rsync --delete`), leaving this README off
-it. Where it goes — the server, the user, the key, the folder — is in `.deploy.env` at the repo root,
-which git ignores: copy `.deploy.env.example` and fill it in. It deploys **`main` only**, clean and the
-same as GitHub's, because the deploy copies the working tree: a branch checked out for review must
-never go live by accident.
+Only `main` goes live, so a branch open for review never reaches the site by accident.
+
+The domain is set in the repo's **Settings → Pages** (custom domain `eeditor.app`, *Enforce HTTPS*
+on). The DNS at the registrar points at GitHub: `A` records for `185.199.108.153`, `.109.153`,
+`.110.153` and `.111.153`, `AAAA` records for `2606:50c0:8000::153` through `8003::153`, and `www` as a
+`CNAME` to `santacroce-tech.github.io`. A workflow-published site ignores a `CNAME` file, so there
+isn't one.
 
 ## Publishing installers
 
-`download.html` links straight at GitHub release assets, so **a new release needs nothing done to
-the server** — only the version, file sizes, URLs and release notes updated on that page.
+`download.html` links straight at GitHub release assets, so **a new release needs nothing uploaded to
+the site** — only the version, file sizes, URLs and release notes updated on that page.
 
 Two things must be true or every download link 404s:
 
@@ -72,11 +74,7 @@ Two things must be true or every download link 404s:
 2. The release is **published**, not left as a draft. Draft releases are invisible even on a public
    repo, and `tauri-action` creates them as drafts on purpose.
 
-`../scripts/publish-downloads.sh v2.0.0` is still there if you ever want the files mirrored on this
-domain — it pulls a release, gives the assets clean names, writes `SHA256SUMS` and rsyncs them to
-a `downloads/` folder on the server (from `.deploy.env`). Nothing on the site depends on it today.
-
 ## Serving
 
-Plain files: the web server serves `site/` as it is (`try_files $uri $uri/ =404`), so `.html` files,
-images and the apps are all it needs.
+Plain files, as they are: `.html` pages, images and the apps are all it needs. There are no
+redirects or rewrites, so a link has to name the file (`manual.html`, not `manual`).

@@ -28,8 +28,8 @@ release. Publishing the draft is what the website follows: its download buttons 
    shows its number, date and file sizes (read from GitHub when the page loads). No site deploy is
    needed for the links.
 6. **Release notes on the site**: add the new version's paragraph under *Release notes* in
-   `site/download.html`, merge, and `npm run deploy:site`. This is the only per-release edit
-   the site needs.
+   `site/download.html` and merge: GitHub Pages publishes the site from `main` within a minute or
+   two. This is the only per-release edit the site needs.
 
 ## Rehearsing without a release
 
