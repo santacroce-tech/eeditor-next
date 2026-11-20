@@ -30,6 +30,7 @@ test("an empty folder is offered the samples, and gets every one of them, the PI
 
   // it opens on the welcome note, the agenda (the PIM's side panel) has the tour's items, and the PIM's keys are live
   await expect(page.locator(".etab.active .etab-label")).toHaveText("welcome.md");
+  await page.locator('.side-rail [data-key="agenda"]').click(); // one section at a time: the agenda's icon
   await expect(page.locator(".agenda-section .formrun-ctl[data-name=grdItems] td", { hasText: "renew the passport" })).toBeVisible();
   await page.locator(".editor-host .cm-content").click();
   await page.keyboard.press(`${MOD}+Alt+k`);

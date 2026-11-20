@@ -9,6 +9,9 @@ import { UI_WORKSPACE } from "../../playwright.config.mjs";
 
 test.describe.configure({ mode: "serial" });
 
+/** The sidebar shows one section at a time: bring this one in front, by its icon in the rail. */
+const section = (page, key) => page.locator(`.side-rail [data-key="${key}"]`).click();
+
 const NOTE = `# Plans
 
 - [ ] water the ficus zz
@@ -37,6 +40,7 @@ const ours = (page) => page.locator(".ag-note-task", { hasText: " zz" });
 
 test("unlinked tasks are listed, folded, and open their note at the line", async ({ page }) => {
   await page.goto("/");
+  await section(page, "agenda");
   await expect(group(page)).toBeVisible();
   const head = page.locator(".ag-notes-head");
   if (!(await page.locator(".ag-notes-body").isVisible())) await head.click();
@@ -55,6 +59,7 @@ test("unlinked tasks are listed, folded, and open their note at the line", async
 
 test("＋ adds it to the agenda and links the line", async ({ page }) => {
   await page.goto("/");
+  await section(page, "agenda");
   await expect(ours(page)).toHaveCount(2);
   await page.locator(".ag-notes-head").click(); // a new page starts folded
   await ours(page).filter({ hasText: "water the ficus" }).locator(".ag-note-add").click();

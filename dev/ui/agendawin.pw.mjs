@@ -11,6 +11,9 @@ import { UI_WORKSPACE } from "../../playwright.config.mjs";
 
 test.describe.configure({ mode: "serial" });
 
+/** The sidebar shows one section at a time: bring this one in front, by its icon in the rail. */
+const section = (page, key) => page.locator(`.side-rail [data-key="${key}"]`).click();
+
 const CONFIG = `${UI_WORKSPACE}/.eeditor/keybindings.eelisp`;
 const NOTE = `${UI_WORKSPACE}/tm-plans.md`;
 
@@ -37,6 +40,7 @@ const status = (page, name) => ctl(page, name).locator(".formrun-label");
 async function open(page) {
   await page.goto("/");
   await expect(page.locator(".etab.active .etab-label")).toHaveText("welcome.md");
+  await section(page, "agenda");
   await page.locator(".agenda-section .side-btn", { hasText: "⤢" }).click();
   await expect(win(page)).toBeVisible();
 }

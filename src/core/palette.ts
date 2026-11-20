@@ -58,6 +58,8 @@ export const COMMAND_TITLES: Record<string, string> = {
   "focus-editor": "Go to the editor",
   "toggle-preview": "Preview / edit",
   "toggle-theme": "Next theme",
+  "sidebar-rail": "Sidebar: one section at a time, by icon",
+  "sidebar-stacked": "Sidebar: every section stacked",
   "theme-dark": "Theme: dark",
   "theme-light": "Theme: light",
   "insert-image": "Insert an image",
