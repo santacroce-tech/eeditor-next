@@ -381,12 +381,13 @@ those calls as text and evaluates them — `json-stringify` quotes a string safe
 
 ## Later
 
-Export as a standalone page — which needs the engine in the browser, i.e. eelisp-rs compiled to
-WebAssembly, a project of its own; until then a form runs where the engine runs.
+Export as a standalone page is done (`FORM-APPS.md`), and so is export as an app of its own. What
+forms still lack is in the roadmap: [ROADMAP.md, A — apps and forms](ROADMAP.md#a--apps-and-forms).
 
 *Done since v1:* multi-select with marquee, align/size/spread, copy/paste of controls, radio groups
 and dates, number boxes, `:required` + `:submit`, Tab order, `(ed-form …)` from a keybinding and
 the REPL, forms in floating windows that come back where they were left, `:min`/`:max`/`:pattern`
 and `:on-validate`, image and timer controls, `:default`/`:cancel` buttons, `:on-dblclick`,
 editable grid cells, tabs and `:page`, an embedded sheet, the datagrid (sort, filter, pages), the
-menu bar.
+menu bar, `:on-key`, `:on-close`.
+

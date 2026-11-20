@@ -5,7 +5,7 @@ variables with them, and **a runtime** that runs a set of forms as a program on 
 the editor around it. The first is what makes several `.eeform`s one application; the second is how
 that application reaches someone who doesn't use EEditor.
 
-Status: decisions taken (see *Decided* at the end). Done: W0–W4 and A1–A3. An app — a main form and the forms it opens, sharing variables — exports as one HTML file that runs anywhere, offline, keeping its data. Left for later: `:on-close`, sheets in an exported app, and the B series.
+Status: done. W0–W4 and A1–A3 are built, and so are `:on-close` and sheets in an exported app. An app — a main form and the forms it opens, sharing variables — exports as one HTML file that runs anywhere, offline, keeping its data, or as an app of its own for a Mac, Windows or Linux (below). The B series isn't needed; what's left for forms is in [ROADMAP.md](ROADMAP.md#a--apps-and-forms).
 
 ```
  ┌ Shop ─────────────────────────────────────────────────────────┐
@@ -131,6 +131,22 @@ reach through `ui-open` (found by reading the files, plus any the author lists i
 the `lib/` files, the sheets and images they refer to, and optionally the tables they use with
 their current rows.
 
+> **Built (Nov 2026): Export as Mac app (and Windows, Linux).** Not the `.eeapp` folder below but
+> the same bundle an HTML export carries (`AppBundle`), written as
+> `Contents/Resources/eeform-app/app.json` into a copy of EEditor.app — renamed, given its own
+> identifier (`com.eeditor.form.<name>`), stripped of EEditor's file types, re-signed ad hoc
+> (`export_app` / `make_mac_app` in `src-tauri/src/lib.rs`). On Windows and Linux it is a folder:
+> the program renamed (`Files.exe`, or the AppImage) with `eeform-app/app.json` beside it
+> (`make_folder_app`). At launch the copy finds the file (`hosted()`), opens its window on
+> `runtime.html` instead of the editor, and keeps its database and granted folders in a folder
+> named by its id (on a Mac, `~/Library/Application Support/<id>/`). Its paths start in `Files/`
+> there, or at the home folder for an app that works with files. `runtime.ts` runs it on the
+> native engine, loads the `ed-*` constructors, and carries out `(ui-editor …)` file commands
+> (`ui/appcommands.ts`); `(ed-open …)` hands a file to the system. The sheets it carries are
+> written into its `Files/` the first time it opens and are its own from then on, so an app with
+> sheets always has a folder of its own. Tried without building: `EEDITOR_APP=app.json` makes the
+> dev bridge (and a dev build) serve one, and `dev/ui/macapp.pw.mjs` runs Files and a sheet that way.
+
 ### Three ways to run one — in the order to build them
 
 **1. EEditor Runtime (desktop) — build first.** A second Tauri app from this repo: the same engine
@@ -205,10 +221,10 @@ can be exported on its own — and the main form (A) is what turns several of th
 | ~~**W2**~~ | ~~The runtime page~~ — done: `runtime.html` + `src/runtime.ts`. A form runs on its own over the wasm engine (`?form=<url>`, or a `<script type="text/x-eeform">` in the page); its data is kept in IndexedDB (`src/engine/store.ts`) under the app's name, written straight after every change (the engine's `exportDb`/`importDb`/`changes` — rusqlite's serialize, eelisp-rs `feat/wasm-data`); *Save data…* downloads it as a SQLite file, *Open data…* loads one back. The page already reads an engine carried inline (gzipped base64), which W3 writes. `dev/ui/runtime.pw.mjs`. Not in it yet: sheets, `ui-open` of another form (W4), images other than by URL | W1 |
 | ~~**W3**~~ | ~~*Export as HTML…*~~ — done: the tree menu on a form and the `export-html` command write one self-contained file beside it (`core/export.ts` into the template from `npm run runtime:template`); the form and its images inside, runs offline from disk — checked in Chromium (with the network off) and WebKit. The release workflow builds the template once and puts it in every installer | W2 |
 | ~~**A1**~~ | ~~Scopes~~ — done: `local`, `public` (`:persist`), `var`, `var!`, `:on-public`; `$form`/`$main`/`$key`/`$app` in `f`. Until the frame exists, a form's *main* is the one that opened it with `ui-open` (windows), or itself — see docs/FORMS.md, *Variables* | — |
-| ~~**A2**~~ | ~~The `frame` control~~ — done: `(ui-open … :in …)` (`:new true`), screens (default) / tabs / windows, the Window menu, ⌃Tab, back to the previous on close, `:value`/`:on-change`. `:on-close` (refusing to close) is left for later | A1 |
+| ~~**A2**~~ | ~~The `frame` control~~ — done: `(ui-open … :in …)` (`:new true`), screens (default) / tabs / windows, the Window menu, ⌃Tab, back to the previous on close, `:value`/`:on-change`. `:on-close` (refusing to close) came later, in `formrun.ts` | A1 |
 | ~~**A3**~~ | ~~`:main`, menu merge, the example~~ — done: `:main true` (designer: *Main form*), menus merged into the main form's bar while a form shows in a frame, `ui-open` names resolved beside the opener, **Office.eeform** | A2 |
 | ~~**W4**~~ | ~~Export of a whole app~~ — done: exported from a main form, every form reached from it (by the strings in its code that name one) goes into the one file; the page hosts them through `forms/host.ts`, shared with the editor. *Save data / Open data* came with W2 | W3, A3 |
-| B1–B4 | The `.eeapp` folder, the desktop runtime, the served app — later, if the HTML file leaves a need |  |
+| ~~B1–B4~~ | ~~The `.eeapp` folder, the desktop runtime, the served app~~ — not needed: the desktop runtime is Export as … app, above, and the HTML file covers the rest (ROADMAP, *No*) |  |
 
 ## Decided
 

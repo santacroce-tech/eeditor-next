@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FORM_SLOT, codeStrings, collectApp, exportAppHtml, formImages, formNamed, isExportedPage, jsonInScript, readExportedApp, unpackPlan } from "./export";
+import { FORM_SLOT, codeStrings, collectApp, desktopApp, exportAppHtml, formImages, formNamed, isExportedPage, jsonInScript, macAppId, macAppName, readDesktopApp, readExportedApp, unpackPlan } from "./export";
 import { readFormSpec } from "./form";
 
 const TEMPLATE = `<!doctype html><html><head><title>EEditor form</title></head>
@@ -145,5 +145,31 @@ describe("readExportedApp and unpackPlan — an exported page back into files", 
       "imported/Office forms/sub/Books.eeform",
     ]);
     expect(plan.images).toEqual([["imported/Office forms/logo.png", "data:image/png;base64,AA"]]);
+  });
+});
+
+describe("a Mac app — its name, its identifier, its app.json", () => {
+  it("names it what a Finder app can be called", () => {
+    expect(macAppName("Files")).toBe("Files");
+    expect(macAppName("  Books / Orders: 2026 ")).toBe("Books Orders 2026");
+    expect(macAppName("...hidden")).toBe("hidden");
+    expect(macAppName("\u0007")).toBe("App");
+    expect(macAppName("x".repeat(80))).toHaveLength(60);
+  });
+
+  it("gives it an identifier of its own, from the name", () => {
+    expect(macAppId("Files")).toBe("com.eeditor.form.files");
+    expect(macAppId("Orçamento da Casa")).toBe("com.eeditor.form.orcamento-da-casa");
+    expect(macAppId("✨")).toBe("com.eeditor.form.app");
+  });
+
+  it("reads back what it writes, and nothing that isn't an app", () => {
+    const bundle = { main: "Files.eeform", forms: { "Files.eeform": '(form "Files")' }, assets: {} };
+    const app = desktopApp("Files", "home", bundle);
+    expect(readDesktopApp(JSON.stringify(app))).toEqual({ ...app, bundle: { ...bundle, sheets: undefined } });
+    expect(readDesktopApp(JSON.stringify({ ...app, folder: "elsewhere" }))?.folder).toBe("own");
+    expect(readDesktopApp(JSON.stringify({ ...app, bundle: { ...bundle, main: "Other.eeform" } }))).toBeNull();
+    expect(readDesktopApp("not json")).toBeNull();
+    expect(readDesktopApp("null")).toBeNull();
   });
 });

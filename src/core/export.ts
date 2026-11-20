@@ -229,3 +229,59 @@ export function unpackPlan(
     sheets: Object.entries(b.sheets ?? {}).map(([p, data]) => [place(p), data]),
   };
 }
+
+// ── a Mac app ────────────────────────────────────────────────────────
+//
+// Export as Mac app… writes a copy of EEditor with this in Contents/Resources/eeform-app/app.json.
+// Started, that copy finds it and runs the app instead of the editor (runtime.ts): the native
+// engine, real files, a database of its own. The bundle is the same one an HTML export carries.
+
+/** What an exported Mac app carries. */
+export interface DesktopApp {
+  /** Its name — in the Finder, the menu bar, the window's title. */
+  name: string;
+  /** Its bundle identifier, which also names its own folder in Application Support. */
+  id: string;
+  /**
+   * Where its paths start. "own": a folder of its own, beside its database — for an app that keeps
+   * records. "home": the home folder — for one that works with the person's files, like Files.
+   */
+  folder: "own" | "home";
+  bundle: AppBundle;
+}
+
+/** A name a Finder app can have: no "/" or ":", no control characters, not empty, not too long. */
+export function macAppName(title: string): string {
+  // eslint-disable-next-line no-control-regex
+  const clean = title.replace(/[/:\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().replace(/^\.+/, "");
+  return clean.slice(0, 60).trim() || "App";
+}
+
+/** The bundle identifier for an app called `name`: com.eeditor.form.<name in lower case, a-z0-9 and ->. */
+export function macAppId(name: string): string {
+  const slug = name
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `com.eeditor.form.${slug || "app"}`;
+}
+
+export function desktopApp(title: string, folder: DesktopApp["folder"], bundle: AppBundle): DesktopApp {
+  const name = macAppName(title);
+  return { name, id: macAppId(name), folder, bundle };
+}
+
+/** app.json back into an app — null when it isn't one. */
+export function readDesktopApp(text: string): DesktopApp | null {
+  try {
+    const v = JSON.parse(text) as Partial<DesktopApp> | null;
+    const b = v?.bundle;
+    if (!v || typeof v.name !== "string" || typeof v.id !== "string" || !b || typeof b.main !== "string") return null;
+    if (typeof b.forms !== "object" || b.forms === null || !(b.main in b.forms)) return null;
+    return { name: v.name, id: v.id, folder: v.folder === "home" ? "home" : "own", bundle: { main: b.main, forms: b.forms, assets: b.assets ?? {}, sheets: b.sheets } };
+  } catch {
+    return null;
+  }
+}

@@ -9,13 +9,19 @@
 // Where things come from, first match wins:
 //   the app     <script type="application/x-eeform-app+json"> — { main, forms, assets } (an export,
 //               core/export.ts) · <script type="text/x-eeform"> (one form, written by hand) ·
-//               ?form=<url> (the dev server; forms it opens are fetched beside it)
+//               ?form=<url> (the dev server; forms it opens are fetched beside it) ·
+//               the app an exported Mac app carries (hostedApp — or what the dev bridge's
+//               EEDITOR_APP names)
 //   the engine  <script type="application/x-eelisp-engine+json"> + <script type="application/x-eelisp-wasm">
 //               (gzipped, base64) in the page · public/engine/ (npm run engine:wasm)
+//
+// A Mac app is the desktop case: the native engine over a database of its own, real files, and
+// (ui-editor …) carried out (ui/appcommands.ts) — so Files moves files there as it does in EEditor.
+// No Save data… / Open data…: its data is a file already.
 
 import "./styles.css";
 import { FORM_EXT, isFormPath, type FormSpec } from "./core/form";
-import { sheetPath, type AppBundle } from "./core/export";
+import { readDesktopApp, sheetPath, type AppBundle, type DesktopApp } from "./core/export";
 import { resolveNoteRelative } from "./core/mdmedia";
 import type { EngineClient } from "./engine/client";
 import { createFormClient, type FormIdentity } from "./engine/form";
@@ -23,10 +29,13 @@ import { createSheetClient } from "./engine/sheet";
 import { indexedDbStore } from "./engine/store";
 import { WasmEngine, defaultWasmUrls, loadWasmFrom, loadWasmFromText } from "./engine/wasm";
 import { createFormHost } from "./forms/host";
+import type { JsonValue } from "./engine/types";
+import type { WorkspaceClient } from "./engine/workspace";
 import { toast } from "./ui/dialogs";
 import { createFormRunner, type FormRunner } from "./ui/formrun";
 import { createFormWindow, type FormWindow } from "./ui/formwindow";
 import { createSheetView } from "./ui/sheet";
+import ED_COMMANDS from "./keybindings/prelude.eelisp?raw";
 
 const app = document.getElementById("app") as HTMLElement;
 
@@ -109,6 +118,61 @@ function appSource(): Source | null {
   };
 }
 
+/** An exported Mac app: what it carries, its files and its engine. */
+interface Hosted {
+  app: DesktopApp;
+  ws: WorkspaceClient;
+  engine: EngineClient;
+}
+
+/** The app this build carries — asked only when the page carries none, so an exported page never asks. */
+async function hostedApp(): Promise<Hosted | null> {
+  const { createWorkspaceClient } = await import("./engine/workspace");
+  const ws = createWorkspaceClient();
+  const text = await ws.hostedApp().catch(() => null);
+  const app = text ? readDesktopApp(text) : null;
+  if (!app) return null;
+  const { createEngineClient } = await import("./engine/client");
+  return { app, ws, engine: createEngineClient() };
+}
+
+/**
+ * A desktop app's sheets, as files in its own folder: written from what it carries the first time
+ * it opens, then left alone — they are its data from then on, as its database is.
+ */
+async function placeSheets(h: Hosted): Promise<void> {
+  for (const [path, data] of Object.entries(h.app.bundle.sheets ?? {})) {
+    // sheet-from-bytes never writes over a file: one already there is the app's own, kept
+    const r = await h.engine.evalSrc(`(sheet-from-bytes ${JSON.stringify(path)} ${JSON.stringify(data)})`);
+    if (!r.ok && !/already exists/.test(r.error)) toast(`${path}: ${r.error}`);
+  }
+}
+
+/**
+ * A Mac app quits the way EEditor does: the backend holds the quit until the page says nothing is
+ * left unsaved (`app-exiting`, then exitApp). Nothing is, here — the engine writes as it goes.
+ */
+async function hostedExit(ws: WorkspaceClient): Promise<void> {
+  if (!("__TAURI_INTERNALS__" in (globalThis as Record<string, unknown>))) return;
+  const { listen } = await import("@tauri-apps/api/event");
+  await listen("app-exiting", () => void ws.exitApp());
+}
+
+/**
+ * A Mac app is its form: the window takes the form's size, once, at launch — the form's own title
+ * bar goes, the window's says the same — and then the form fills it, its anchored controls
+ * stretching as the window is resized.
+ */
+async function fillWindow(form: HTMLElement): Promise<void> {
+  document.body.classList.add("rt-app");
+  const drawn = form.querySelector(".formrun-window")?.getBoundingClientRect();
+  if (drawn && !document.body.classList.contains("rt-fill") && "__TAURI_INTERNALS__" in (globalThis as Record<string, unknown>)) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("fit_window", { width: Math.ceil(drawn.width), height: Math.ceil(drawn.height) }).catch(() => {});
+  }
+  document.body.classList.add("rt-fill");
+}
+
 /** Bytes from base64, unzipped with the browser's own gzip. */
 async function gunzipBase64(b64: string): Promise<Uint8Array> {
   const bin = Uint8Array.from(atob(b64.replace(/\s+/g, "")), (c) => c.charCodeAt(0));
@@ -147,12 +211,16 @@ async function main(): Promise<void> {
   const dark = matchMedia("(prefers-color-scheme: dark)").matches;
   document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
 
-  const src = appSource();
-  if (!src) return fail("No form to run. Open this page with ?form=path/to/Some.eeform");
+  const carried = appSource();
+  const hosted = carried ? null : await hostedApp();
+  const found = carried ?? (hosted ? fromBundle(hosted.app.bundle) : null);
+  if (!found) return fail("No form to run. Open this page with ?form=path/to/Some.eeform");
+  const src: Source = found;
 
-  const keep = await storageWorks();
+  const keep = hosted ? true : await storageWorks();
   const stage = el("div", "rt-stage");
   const bar = el("div", "rt-bar");
+  /** The page's own engine — none in a Mac app, which has the native one. */
   let engine: WasmEngine | null = null;
   let mainSpec: FormSpec | null = null;
   let mainRunner: FormRunner | null = null;
@@ -161,6 +229,9 @@ async function main(): Promise<void> {
   const note = (text: string) => console.log(text);
   /** Every evaluation the forms and sheets make, followed by keeping any sheet it changed. */
   let watched: EngineClient | null = null;
+  /** (ui-editor …) in a Mac app; a page has no files to give it, and ignores it. */
+  let onEditor: ((v: JsonValue) => Promise<void>) | undefined;
+  let mainId: FormIdentity | undefined;
   const extras = (p: string) => ({
     imageUrl: async (s: string) => {
       const at = resolveNoteRelative(p, s);
@@ -170,6 +241,18 @@ async function main(): Promise<void> {
     sheetView: (file: string) => {
       const path = sheetPath(p, file);
       if (!path || !watched) return null;
+      if (!engine) {
+        // A desktop app: the sheet is a file in its folder, which the native engine opens by path.
+        const view = createSheetView({ client: createSheetClient(watched), path, onError: toast, onEditing: () => {} });
+        return {
+          el: view.el,
+          load: () => view.load(),
+          commit: () => view.commit(),
+          refreshIfChanged: () => view.refreshIfChanged(),
+          focus: () => view.focus(),
+          destroy: () => view.destroy(),
+        };
+      }
       const view = createSheetView({ client: createSheetClient(watched), path, onError: toast, onEditing: () => {} });
       return {
         el: view.el,
@@ -186,7 +269,52 @@ async function main(): Promise<void> {
     onMessage: toast,
     onError: (m: string) => toast(m),
     note,
+    onEditor,
   });
+
+  // ── sheets: kept in the app's own database, so they last and Save data… carries them ──
+  let openSheet = async (_path: string): Promise<boolean> => false;
+  async function keepSheetsIn(eng: WasmEngine): Promise<void> {
+    const ev = async (code: string) => {
+      const r = await eng.evalSrc(code);
+      if (!r.ok) throw new Error(r.error);
+      return r.result;
+    };
+    await ev("(deftable _ui_sheets (path:string data:string))");
+    const kept = new Map<string, string>(
+      ((await ev("(map (fn (r) (list (field-get r :path) (field-get r :data))) (records (query _ui_sheets)))")) as [string, string][]) ?? [],
+    );
+    /** Open sheets, and the version each was at when last kept. */
+    const sheetAt = new Map<string, number>();
+    openSheet = async (path: string): Promise<boolean> => {
+      if (sheetAt.has(path)) return true;
+      const bytes = kept.has(path) ? fromBase64(kept.get(path) as string) : await src.sheet(path);
+      if (!bytes) return false;
+      await eng.importSheet(path, bytes);
+      for (const [p, v] of await eng.sheetVersions()) if (p === path) sheetAt.set(p, v);
+      return true;
+    };
+    /** After any evaluation: a sheet whose version moved goes into _ui_sheets — a change to the database, which is then kept. */
+    const keepSheets = async (): Promise<void> => {
+      for (const [path, version] of await eng.sheetVersions()) {
+        if (!sheetAt.has(path) || sheetAt.get(path) === version) continue;
+        sheetAt.set(path, version);
+        const data = toBase64(await eng.exportSheet(path));
+        const p = JSON.stringify(path);
+        await ev(`(let (row (first (records (query _ui_sheets :where "path = ?" :params (list ${p})))))
+                    (if row (update _ui_sheets (record-id row) {:path ${p} :data "${data}"})
+                            (insert _ui_sheets {:path ${p} :data "${data}"})))`);
+      }
+    };
+    watched = {
+      evalSrc: async (code) => {
+        const r = await eng.evalSrc(code);
+        await keepSheets().catch((e) => note(`keeping a sheet: ${String(e)}`));
+        return r;
+      },
+    };
+    for (const s of src.sheets) await openSheet(s).catch((e) => toast(`${s}: ${e instanceof Error ? e.message : String(e)}`));
+  }
 
   // The main form is read first: its title names the app, and the app's data.
   let mainText: string;
@@ -195,52 +323,28 @@ async function main(): Promise<void> {
   } catch (e) {
     return fail(`The form couldn't be read — ${e instanceof Error ? e.message : String(e)}`);
   }
-  const title = /\(form\s+"((?:[^"\\]|\\.)*)"/.exec(mainText)?.[1] ?? "App";
+  const title = hosted?.app.name ?? /\(form\s+"((?:[^"\\]|\\.)*)"/.exec(mainText)?.[1] ?? "App";
   document.title = title;
-  engine = await engineFor(`eeform:${document.body.dataset.app || title}`, keep);
-  const eng = engine;
-
-  // ── sheets: kept in the app's own database, so they last and Save data… carries them ──
-  const ev = async (code: string) => {
-    const r = await eng.evalSrc(code);
-    if (!r.ok) throw new Error(r.error);
-    return r.result;
-  };
-  await ev("(deftable _ui_sheets (path:string data:string))");
-  const kept = new Map<string, string>(
-    ((await ev("(map (fn (r) (list (field-get r :path) (field-get r :data))) (records (query _ui_sheets)))")) as [string, string][]) ?? [],
-  );
-  /** Open sheets, and the version each was at when last kept. */
-  const sheetAt = new Map<string, number>();
-  const openSheet = async (path: string): Promise<boolean> => {
-    if (sheetAt.has(path)) return true;
-    const bytes = kept.has(path) ? fromBase64(kept.get(path) as string) : await src.sheet(path);
-    if (!bytes) return false;
-    await eng.importSheet(path, bytes);
-    for (const [p, v] of await eng.sheetVersions()) if (p === path) sheetAt.set(p, v);
-    return true;
-  };
-  /** After any evaluation: a sheet whose version moved goes into _ui_sheets — a change to the database, which is then kept. */
-  const keepSheets = async (): Promise<void> => {
-    for (const [path, version] of await eng.sheetVersions()) {
-      if (!sheetAt.has(path) || sheetAt.get(path) === version) continue;
-      sheetAt.set(path, version);
-      const data = toBase64(await eng.exportSheet(path));
-      const p = JSON.stringify(path);
-      await ev(`(let (row (first (records (query _ui_sheets :where "path = ?" :params (list ${p})))))
-                  (if row (update _ui_sheets (record-id row) {:path ${p} :data "${data}"})
-                          (insert _ui_sheets {:path ${p} :data "${data}"})))`);
-    }
-  };
-  watched = {
-    evalSrc: async (code) => {
-      const r = await eng.evalSrc(code);
-      await keepSheets().catch((e) => note(`keeping a sheet: ${String(e)}`));
-      return r;
-    },
-  };
-  for (const s of src.sheets) await openSheet(s).catch((e) => toast(`${s}: ${e instanceof Error ? e.message : String(e)}`));
-  const forms = createFormClient(watched);
+  if (hosted) {
+    watched = hosted.engine;
+    const { createAppCommands } = await import("./ui/appcommands");
+    onEditor = createAppCommands({
+      ws: hosted.ws,
+      openForm: (p) => openWindow(p, mainId ?? host.identity(src.main, title)),
+      say: toast,
+      note,
+    });
+    await hostedExit(hosted.ws);
+    await placeSheets(hosted);
+  } else {
+    engine = await engineFor(`eeform:${document.body.dataset.app || title}`, keep);
+    await keepSheetsIn(engine);
+  }
+  // (ed-move …), (ed-message …) and the rest — what a form's (ui-editor …) is written with. The
+  // editor loads them with its keys; an app's engine has never seen the editor, so it loads them here.
+  const lib = await (watched as EngineClient).evalSrc(ED_COMMANDS);
+  if (!lib.ok) note(`the editor commands couldn't be loaded — ${lib.error}`);
+  const forms = createFormClient(watched as EngineClient);
 
   const closeWindow = (p: string) => {
     const w = windows.get(p);
@@ -278,17 +382,20 @@ async function main(): Promise<void> {
   const r = await host.prepare(src.main);
   if (!r) return fail(`${title} can't run — see the message above`);
   mainSpec = r.spec;
-  app.replaceChildren(stage, bar);
+  if (hosted) app.replaceChildren(stage);
+  else app.replaceChildren(stage, bar);
 
   const run = async (): Promise<void> => {
     for (const p of [...windows.keys()]) closeWindow(p);
     mainRunner?.destroy();
     const spec = mainSpec as FormSpec;
     const id = host.identity(src.main, spec.title);
+    mainId = id;
     mainRunner = createFormRunner({ ...host.wire(id), ...extras(src.main), onClose: () => closed(spec), windowed: true });
     host.track(id, mainRunner);
     stage.replaceChildren(mainRunner.el);
     await mainRunner.start(spec);
+    if (hosted) await fillWindow(mainRunner.el);
     mainRunner.focus();
   };
 
@@ -296,6 +403,8 @@ async function main(): Promise<void> {
     for (const p of [...windows.keys()]) closeWindow(p);
     mainRunner?.destroy();
     mainRunner = null;
+    // A Mac app is its main form: closing it is quitting.
+    if (hosted) return void hosted.ws.closeWindow();
     void engine?.save();
     const again = el("button", "rt-btn", `Open ${s.title} again`);
     again.addEventListener("click", () => void run());

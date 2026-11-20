@@ -1,153 +1,150 @@
 # Roadmap
 
-What EEditor and EELisp can't do yet, found by using them for something real — mostly while
-writing *Zero to Hero*, the book that builds a PIM with an agenda, tables, sheets and live market
-prices (santacroce-tech/eeditor-docs, `book/`). Each item says where it came up, how it would be
-built, roughly what it costs, and whether it's worth doing.
+**The one list of what EEditor and EELisp don't do yet**: everything planned, everything decided
+against, and what has been done. Other documents explain how things are built (`FORMS.md`,
+`FORM-APPS.md`, `SPREADSHEET.md`, `DISPLAY.md`, `msx/MSX.md`, `PIM.md`); none of them keeps a to-do list.
+When one finds something missing, it goes here, and that document links to it.
+
+Each item has an id that stays the same: **A** apps and forms, **M** the machines, **S** sheets and
+data, **P** the PIM, **W** the site and docs. When an item is done, it moves to *Done*, with the PR
+that did it.
 
 Cost: **S** a day or less · **M** a few days · **L** a week or more. *Engine* means eelisp-rs,
 *app* means this repository.
 
-| | Item | Where | Cost | Decision |
-|---|---|---|---|---|
-| 1 | [The `http-get` manual says it returns text](#1-http-get-is-documented-wrong) | engine | S | **Fixed** with this roadmap |
-| 2 | [Catching an error: `try`](#2-catching-an-error-try) — and `iferror` with it | engine + app | M | **Done** — eelisp-rs#23, eeditor-next#48 (`iferror`) |
-| 3 | [`http-get` options: timeout and headers](#3-http-get-options-timeout-and-headers) | engine | S | **Done** — eelisp-rs#24 |
-| 4 | [`csv-parse` in the language](#4-csv-parse-in-the-language) | engine | S | **Done** — eelisp-rs#25 |
-| 5 | [Installing the PIM keys in a folder that has its own](#5-installing-the-pim-keys-in-any-folder) | app | S | **Done** — eeditor-next#47 |
-| 6 | [Formulas that read the database recalculate by themselves](#6-formulas-that-read-the-database-recalculate-by-themselves) | engine | M–L | Later |
-| 7 | [Charts](#7-charts) | app + engine | M, then L | **Sparklines done** (eeditor-next `feat/sparkline`); charts later |
-| 8 | [`.xlsx` import](#8-xlsx-import) | engine + app | M | Later |
-| 9 | [Query results that fill a range, and stay live](#9-query-results-that-fill-a-range) | engine + app | L | Later, after 6 |
-| 10 | [A place for API keys](#10-a-place-for-api-keys) | app | S | Later — with the book's chapter 16 |
-| 11 | [Requests that don't hold the engine](#11-requests-that-dont-hold-the-engine) | engine + app | L | Only if 3 isn't enough |
-| 12 | [Refreshing with the app closed](#12-refreshing-with-the-app-closed) | app | L | **No** |
-| 13 | [A built-in stock price source](#13-a-built-in-stock-price-source) | — | — | **No** |
-| 14 | [Whole rows, and a formula knowing its own cell](#14-whole-rows-and-a-formula-knowing-its-own-cell) | engine | M | Not until asked |
-| 15 | [An easter egg: a raycaster in EELisp](#15-an-easter-egg-a-raycaster-in-eelisp) | app | M | **Done** — `Raycaster.eeform` |
-| 16 | [Small engine fixes found by the book](#16-small-engine-fixes-found-by-the-book) | engine | S each | **Done** — eelisp-rs#22, #26 |
-
-What sheets in particular still lack — formatting, the grid, sheets as first-class files — has its
-own running list: [SHEETS-LATER.md](SHEETS-LATER.md).
-
 ---
 
-## Next steps
+## Open
 
-Where things stand after 2.5.0 (2026-11-03), and what comes next, in the order it makes sense to
-do it. The numbered items above are the engine and sheets work the book found; these are the
-screen, the machines and the site.
+### A — apps and forms
 
-2.5.0 is published (2026-11-03), with every installer and its notes, so the download buttons and
-the "Full notes" link are live.
+| | Item | Where | Cost | Decision |
+|---|---|---|---|---|
+| A1 | **Try the Windows and Linux export on real machines.** It's built and its Rust is tested, but nobody has run an exported `Files.exe` or `Files.AppImage` yet. On Windows, check whether two WebView2 processes from one build get on (EEditor and an app made from it, open together) | app | S | Next, when a Windows or Linux machine is at hand |
+| A2 | **Key events in a form.** `ui-held` says what is down at the frame, not what was pressed and let go in between; a typing program may want the events too (`DISPLAY.md`) | engine + app | M | When a form needs it |
 
-**Next — the machines** (`docs/DISPLAY.md`, `docs/msx/MSX.md`)
+### M — the machines
+
+How they're built: `docs/DISPLAY.md`, `docs/msx/MSX.md`.
 
 | | Item | Cost | Notes |
 |---|---|---|---|
-| A | **The C64**: the 6502, the VIC-II (with its raster tricks), the SID, the CIAs | L | The next machine. As with the Spectrum, the user loads Commodore's ROMs; nothing of theirs is bundled. A 6502 in EELisp, tested against Klaus Dormann's functional tests the way the Z80 is against FUSE's — downloaded when the test runs, not kept here, since they're GPL — then the VIC-II drawn host-side as the TMS9918A is |
-| B | **MSX tutorial, step 6**: the snake's head as a sprite moving a pixel at a time, and a pause key | S | Practises sprites before the C64 |
-| C | **Frames that send only what changed** | M | An MSX frame sends all 16 KB of video memory, about 1.3 MB a second of base64. Sending the changed bytes would help most on the site's WebAssembly engine |
-| D | **The Spectrum's beeper** as `"audio"` | S | The MSX's PSG path already does the work; the Spectrum is still silent |
-| E | **MSX: the key click, and samples played through the volume** | M | A frame's sound is made from the registers at its end; samples need the writes timed within the frame |
-| F | **MSX2**: the V9938, 512 KB of video memory, more screens | L | After the C64, if wanted. C-BIOS has an MSX2 BIOS too |
+| M1 | **The C64**: the 6502, the VIC-II (with its raster tricks), the SID, the CIAs | L | The next machine. As with the Spectrum, the user loads Commodore's ROMs; nothing of theirs is bundled. A 6502 in EELisp, tested against Klaus Dormann's functional tests the way the Z80 is against FUSE's — downloaded when the test runs, not kept here, since they're GPL — then the VIC-II drawn host-side as the TMS9918A is |
+| M2 | **MSX tutorial, step 6**: the snake's head as a sprite moving a pixel at a time, and a pause key | S | Practises sprites before the C64 |
+| M3 | **Frames that send only what changed** | M | An MSX frame sends all 16 KB of video memory, about 1.3 MB a second of base64; an indexed 320×200 frame at 35 a second, about 3 MB. Sending the changed bytes would help most on the site's WebAssembly engine |
+| M4 | **The Spectrum's beeper** as `"audio"` | S | `zx.eelisp` gathers port 0xFE's bit 4; the MSX's PSG path already does the rest |
+| M5 | **MSX: the key click (port 0xAA, bit 7), and samples played through the volume** | M | A frame's sound is made from the registers at its end; samples need the writes timed within the frame |
+| M6 | **MSX2**: the V9938, 512 KB of video memory, more screens | L | After the C64, if wanted. C-BIOS has an MSX2 BIOS too |
 
-**Small things for the site**
+### S — sheets and data
 
-- Dark-mode screenshots for the new *Play* cards (Raycaster, MSX, Display).
-- Export Office and Functions again with the current runtime, so every live app has the same frame
-  loop.
+The first seven were found writing *Zero to Hero*, the book that builds a PIM with an agenda, tables,
+sheets and live prices (santacroce-tech/eeditor-docs, `book/`). Each one is written up under *How the
+open S items would be built*, below.
 
-The pieces that could become projects of their own are listed at the end, in *Could stand on their
-own*.
+| | Item | Where | Cost | Decision |
+|---|---|---|---|---|
+| S1 | Formulas that read the database recalculate by themselves | engine | M–L | Later |
+| S2 | Charts (sparklines are done) | app + engine | L | Later |
+| S3 | `.xlsx` import | engine + app | M | Later — asked for |
+| S4 | Query results that fill a range, and stay live | engine + app | L | Later, after S1 |
+| S5 | A place for API keys | app | S | Later — with the book's chapter 16 |
+| S6 | Requests that don't hold the engine | engine + app | L | Only if `http-get`'s timeout isn't enough |
+| S7 | Whole rows (`2:2`), named ranges, and a formula knowing its own cell (`row()`, `column()`, `offset`, `indirect`) | engine | M | Not until asked |
+
+The rest of the list are things a sheet still lacks, found building it. None of them is needed for a
+sheet to be useful.
+
+| | Item |
+|---|---|
+| S8 | Paste-special (values only, formats only), and ⌘D / ⌘R, which the keybindings own |
+| S9 | A CSV opened straight into a grid, not imported as a copy |
+| S10 | A sheet that was closed when its source changed catches up only on ↻; a circle across sheets isn't caught the way one inside a sheet is |
+| S11 | Auto-fit: double-clicking a column edge resets the width instead of fitting it to the contents, and a row doesn't grow by itself to fit wrapped text |
+| S12 | Frozen headers, sort and filter, cell comments, data validation, conditional formatting |
+| S13 | Help writing a formula: completing function names, clicking a cell to insert its reference, highlighting the cells it reads, colours in the formula bar (reuse `lisphl`) |
+| S14 | Undo for column widths and inserted or deleted rows and columns (today these clear the history), and an undo that survives a restart |
+| S15 | Tags and backlinks skip sheets; search sees a sheet's values but not its formulas; a sheet shows no backlinks bar |
+| S16 | Page setup in a sheet's PDF: a repeated header row, landscape, fitting to the page width |
+| S17 | Several sheets in one file, as tabs of a workbook |
+| S18 | A script inside the sheet: its helper `defn`s kept in the file, so a sheet copied to another workspace keeps working without that workspace's `functions.eelisp` |
+| S19 | Formats for a whole column (today one row per cell, capped at a million) |
+| S20 | Paging a big sheet by what's on screen, and recalculating volatile formulas (the database, another sheet, the clock) without ↻ |
+| S21 | Two windows on one sheet: last write wins, cell by cell, and nothing detects a conflict |
+| S22 | The grid has no ARIA grid roles, so a screen reader can't move through it (the keyboard can) |
+| S23 | UI tests for formats, row and column edits, and touch |
+
+### P — the PIM
+
+How it's built: `docs/PIM.md`.
+
+| | Item | Cost |
+|---|---|---|
+| P1 | **Agenda changes show at once.** The sweep runs once a minute on the tick. An `(on-agenda …)` hook the config listens to would make it immediate | M |
+| P2 | **Refile moves a heading with what's under it**, as org does, not a single line | M |
+| P3 | **A date set with ⌘⌥E stays put.** ⌘⌥A reads the line's words again, so a line that still says `tomorrow` brings that date back. The line could carry an ISO date that ⌘⌥E rewrites | S |
+| P4 | **The agenda's parser learns weekdays** (`friday`) **and times** (`at 3pm`; a reminder today reads only `15:00`) | M |
+
+### W — the site, the docs and testing
+
+| | Item | Cost |
+|---|---|---|
+| W1 | Dark-mode screenshots for the *Play* cards (Raycaster, MSX, Display) | S |
+| W2 | Export Office and Functions again with the current runtime, so every live app has the same frame loop | S |
+| W3 | Try on real hardware: open in place and copy in, Finder's *Open With*, and all of iOS, the long-press menu included | S |
+
+---
+
+## No
+
+| Item | Why |
+|---|---|
+| **Refreshing with the app closed** (was 12) | Fetching anything with EEditor closed means a background service per operating system — a launch agent, a Windows service, a systemd timer — with its own engine and its own access to the folder. EEditor is a folder of files you open, where nothing runs that you didn't start. The first tick after opening catches up, and reminders work the same way: a reminder up to `pim-remind-grace` minutes late still fires when EEditor opens |
+| **A built-in stock price source** (was 13) | No stock price service is free, keyless and reliable; scraping breaks terms and breaks often. The book shows bring-your-own-key instead (`http-get` headers, and S5 to keep the key private). Unless a stable free source appears |
+| **An exported HTML page that opens a real folder** (2026-11-09) | Only Chrome and Edge can do it, and the engine reads files synchronously while the browser hands them over asynchronously, so every read would have to load first and then run again. A Mac, Windows or Linux app made with Export as … app has real files already |
+| **The `.eeapp` folder and a served app** (FORM-APPS B1–B4) | The HTML export and the desktop export cover both needs |
+| **MSX BASIC, disks and cassettes** | They need Microsoft's ROMs, which aren't free, or a disk system |
 
 ---
 
 ## Done
 
-Items 1–5 and 16 were the first round, all merged on 2026-10-26: `try` and `iferror`, `http-get`
-options, CSV in the language, `install-pim`, and the small fixes. The *Zero to Hero* book uses them.
-Their sections below stay as the record of why and how.
+Newest first. The PRs say how; `git log` has the rest.
 
-## Was "do next"
-
-### 1. `http-get` is documented wrong
-
-**Where:** the book's chapter 10. The engine's manual says `(http-get url) → string`, with the
-example `(json-parse (http-get url))`. It returns `{:status 200 :body "…"}`, so the example fails.
-
-**How:** correct the entry in `src/docs.rs` (and `http-post`), rebuild the reference. **Fixed** in
-eelisp-rs alongside this roadmap.
-
-### 2. Catching an error: `try`
-
-**Where:** the book's chapter 10 — with no connection, `http-get` stops with *HTTP request failed*,
-and nothing in EELisp can catch that and carry on; a sheet formula can't say "this, or 0 if it
-fails" either (no `iferror`, noted in SHEETS-LATER).
-
-**How:** a special form in the evaluator,
-
-```lisp
-(try (fetch-json url)
-  (catch e (do (println (dict-get e :message)) nil)))
-```
-
-that evaluates the body and, on a `LispError`, binds `e` to `{:message "…" :kind "…"}` and
-evaluates the handler instead. The body runs in non-tail position (a `try` can't be a loop's tail
-call), which keeps the trampoline untouched. Then `iferror` is one line in
-`src/sheets/functions.eelisp`: `(defmacro iferror (expr fallback) …)` — a macro, because the
-expression must not be evaluated before `try` is around it. Tests: errors from builtins, from user
-code, nested `try`, and that `recur` inside a `try` body is refused with a clear message.
-
-**Decision: do next.** It's the one gap every real script hits — network, parsing, user input —
-and it unblocks `iferror`, the spreadsheet function people ask for first.
-
-### 3. `http-get` options: timeout and headers
-
-**Where:** the book's chapter 10. The timeout is fixed at 30 seconds (a key or a tick waits that
-long when a service hangs), and there's no way to send a header — many APIs want their key in one
-(CoinGecko's free key goes in `x-cg-demo-api-key`).
-
-**How:** keyword arguments on both `http-get` and `http-post`, `ureq` already supports both:
-
-```lisp
-(http-get url :timeout 5 :headers {"x-cg-demo-api-key" key})
-```
-
-**Decision: do next.** Small, and it bounds the blocking problem (11) well enough for scripts that
-make a few calls.
-
-### 4. `csv-parse` in the language
-
-**Where:** price sources that answer in CSV, and notes or downloads holding CSV. The app has a
-CSV reader (`fromCSV` in `src/core/sheet.ts`, for *Import as sheet*), but the language can't use it.
-
-**How:** `(csv-parse text) → list of rows` and `(csv-stringify rows) → text` in the engine, with the
-same rules as the app's reader (quotes, doubled quotes, a final line without a newline). The app's
-import could then call the engine, so there's one reader, not two.
-
-**Decision: do next.** Small, and it makes "fetch a CSV into a table" a three-line recipe.
-
-### 5. Installing the PIM keys in any folder
-
-**Where:** a user, asking why ⌘⌥U did nothing. The PIM's keys (⌘⌥T, ⌘⌥U, ⌘⌥N…) aren't part of
-the default keybindings: they arrive only with *Add sample notes*, and only in a folder with no
-agenda and no keybindings of its own — the samples won't write over a real setup. A folder you
-already use never gets them, and nothing says how to.
-
-**How:** a command, `install-pim`, also in the workspace menu: it appends the PIM section
-(`docs/pim/pim.eelisp`, between marker comments) to the folder's `.eeditor/keybindings.eelisp` if
-it isn't there, reloads, and says which keys arrived. Running it again updates the section between
-the markers and leaves the rest of the file alone. The manual's agenda chapter and the welcome note
-mention it; the About box could show whether the PIM is loaded.
-
-**Decision: do next.** The PIM is the most capable thing in the app and the hardest to find.
+- **2026-11-09 — Apps of their own** (#85): a form, the forms it opens, its images and sheets, as a
+  Mac app (`Name.app`, a renamed copy of EEditor, signed for this Mac) or a Windows or Linux one (a
+  folder with the program renamed and the app beside it). It starts at the form's size, the form
+  fills the window, the file commands work on real files, `(ed-open …)` uses the system's app. A
+  sheet it carries goes into its own folder the first time and is its own from then on. `:on-close`,
+  which FORM-APPS left for later, was already in (`formrun.ts`).
+- **2026-11-04 → 11-08 — the plan of 4 November** (#70–#84): ⌘I and ⌘⇧I swapped, ⌘W closes the tab, a
+  sidebar you can resize and hide (⌘B), the welcome note brought up to date; then *Files*, the
+  two-panel file browser, as a form — `dir-list` / `file-info` (eelisp-rs #29), `ed-move` /
+  `ed-copy` / `ed-delete` / `ed-mkdir` (#75), keys in a form (#76), folders outside the workspace
+  (eelisp-rs #31), the form itself (#77–#81); Run or Design when a form opens, F5 runs it; the VB6
+  theme removed; eelisp-rs as a submodule (#83).
+- **2026-11-03 — 2.5.0** published, with every installer and its notes.
+- **The raycaster** (was 15): `workspace/examples/Raycaster.eeform`, on the screen control made
+  general (`docs/DISPLAY.md`) — 320×200 indexed, textured walls, sliding doors and sprites at 35
+  frames a second.
+- **Sparklines** (S2's first step): `=(sparkline B2:B30)` draws a line in the cell's own ink; copy,
+  CSV and PDF get the same numbers as bars, `▂▅▁█`.
+- **Sheets, built out** (`feat/sheet-clipboard`, `feat/sheet-formats`, `feat/sheet-entry`,
+  `feat/sheet-search`, `feat/sheet-ranges`, `feat/sheet-functions`): copy, paste and fill; CSV in and
+  out; `Other!A1`; colours, borders, wrapping, row heights and dates; `50%`, `$1,200` and
+  `2026-09-16` read as what they are; search inside sheets; PDF; whole columns (`E:E`); a library of
+  spreadsheet functions and the workspace's own; `iferror`; UI tests for the grid.
+- **2026-10-26 — what the book needed first**: `try` (eelisp-rs #23) and `iferror` (#48), `http-get`
+  with a timeout and headers (eelisp-rs #24), `csv-parse` (eelisp-rs #25), `install-pim` for any
+  folder (#47), and the small engine fixes the book found — names after *call* and *email*,
+  `:choices` enforced, `:select` as text, folders made for an export, `record->dict`,
+  `sheet-clear` (eelisp-rs #22, #26).
 
 ---
 
-## Later
+## How the open S items would be built
 
-### 6. Formulas that read the database recalculate by themselves
+### S1. Formulas that read the database recalculate by themselves
 
 **Where:** the book's chapter 12, a portfolio sheet over the `prices` table. A formula that calls
 `query` or `count-records` isn't recalculated when the table changes — only ↻ or `sheet-recalc`
@@ -162,7 +159,7 @@ sheets catch up on ↻, as they do for other sheets today.
 **Decision: later**, once chapter 12 shows exactly how it's used; until then a fetch can end with
 `(sheet-recalc "Portfolio")`.
 
-### 7. Charts
+### S2. Charts
 
 **Where:** the book's Part IV — price history is a table with no picture.
 
@@ -179,7 +176,7 @@ worth it once sheets are used for reports.
 grid draws it as a line in the cell's own ink, and everything that reads a cell as text — copy, CSV,
 PDF — gets the same numbers as bars, `▂▅▁█`, with nothing new to teach them.
 
-### 8. `.xlsx` import
+### S3. `.xlsx` import
 
 **Where:** a user, wanting to query an Excel file. Today: save as CSV in Excel, then *Import as
 sheet*.
@@ -192,18 +189,18 @@ to EELisp, so they arrive as their last values. The tree's *Import as sheet* acc
 **Decision: later.** Asked for, contained, and it makes EEditor useful on the files people
 already have.
 
-### 9. Query results that fill a range
+### S4. Query results that fill a range
 
 **Where:** the book's chapters 12–14 — a watchlist that is simply "the latest price of each
 symbol". `sheet-put` writes a result set once; it doesn't stay in step.
 
 **How:** a formula whose result is a result set *spills*: it fills the block below and to the right
-(header row, then records), and those cells show as owned by the formula. With 6, it refreshes when
+(header row, then records), and those cells show as owned by the formula. With S1, it refreshes when
 its table changes. A spill that would overwrite a typed cell shows *#SPILL* instead.
 
-**Decision: later, after 6** — it needs 6 to be worth having.
+**Decision: later, after S1** — it needs S1 to be worth having.
 
-### 10. A place for API keys
+### S5. A place for API keys
 
 **Where:** the book's chapter 10 (stocks need a key) and 16 (sharing). A key written in a note or in
 `keybindings.eelisp` travels with every copy and export of the folder.
@@ -213,7 +210,7 @@ never included by *Export as HTML*, the samples, or CSV export.
 
 **Decision: later**, with the book's chapter on sharing.
 
-### 11. Requests that don't hold the engine
+### S6. Requests that don't hold the engine
 
 **Where:** the book's chapter 10. `http-get` is synchronous: while it waits, keys and the REPL wait.
 
@@ -221,70 +218,10 @@ never included by *Export as HTML*, the samples, or CSV export.
 the app runs `(callback result)` like a key press — the same route `ed-prompt` uses for its answer.
 The engine stays single-threaded; only the waiting moves.
 
-**Decision: only if 3 isn't enough.** With a timeout of a few seconds, a handful of calls every
+**Decision: only if `http-get`'s timeout isn't enough.** With a timeout of a few seconds, a handful of calls every
 few minutes isn't noticeable. This is for scripts that fetch dozens of things.
 
 ---
-
-## No
-
-### 12. Refreshing with the app closed
-
-Fetching prices (or anything) with EEditor closed means a background service per operating system
-— a launch agent, a Windows service, a systemd timer — with its own engine and its own access to
-the folder. It goes against what EEditor is: a folder of files you open, where nothing runs that
-you didn't start. The first tick after opening catches up, and that is enough for a personal
-desk. **No.**
-
-### 13. A built-in stock price source
-
-There's no stock price service that is free, needs no key and is reliable; the free CSV endpoint
-the book first used now answers 404, and scraping a website's pages breaks its terms and breaks
-often. The book shows the bring-your-own-key pattern instead (with 3 for headers and 10 for keeping
-the key private). **No** — unless a stable free source appears.
-
-### 14. Whole rows, and a formula knowing its own cell
-
-Whole-row references (`2:2`) and cell context — `row()`, `column()`, `offset`, `indirect` — would
-need the evaluator to know which cell is running. Nothing written so far has needed them. **Not
-until someone asks.**
-
-### 15. An easter egg: a raycaster in EELisp
-
-A Wolfenstein-style maze drawn by EELisp on the screen control the ZX Spectrum form already uses
-(`docs/spectrum`), behind a hidden command. At the Spectrum's resolution a raycaster is a few
-hundred multiplications a column, which the engine can do at a playable rate; DOOM proper (BSP
-maps, WAD files) is out of reach for an interpreter. **Someday** — it's fun, it shows off the
-engine, and nothing depends on it.
-
-**Done** as an example rather than a hidden command: `workspace/examples/Raycaster.eeform`, on the
-screen control made general (`docs/DISPLAY.md`) — 320×200 indexed, not the Spectrum's resolution,
-with textured walls, sliding doors and sprites, at 35 frames a second; a frame costs the engine
-about 10 ms.
-
----
-
-## Small things
-
-### 16. Small engine fixes found by the book
-
-Writing all sixteen chapters of *Zero to Hero* against the engine turned up a handful of small
-gaps. Each is a few lines and a test; together they remove the workarounds the book has to
-explain.
-
-| | What happens | How to fix |
-|---|---|---|
-| a | **People parsing takes a word, not a name.** `(add "call the bank")` files a person called "the". | Skip articles and possessives after *call, email, meet, text, with, for, from* (`the`, `a`, `an`, `my`, `our`, `your`). |
-| b | **`:choices` isn't enforced.** `(deftable t ((kind :type choice :choices ("a" "b"))))` accepts `"z"` on `insert`; only forms honour it. | Refuse a value outside the choices in `insert` and `update`, with the field named in the message. |
-| c | **`:select` given text is ignored.** `(query t :select "a, b")` returns every field; only a quoted list works, `:select '(a b)`. | Accept the text form too. |
-| d | **No folder can be made.** `export-agenda` to a path in a folder that doesn't exist fails, and nothing in EELisp creates one. The book exports into `.eeditor/` and copies with `ed-write`. | Create the missing folders inside the workspace (the same rule `ed-write` follows). |
-| e | **A row is not a dict.** `json-stringify` of a query's records gives quoted strings; there's `item->dict` for agenda items but no `record->dict`. (A table *named by a value* already works: a call in the table's place is evaluated, `(query (str name))`.) | `(record->dict r)`. |
-| f | **`sheet-put` doesn't clear.** Writing fewer rows over more leaves the old ones; the book deletes rows first. | `(sheet-clear name area)`, and a `:clear true` option on `sheet-put` that empties the area below what it writes. |
-| g | **Manual drift.** `export-agenda` was documented as `(export-agenda "f.json") → number`; it takes the agenda's name and returns a message, and the example's agenda `memory` is called `eeditor` in the app. | Fixed in eelisp-rs alongside this item. |
-
-**Decision: do next** — a to f in santacroce-tech/eelisp-rs#26, g in #22. Each makes the book
-shorter.
-
 
 ## Could stand on their own
 

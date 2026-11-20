@@ -286,6 +286,4 @@ Second line of defence: `fs_write`, `external_write` and the bridge's `/fs/write
 
 ## Later
 
-Everything a sheet still can't do — from copy/paste to charts — is its own list:
-[`SHEETS-LATER.md`](SHEETS-LATER.md). The three at the top of it, in the order they are being built:
-copy/paste with fill, CSV import and export, and `Other!A1` references across sheets.
+What a sheet still can't do is in the roadmap: [ROADMAP.md, S — sheets and data](ROADMAP.md#s--sheets-and-data).
