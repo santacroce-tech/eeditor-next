@@ -105,7 +105,7 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-s
 .shell[data-side-layout="rail"] .side-section[data-shown="1"] > .side-head { padding-top: 9px; padding-bottom: 7px; }
 /* a narrow screen has its own tab bar and shows the sidebar's sections stacked */
 @media (max-width: 900px) {
-  .shell[data-side-layout="rail"] .side-rail { display: none; }
+  .shell[data-side-layout="rail"] .side-rail, .shell[data-side-layout="nav"] .side-rail { display: none; }
   .side-section[data-shown="0"] { display: flex; }
 }
 
@@ -1268,4 +1268,23 @@ button.today-check:hover { color: var(--muted); }
   :root[data-theme="paper"] { --titlebar-h: 40px; }
   :root[data-theme="paper"] .titlebar { display: flex; }
   :root[data-theme="paper"] .shell { padding-top: 0; }
+}
+
+/* ── the sidebar's sections by name (ui/sidenav.ts, the "nav" layout) ── the rail laid down at the
+   top of the sidebar: a row per section, its icon and its name (the button's aria-label). */
+.shell[data-side-layout="nav"] .sidebar { background: var(--bg-2); }
+.shell[data-side-layout="nav"] .side-section[data-shown="1"] { flex: 1 1 auto; max-height: none; border-top: none; }
+@media (min-width: 901px) {
+  .shell[data-side-layout="nav"] .side-rail { display: flex; flex-direction: column; align-items: stretch; gap: 2px;
+    flex: 0 0 auto; padding: 8px 8px 6px; background: none; border-right: none; border-bottom: 1px solid var(--border); }
+  .shell[data-side-layout="nav"] .side-rail > button { display: flex; align-items: center; justify-content: flex-start;
+    gap: 10px; width: 100%; height: 32px; padding: 0 10px; margin: 0; font: 500 13.5px var(--ui); text-align: left; }
+  .shell[data-side-layout="nav"] .side-rail > button::after { content: attr(aria-label); min-width: 0; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .shell[data-side-layout="nav"] .side-rail > button > svg { flex: none; }
+  .shell[data-side-layout="nav"] .side-icon.active::before { display: none; }
+  .shell[data-side-layout="nav"] .side-icon-letter { flex: none; width: 18px; text-align: center; }
+  :root[data-theme="paper"] .shell[data-side-layout="nav"] .side-rail { padding: 4px 6px 8px; border-bottom: none; }
+  :root[data-theme="paper"] .shell[data-side-layout="nav"] .side-rail > button { height: 34px; }
+  :root[data-theme="paper"] .shell[data-side-layout="nav"] .side-rail > button.active { font-weight: 600; }
 }

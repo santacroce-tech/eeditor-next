@@ -64,3 +64,48 @@ test("⌘⇧P → every section stacked: no rail, all of them shown; and back", 
   await expect(page.locator(".side-rail")).toBeVisible();
   await expect(sec(page, "tags")).toBeHidden();
 });
+
+test("⌘⇧P → a named row per section: the rows are in the sidebar, one section below them", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".etab.active")).toBeVisible();
+  await page.locator(".cm-content").click();
+  await page.keyboard.press("ControlOrMeta+Shift+p");
+  await page.keyboard.type("named row per section");
+  await page.locator(".quick-open .qo-input").press("Enter");
+  await expect(page.locator(".sidebar > .side-rail")).toBeVisible();
+  // a row is as wide as the sidebar and says its name
+  const row = await icon(page, "files").boundingBox();
+  const side = await page.locator(".sidebar").boundingBox();
+  expect(row.width).toBeGreaterThan(side.width - 40);
+  expect(await icon(page, "tags").evaluate((b) => getComputedStyle(b, "::after").content)).toBe('"Tags"');
+
+  await icon(page, "tags").click();
+  await expect(sec(page, "tags")).toBeVisible();
+  await expect(sec(page, "files")).toBeHidden();
+  await expect(icon(page, "tags")).toHaveAttribute("aria-pressed", "true");
+  // the row in front again changes nothing — it is ⌘B that hides the sidebar, rows and all
+  await icon(page, "tags").click();
+  await expect(sec(page, "tags")).toBeVisible();
+  await page.locator(".cm-content").click();
+  await page.keyboard.press("ControlOrMeta+b");
+  await expect(page.locator(".sidebar")).toBeHidden();
+  await page.keyboard.press("ControlOrMeta+b");
+  await expect(sec(page, "tags")).toBeVisible();
+
+  await page.reload();
+  await expect(page.locator(".editor-host")).toBeVisible();
+  await expect(page.locator(".sidebar > .side-rail")).toBeVisible();
+  await expect(sec(page, "tags")).toBeVisible();
+});
+
+test("until a layout is chosen it follows the theme: paper has the named rows, dark the rail", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".etab.active")).toBeVisible();
+  await expect(page.locator(".shell")).toHaveAttribute("data-side-layout", "rail");
+  await page.evaluate(() => (document.documentElement.dataset.theme = "paper"));
+  await expect(page.locator(".shell")).toHaveAttribute("data-side-layout", "nav");
+  await expect(page.locator(".sidebar > .side-rail")).toBeVisible();
+  await page.evaluate(() => (document.documentElement.dataset.theme = "dark"));
+  await expect(page.locator(".shell")).toHaveAttribute("data-side-layout", "rail");
+  await expect(page.locator(".shell > .side-rail")).toBeVisible();
+});
