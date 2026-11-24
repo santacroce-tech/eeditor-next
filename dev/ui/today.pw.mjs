@@ -100,3 +100,47 @@ test("the paper theme: light cards on a dark frame, remembered", async ({ page }
   await expect(page.locator("html")).toHaveAttribute("data-theme", "paper");
   await page.evaluate(() => localStorage.removeItem("theme"));
 });
+
+test("the named rows count what today asks for; a narrow screen has Today in its bottom bar", async ({ page }) => {
+  await open(page);
+  await page.evaluate(() => (document.documentElement.dataset.theme = "paper"));
+  await expect(page.locator(".sidebar > .side-rail")).toBeVisible();
+  const count = page.locator('.side-rail [data-action="today"] .side-count');
+  const before = (await count.count()) ? Number(await count.textContent()) : 0;
+  await page.locator(".today-add-input").fill("count me in");
+  await page.locator(".today-add-input").press("Enter");
+  await expect(count).toHaveText(String(before + 1));
+  await expect(page.locator('.side-rail [data-key="agenda"] .side-count')).toBeVisible();
+  await due(page, "count me in").locator(".today-check").click();
+  if (before) await expect(count).toHaveText(String(before));
+  else await expect(count).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  await page.setViewportSize({ width: 420, height: 800 });
+  await expect(page.locator(".side-rail")).toBeHidden();
+  await page.locator('.tabbar .tab[data-view="today"]').click();
+  await expect(page.locator(".today")).toBeVisible();
+  await page.locator('.tabbar .tab[data-view="editor"]').click();
+  await expect(page.locator(".today")).toBeHidden();
+  await expect(page.locator(".editor-host")).toBeVisible();
+});
+
+test("⌘⇧P → Today: open at launch — the next launch lands on Today, and once more turns it off", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".etab.active")).toBeVisible();
+  const flip = async () => {
+    await page.locator(".cm-content").click();
+    await page.keyboard.press("ControlOrMeta+Shift+p");
+    await page.keyboard.type("open at launch");
+    await page.locator(".quick-open .qo-input").press("Enter");
+  };
+  await flip();
+  await page.reload();
+  await expect(page.locator(".today")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".etab.active")).toBeVisible();
+  await flip();
+  await page.reload();
+  await expect(page.locator(".etab.active")).toBeVisible();
+  await expect(page.locator(".today")).toBeHidden();
+});

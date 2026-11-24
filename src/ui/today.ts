@@ -52,6 +52,11 @@ const STRIP_DAYS = 14;
 
 const s = (v: JsonValue | undefined): string => (typeof v === "string" ? v : v == null ? "" : String(v));
 
+/** The agenda's open items, as the page reads them. */
+export async function loadItems(engine: EngineClient): Promise<TodayItem[]> {
+  return parseItems(await engine.evalSrc("(items)"));
+}
+
 function parseItems(env: Envelope): TodayItem[] {
   if (!env.ok || !isResultSet(env.result)) return [];
   return env.result.$resultSet.records.map((r) => ({

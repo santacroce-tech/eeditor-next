@@ -1288,3 +1288,67 @@ button.today-check:hover { color: var(--muted); }
   :root[data-theme="paper"] .shell[data-side-layout="nav"] .side-rail > button { height: 34px; }
   :root[data-theme="paper"] .shell[data-side-layout="nav"] .side-rail > button.active { font-weight: 600; }
 }
+
+/* the sidebar sits on the frame, whichever layout its sections are in */
+:root[data-theme="paper"] .shell[data-side-layout] .sidebar { background: var(--bg-3); }
+
+/* ── a form drawn in the sidebar (the agenda's panel, pim/Side.eeform), paper theme ── the same
+   controls where the form put them, drawn as the sidebar's own rows and pills rather than boxes. */
+:root[data-theme="paper"] .sidebar .formrun.embedded { font: 13px var(--ui); }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-input { border: 1px solid transparent; border-radius: 9px;
+  padding: 0 10px; background: var(--bg-2); font: 13px var(--ui); }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-input:focus { border-color: var(--accent); }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-button { border: none; border-radius: 999px;
+  background: var(--bg); color: var(--fg); font: 500 12.5px var(--ui); }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-button:hover { background: #303033; color: #fff; }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-label { color: var(--muted); font: 12px var(--ui); padding-left: 6px; }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-list { border: none; border-radius: 0; background: none; padding: 0; }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-item { padding: 4px 10px; border-radius: 8px; color: var(--fg); }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-item:hover { background: var(--bg-2); }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-item.selected { background: var(--bg); color: #fff; font-weight: 600; }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-grid { border: none; border-radius: 0; background: none; }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-grid table { table-layout: fixed; font-size: 13px;
+  border-collapse: separate; border-spacing: 0; }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-grid th { background: var(--bg-3); border-bottom: none;
+  color: var(--muted); font: 600 11px var(--ui); letter-spacing: .04em; text-transform: uppercase; padding: 4px 10px; }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-grid th:last-child { width: 80px; }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-grid :is(th, td):last-child { padding-left: 4px; padding-right: 6px; }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-grid td { border-bottom: none; padding: 6px 10px; }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-grid td:first-child { border-radius: 8px 0 0 8px; }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-grid td:last-child { border-radius: 0 8px 8px 0;
+  color: var(--muted); font-size: 12px; }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-grid tbody tr:hover td { background: var(--bg-2); }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-grid tr.selected td { background: var(--bg); color: #fff; }
+/* the notes' tasks under it */
+:root[data-theme="paper"] .ag-notes-head { font: 12px var(--ui); padding: 6px; }
+:root[data-theme="paper"] .ag-note-name { font: 600 11px var(--ui); padding: 8px 6px 2px; }
+:root[data-theme="paper"] .ag-note-task { font: 12.5px var(--ui); padding: 4px 2px 4px 10px; }
+
+/* ── counts beside the sidebar's rows (ui/sidenav.ts `setBadge`): the named rows only ── */
+.side-count { display: none; }
+@media (min-width: 901px) {
+  .shell[data-side-layout="nav"] .side-count { display: block; order: 3; margin-left: auto; padding: 0 7px; border-radius: 999px;
+    background: var(--bg); color: var(--muted); font: 600 11px/18px var(--ui); }
+  .shell[data-side-layout="nav"] .side-rail > button.active .side-count { background: var(--bg-2); color: var(--fg); }
+}
+/* a narrow screen: Today is one of the bottom bar's tabs, and while it shows it is the lit one */
+.shell[data-today="on"] ~ .tabbar .tab[data-view="editor"] { color: var(--muted); }
+.shell[data-today="on"] ~ .tabbar .tab[data-view="today"] { color: var(--accent); }
+:root[data-theme="paper"] .tab { font-family: var(--ui); }
+
+/* ── forms in the paper theme ── a running form's controls (ui/formrun.ts) where its designer put
+   them, with the theme's softer corners and its own type. Not an exported app's (body.runtime). */
+:root[data-theme="paper"] body:not(.runtime) .formrun-window { border-radius: 12px; overflow: hidden; }
+:root[data-theme="paper"] body:not(.runtime) .formrun-title { font-family: var(--ui); background: var(--bg-2); border-bottom: none; border-radius: 0; }
+:root[data-theme="paper"] body:not(.runtime) :is(.formrun-button, .formrun-label, .formrun-check, .formrun-item, .formrun-tab, .formrun-card)
+  { font-family: var(--ui); }
+:root[data-theme="paper"] body:not(.runtime) .formrun-input:not(.mono) { font-family: var(--ui); }
+:root[data-theme="paper"] body:not(.runtime) .formrun-button { border-radius: 8px; border-color: transparent; font-weight: 500; }
+:root[data-theme="paper"] body:not(.runtime) .formrun-button:hover { background: var(--bg-3); border-color: transparent; }
+:root[data-theme="paper"] body:not(.runtime) :is(.formrun-input, .formrun-list, .formrun-grid, .formrun-filter) { border-radius: 8px; }
+:root[data-theme="paper"] body:not(.runtime) .formrun-item { padding: 3px 8px; }
+:root[data-theme="paper"] body:not(.runtime) .formrun-grid :is(th, td) { padding: 5px 8px; }
+:root[data-theme="paper"] body:not(.runtime) .formrun-grid th { color: var(--muted); font: 600 11px var(--ui); letter-spacing: .03em; }
+:root[data-theme="paper"] body:not(.runtime) .formrun-grid td { border-bottom-color: color-mix(in srgb, var(--border) 55%, transparent); }
+:root[data-theme="paper"] body:not(.runtime) :is(.formrun-lane, .formrun-card) { border-radius: 10px; }
+:root[data-theme="paper"] body:not(.runtime) .formrun-tab { border-radius: 8px 8px 0 0; }

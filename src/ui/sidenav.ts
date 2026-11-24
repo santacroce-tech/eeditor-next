@@ -37,6 +37,8 @@ export interface SideNav {
   setLayout(l: SideLayout): void;
   /** ⌘B on the rail: the section in front's icon. False in the other layouts — the plain show/hide. */
   toggle(): boolean;
+  /** A number beside a section's name (the named rows draw it): 0 takes it away. */
+  setCount(key: string, n: number): void;
   /** Bring one section into view: on the rail, make it the one in front and show the sidebar. */
   show(key: string): void;
 }
@@ -57,6 +59,19 @@ const store = {
     }
   },
 };
+
+/** The count on a rail button: a `.side-count` child, there only while there is something to count. */
+export function setBadge(btn: HTMLElement, n: number): void {
+  let badge = btn.querySelector<HTMLElement>(".side-count");
+  if (n <= 0) return void badge?.remove();
+  if (!badge) {
+    badge = document.createElement("span");
+    badge.className = "side-count";
+    badge.setAttribute("aria-hidden", "true");
+    btn.appendChild(badge);
+  }
+  badge.textContent = String(n);
+}
 
 export function createSideNav(
   shell: HTMLElement,
@@ -133,6 +148,10 @@ export function createSideNav(
       entries[i].btn.remove();
       entries.splice(i, 1);
       render();
+    },
+    setCount(key, n) {
+      const btn = entries.find((e) => e.key === key)?.btn;
+      if (btn) setBadge(btn, n);
     },
     layout: () => current,
     setLayout(l) {

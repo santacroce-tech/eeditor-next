@@ -34,6 +34,7 @@ export const COMMAND_TITLES: Record<string, string> = {
   search: "Search in every note",
   "daily-note": "Today's daily note",
   today: "Today: the agenda as a day",
+  "today-at-launch": "Today: open at launch (on / off)",
   "new-file": "New note",
   "new-folder": "New folder",
   "new-sheet": "New sheet",

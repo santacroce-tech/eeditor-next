@@ -22,14 +22,15 @@ import { createWorkspaceClient, inTauri, type ExternalFile, type FileNode } from
 import { createEditor, isThemeName, THEMES, type ThemeName } from "./ui/editor";
 import { createRepl } from "./ui/repl";
 import { createSidebar } from "./ui/sidebar";
-import { createSideNav, SIDE_LAYOUTS } from "./ui/sidenav";
+import { createSideNav, setBadge, SIDE_LAYOUTS } from "./ui/sidenav";
 import { createAgendaPanel } from "./ui/agenda";
 import { createQuickOpen } from "./ui/quickopen";
 import { paletteItems, type PaletteItem } from "./core/palette";
 import { createTagsPanel } from "./ui/tagspanel";
 import { createSearch } from "./ui/search";
 import { createCalendar } from "./ui/calendar";
-import { createTodayView } from "./ui/today";
+import { createTodayView, loadItems } from "./ui/today";
+import { isoDate, planDay } from "./core/today";
 import { createAgendaSetup } from "./ui/agenda-setup";
 import { createSnippets } from "./ui/snippets";
 import { openHelp, LISP_HELP } from "./ui/help";
@@ -886,6 +887,7 @@ function main(): void {
       if (!agendaBody.contains(document.activeElement)) void agenda.refresh();
       void refreshPanels();
       void todayView.refresh();
+      void refreshCounts();
     }, ms);
   };
   const watched = observeEvals(engine, () => {
@@ -1120,6 +1122,23 @@ function main(): void {
     '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></svg>';
   todayBtn.addEventListener("click", () => toggleToday());
   shell.querySelector(".side-rail")?.prepend(todayBtn);
+  // a narrow screen has no rail: Today is a tab of the bar at the bottom, and any other tab leaves it
+  tabbar.querySelectorAll<HTMLElement>(".tab").forEach((b) => b.addEventListener("click", () => hideToday()));
+  const todayTab = document.createElement("button");
+  todayTab.className = "tab";
+  todayTab.dataset.view = "today";
+  todayTab.textContent = "Today";
+  todayTab.addEventListener("click", () => showToday());
+  tabbar.prepend(todayTab);
+  // beside the rows' names: what today asks for (due and overdue), and everything still open
+  async function refreshCounts(): Promise<void> {
+    const items = await loadItems(engine).catch(() => []);
+    const now = isoDate(new Date());
+    const plan = planDay(items, now, now);
+    setBadge(todayBtn, plan.due.length + plan.overdue.length);
+    sideNav.setCount("agenda", items.length);
+  }
+  void refreshCounts();
   function showToday(): void {
     if (narrow()) setMobileView("editor");
     shell.dataset.today = "on";
@@ -1898,6 +1917,8 @@ function main(): void {
     // something was opened while the workspace was arriving
     const movedOn = (tabs[activeIdx]?.path ?? null) !== inFront;
     if (!movedOn && !(await keys.runStart().catch(() => false))) await openFirstFile();
+    // "Today: open at launch" — over whatever was opened, which is there when Today is closed
+    if (!movedOn && localStorage.getItem("today.launch") === "1") showToday();
     void tags.refresh();
   }
 
@@ -2403,6 +2424,11 @@ function main(): void {
     search: () => search.open(),
     "daily-note": () => void openDailyNote(),
     today: () => toggleToday(),
+    "today-at-launch": () => {
+      const on = localStorage.getItem("today.launch") !== "1";
+      localStorage.setItem("today.launch", on ? "1" : "0");
+      toast(on ? "Today opens at launch" : "Launch opens the note, as before");
+    },
     "new-file": () => void newFile(""),
     "new-folder": () => void newFolder(""),
     "new-sheet": () => void newSheet(""),
