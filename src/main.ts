@@ -29,6 +29,7 @@ import { paletteItems, type PaletteItem } from "./core/palette";
 import { createTagsPanel } from "./ui/tagspanel";
 import { createSearch } from "./ui/search";
 import { createCalendar } from "./ui/calendar";
+import { createTodayView } from "./ui/today";
 import { createAgendaSetup } from "./ui/agenda-setup";
 import { createSnippets } from "./ui/snippets";
 import { openHelp, LISP_HELP } from "./ui/help";
@@ -515,6 +516,7 @@ function main(): void {
 
   function switchTab(idx: number): void {
     if (idx < 0 || idx >= tabs.length) return;
+    hideToday(); // a file was asked for: the editor is what shows it
     if (activeIdx >= 0 && activeIdx < tabs.length) {
       const outgoing = tabs[activeIdx];
       if (!outgoing.sheet) {
@@ -883,6 +885,7 @@ function main(): void {
     agendaRefresh = setTimeout(() => {
       if (!agendaBody.contains(document.activeElement)) void agenda.refresh();
       void refreshPanels();
+      void todayView.refresh();
     }, ms);
   };
   const watched = observeEvals(engine, () => {
@@ -964,9 +967,9 @@ function main(): void {
     else toast(`No note matching "${name}"`);
   };
 
-  // the theme flips dark ⇄ light; its button shows the theme you'd switch TO. (A "vb6" saved before
+  // the theme walks dark → light → paper; its button shows the theme you'd switch TO. (A "vb6" saved before
   // that theme went is not a theme any more, so it opens dark.)
-  const THEME_LABEL: Record<ThemeName, string> = { dark: "☾ dark", light: "☀ light" };
+  const THEME_LABEL: Record<ThemeName, string> = { dark: "☾ dark", light: "☀ light", paper: "◐ paper" };
   const nextTheme = (): ThemeName => THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
   const applyTheme = (t: ThemeName): void => {
     theme = t;
@@ -1095,6 +1098,47 @@ function main(): void {
   }
 
   const calendar = createCalendar(engine);
+
+  // ── Today (ui/today.ts): the agenda as a day, over the editor pane until a file is opened ──
+  const todayView = createTodayView(engine, {
+    openDaily: (day) => void openDailyNote(day),
+    hasDaily: (day) => sidebar.files().some((f) => f.path === `${day}.md`),
+    changed: () => refreshAgendaSoon(),
+    close: () => hideToday(true),
+    isShown: () => shell.dataset.today === "on",
+  });
+  (editorPane.body.parentElement as HTMLElement).appendChild(todayView.el);
+  // its way in from the rail: above the sections' icons, since it isn't one of them
+  const todayBtn = document.createElement("button");
+  todayBtn.type = "button";
+  todayBtn.className = "side-action";
+  todayBtn.dataset.action = "today";
+  todayBtn.title = `Today (${keyLabel("Mod-Shift-d", isMacPlatform())})`;
+  todayBtn.setAttribute("aria-label", "Today");
+  todayBtn.setAttribute("aria-pressed", "false");
+  todayBtn.innerHTML =
+    '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></svg>';
+  todayBtn.addEventListener("click", () => toggleToday());
+  shell.querySelector(".side-rail")?.prepend(todayBtn);
+  function showToday(): void {
+    if (narrow()) setMobileView("editor");
+    shell.dataset.today = "on";
+    todayBtn.classList.add("active");
+    todayBtn.setAttribute("aria-pressed", "true");
+    todayView.reset();
+    todayView.focus();
+  }
+  function hideToday(focus = false): void {
+    if (shell.dataset.today !== "on") return;
+    shell.dataset.today = "off";
+    todayBtn.classList.remove("active");
+    todayBtn.setAttribute("aria-pressed", "false");
+    if (focus) focusDocument();
+  }
+  function toggleToday(): void {
+    if (shell.dataset.today === "on") hideToday(true);
+    else showToday();
+  }
   calBtn.addEventListener("click", () => calendar.open());
   const agendaSetup = createAgendaSetup(engine, () => void agenda.refresh());
   setupBtn.addEventListener("click", () => agendaSetup.open());
@@ -2274,8 +2318,7 @@ function main(): void {
   // Today's note (YYYY-MM-DD.md at the workspace root). A new one starts with a date heading — or
   // with what the keybindings' (daily-template day) returns, or the PIM's pim-daily-template, so the
   // command, ⌘P's "Today's daily note" and a "today" button make the same note ⌘D does.
-  async function openDailyNote(): Promise<void> {
-    const date = todayISO();
+  async function openDailyNote(date: string = todayISO()): Promise<void> {
     const path = `${date}.md`;
     let content = `# ${date}\n\n`;
     if ((await noteText(path)) === null) {
@@ -2307,6 +2350,7 @@ function main(): void {
     "command-palette": () => quickOpen.open(">"),
     search: () => search.open(),
     "daily-note": () => void openDailyNote(),
+    today: () => toggleToday(),
     "new-file": () => void newFile(""),
     "new-folder": () => void newFolder(""),
     "new-sheet": () => void newSheet(""),
@@ -2347,6 +2391,7 @@ function main(): void {
     "toggle-theme": () => applyTheme(nextTheme()),
     "theme-dark": () => applyTheme("dark"),
     "theme-light": () => applyTheme("light"),
+    "theme-paper": () => applyTheme("paper"),
     "export-pdf": () => void exportCurrentPdf(),
     "insert-image": () => void images.pick(),
     snippets: () => snippets.open(),
