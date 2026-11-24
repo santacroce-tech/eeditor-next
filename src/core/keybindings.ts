@@ -448,6 +448,7 @@ export const BUILTIN_KEYS: ReadonlyArray<readonly [spec: string, command: string
   ["Mod-9", "last-tab"], // as in browsers; ⌘0 is left alone — a mind map's "fit", beside ⌘= / ⌘-
   ["Mod-w", "close-tab"], // in the desktop app the File menu's Close Tab carries it (see main.ts)
   ["Mod-b", "toggle-sidebar"], // as in VS Code; a letter, so it is the same key on every layout
+  ["Mod-Shift-d", "today"], // beside ⌘D, the daily note: the day's agenda
   ["F5", "form-run"], // as in VB6: run the form in front (nothing happens on a note)
 ];
 

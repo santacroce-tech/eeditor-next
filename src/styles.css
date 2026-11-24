@@ -31,7 +31,7 @@
 html, body, #app { height: 100%; margin: 0; }
 body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-serif; }
 
-.shell { display: flex; height: 100%; }
+.shell { display: flex; height: calc(100% - var(--titlebar-h, 0px)); }
 
 /* ── sidebar ── */
 .sidebar { flex: 0 0 var(--sidebar-w, 240px); display: flex; flex-direction: column; min-height: 0;
@@ -105,7 +105,7 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-s
 .shell[data-side-layout="rail"] .side-section[data-shown="1"] > .side-head { padding-top: 9px; padding-bottom: 7px; }
 /* a narrow screen has its own tab bar and shows the sidebar's sections stacked */
 @media (max-width: 900px) {
-  .shell[data-side-layout="rail"] .side-rail { display: none; }
+  .shell[data-side-layout="rail"] .side-rail, .shell[data-side-layout="nav"] .side-rail { display: none; }
   .side-section[data-shown="0"] { display: flex; }
 }
 
@@ -462,7 +462,7 @@ button.help-row:focus-visible { outline: 1px solid var(--accent); outline-offset
 @media (max-width: 900px) {
   html, body, #app { height: 100%; }
   .shell {
-    position: absolute; top: 0; left: 0; right: 0;
+    position: absolute; top: var(--titlebar-h, 0px); left: 0; right: 0; height: auto;
     bottom: calc(50px + env(safe-area-inset-bottom));
   }
   /* one pane at a time, chosen by the tab bar */
@@ -1009,3 +1009,346 @@ body.screen-window .zx-host { width: 100%; height: 100%; }
 /* a sparkline in a sheet cell: a line through the numbers, in the cell's ink */
 .sheet-cell .sheet-spark { display: block; margin: 4px; overflow: visible; }
 .sheet-cell .sheet-spark path { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+
+/* ── the Today page (ui/today.ts): the agenda as a day, over the editor pane ── */
+:root { --ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; --warn: #e0962a; }
+.editor-pane { position: relative; }
+.today { display: none; position: absolute; inset: 0; z-index: 6; background: var(--bg); color: var(--fg);
+  font: 14px/1.45 var(--ui); outline: none; container-type: inline-size; }
+.shell[data-today="on"] .editor-pane > .today { display: block; }
+.today-grid { display: grid; height: 100%; grid-template-columns: minmax(0, 1fr) minmax(280px, 32%); }
+/* its two columns are the window's two panes while it shows: the REPL comes back with the editor */
+@media (min-width: 901px) { .shell[data-today="on"] .repl-pane { display: none; } }
+.today-main, .today-side { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); }
+.today-side { border-left: 1px solid var(--border); }
+.today-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 26px 30px 6px; }
+.today-title { margin: 0; font: 800 34px/1.1 var(--ui); letter-spacing: -.025em; }
+.today-side-title { margin: 0; font: 800 24px/1.5 var(--ui); letter-spacing: -.02em; }
+.today-sub { margin-top: 4px; color: var(--muted); font-size: 14px; }
+.today-nav { display: flex; align-items: center; gap: 6px; padding-top: 6px; }
+.today-pill { border: none; border-radius: 999px; background: var(--bg-2); color: var(--fg); padding: 6px 14px;
+  font: 600 12.5px var(--ui); cursor: pointer; white-space: nowrap; }
+.today-pill:hover:not(:disabled) { background: var(--bg-3); }
+.today-pill:disabled { color: var(--muted); cursor: default; }
+.today-pill.small { padding: 3px 10px; font-size: 11.5px; font-weight: 500; color: var(--muted); }
+.today-pill.small:hover { color: var(--fg); }
+.today-round { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: none; border-radius: 50%;
+  background: var(--bg-2); color: var(--fg); cursor: pointer; }
+.today-round:hover { background: var(--bg-3); }
+.today-pill:focus-visible, .today-round:focus-visible, .today-day:focus-visible, .today-check:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px; }
+.today-body { flex: 1; min-height: 0; overflow: auto; padding: 10px 30px 28px; }
+
+.today-strip { display: flex; gap: 2px; margin: 6px -8px 16px; overflow-x: auto; scrollbar-width: none; }
+.today-strip::-webkit-scrollbar { display: none; }
+.today-day { position: relative; flex: 1 0 46px; display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: 8px 0 12px; border: 1px solid transparent; border-radius: 14px; background: none; color: var(--muted);
+  cursor: pointer; font-family: var(--ui); }
+.today-day:hover { background: var(--bg-2); }
+.today-day-num { font: 700 21px/1.2 var(--ui); color: var(--fg); opacity: .62; }
+.today-day-name { font-size: 11.5px; }
+.today-day.is-today .today-day-num, .today-day.is-today .today-day-name { color: var(--accent); opacity: 1; }
+.today-day.selected { background: var(--fg); color: var(--bg); }
+.today-day.selected .today-day-num, .today-day.selected .today-day-name { color: var(--bg); opacity: 1; }
+.today-day-dot { position: absolute; bottom: 5px; width: 4px; height: 4px; border-radius: 50%; background: currentColor; opacity: .7; }
+
+.today-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 13px 16px; margin-bottom: 14px;
+  border: 1px solid var(--border); border-radius: 14px; background: var(--bg-2); font-size: 15px; font-weight: 500; }
+.today-note { margin-left: auto; background: var(--bg); }
+
+.today-chip { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 7px; font: 600 11.5px/1.6 var(--ui);
+  white-space: nowrap; --h: var(--muted);
+  background: color-mix(in srgb, var(--h) 17%, transparent); color: color-mix(in srgb, var(--h) 72%, var(--fg)); }
+.today-chip.big { padding: 3px 11px; border-radius: 999px; font-size: 13.5px; }
+.today-chip.plain { --h: var(--muted); }
+.today-chip.late, .today-chip.kind-overdue { --h: var(--err); }
+.today-chip.warn, .today-chip.kind-important { --h: var(--warn); }
+.today-chip.kind-due { --h: var(--accent); }
+.today-chip.kind-repeat { --h: var(--muted); }
+.today-chip.hue-0 { --h: #3b82f6; } .today-chip.hue-1 { --h: #22a559; } .today-chip.hue-2 { --h: #8b5cf6; }
+.today-chip.hue-3 { --h: #e0762a; } .today-chip.hue-4 { --h: #d9488f; } .today-chip.hue-5 { --h: #0e9aa7; }
+
+.today-add { display: flex; align-items: center; gap: 12px; padding: 7px 8px; margin: 0 -8px 4px; border-radius: 10px; cursor: text; }
+.today-add:focus-within { background: var(--bg-2); }
+.today-add .today-check { border-style: dashed; cursor: text; }
+.today-add-input { flex: 1; min-width: 0; border: none; outline: none; background: none; color: var(--fg); font: 500 15px var(--ui); }
+.today-add-input::placeholder { color: var(--muted); }
+
+.today-group { display: flex; align-items: baseline; gap: 8px; margin: 18px 0 4px; color: var(--muted); font: 600 12.5px var(--ui); }
+.today-group:first-child { margin-top: 4px; }
+.today-count { font-weight: 500; opacity: .8; }
+.today-item { display: flex; align-items: flex-start; gap: 12px; padding: 8px; margin: 0 -8px; border-radius: 10px; }
+.today-item:hover { background: var(--bg-2); }
+.today-check { flex: none; display: grid; place-items: center; width: 22px; height: 22px; margin-top: 1px; padding: 0;
+  border: 2px solid color-mix(in srgb, var(--muted) 65%, transparent); border-radius: 50%; background: none;
+  color: transparent; cursor: pointer; }
+.today-check svg { width: 13px; height: 13px; stroke-width: 3; }
+.today-check.pri-1 { border-color: var(--accent); }
+.today-check.pri-2 { border-color: var(--warn); }
+.today-check.pri-3 { border-color: var(--err); }
+button.today-check:hover { color: var(--muted); }
+.today-item.done .today-check { background: var(--fg); border-color: var(--fg); color: var(--bg); }
+.today-item.done .today-item-text { color: var(--muted); text-decoration: line-through; }
+.today-item-body { flex: 1; min-width: 0; }
+.today-item-text { font-size: 15px; font-weight: 500; overflow-wrap: anywhere; }
+.today-item-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 3px; }
+.today-date { color: var(--muted); font-size: 12.5px; }
+.today-item-acts { flex: none; opacity: 0; }
+.today-item:hover .today-item-acts, .today-item:focus-within .today-item-acts { opacity: 1; }
+.today-empty { padding: 18px 0; color: var(--muted); font-size: 13.5px; }
+.today-side .today-head { padding: 26px 24px 6px; }
+.today-side .today-body { padding: 4px 24px 24px; }
+.today-side .today-item-text { font-size: 14px; }
+
+/* the rail's Today button: the same shape as a section's icon, but it isn't one */
+.side-action { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: none; border-radius: 7px;
+  background: none; color: var(--muted); cursor: pointer; margin-bottom: 6px; }
+.side-action:hover { color: var(--fg); background: var(--bg-2); }
+.side-action.active { color: var(--accent); background: var(--bg); }
+.side-action:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* too narrow for two columns (a phone, a small window): one, scrolling as a whole */
+@container (max-width: 680px) {
+  .today-grid { grid-template-columns: minmax(0, 1fr); grid-auto-rows: max-content; overflow: auto; }
+  .today-main, .today-side { min-height: auto; }
+  .today-body { overflow: visible; padding: 8px 18px 20px; }
+  .today-head, .today-side .today-head { padding: 18px 18px 4px; }
+  .today-side .today-body { padding: 4px 18px 20px; }
+  .today-side { border-left: none; border-top: 1px solid var(--border); }
+}
+@media (max-width: 900px) {
+  .today { padding-top: env(safe-area-inset-top); }
+  .today-item-acts { opacity: 1; }
+}
+
+/* ── theme: paper — light cards on a dark frame ──
+   The page's own tokens are the cards'; the frame (the shell behind them, the rail, the sidebar)
+   takes a dark set of its own, so everything drawn in the sidebar follows without knowing. */
+:root[data-theme="paper"] {
+  --bg: #fcfbf9;
+  --bg-2: #f3f1ed;
+  --bg-3: #e9e6e0;
+  --fg: #1b1a19;
+  --muted: #8b877f;
+  --accent: #0d7a6f;
+  --border: #e6e3dc;
+  --ok: #2f8f4e;
+  --err: #d8433b;
+  --kw: #7a4fd0;
+  --warn: #d98a1e;
+  --frame: #0f0f10;
+  --card-radius: 14px;
+  color-scheme: light;
+  --mm-1: #2f6fde; --mm-2: #2f8f4e; --mm-3: #d2691e; --mm-4: #7a4fd0; --mm-5: #b8860b; --mm-6: #0e9aa7;
+}
+:root[data-theme="paper"] body { font-family: var(--ui); background: var(--frame); }
+:root[data-theme="paper"] .qo-row.active { color: #fff; }
+:root[data-theme="paper"] .formrun-input { color-scheme: light; }
+:root[data-theme="paper"] .sidebar,
+:root[data-theme="paper"] .side-rail,
+:root[data-theme="paper"] .tabbar {
+  --bg: #232325;
+  --bg-2: #1a1a1c;
+  --bg-3: #0f0f10;
+  --fg: #ececea;
+  --muted: #8d8d92;
+  --accent: #56cdbf;
+  --border: #2b2b2e;
+  --ok: #7ad69a;
+  --err: #f0766e;
+  --kw: #b79cf2;
+  color: var(--fg);
+  color-scheme: dark;
+}
+:root[data-theme="paper"] .sidebar .formrun-input { color-scheme: dark; }
+:root[data-theme="paper"] .shell { background: var(--frame); }
+
+/* the sidebar: rows, not a tree in a box */
+:root[data-theme="paper"] .sidebar { background: var(--bg-3); }
+:root[data-theme="paper"] .side-head { padding: 10px 8px 6px 14px; font: 600 12px/1.4 var(--ui); letter-spacing: .01em;
+  text-transform: none; }
+:root[data-theme="paper"] .side-head::first-letter { text-transform: uppercase; }
+:root[data-theme="paper"] .side-btn { border: none; border-radius: 50%; width: 24px; height: 24px; padding: 0;
+  font: 500 13px var(--ui); background: var(--bg-2); }
+:root[data-theme="paper"] .side-btn:hover { background: var(--bg); }
+:root[data-theme="paper"] .filetree { font-size: 13.5px; padding: 0 6px 8px; }
+:root[data-theme="paper"] .tree-row { padding: 5px 10px; border-radius: 9px; }
+:root[data-theme="paper"] .tree-dir { font-weight: 500; }
+:root[data-theme="paper"] .tree-file:hover { background: var(--bg-2); }
+:root[data-theme="paper"] .tree-file.active { background: var(--bg); color: #fff; font-weight: 600; }
+:root[data-theme="paper"] .side-icon, :root[data-theme="paper"] .side-action { border-radius: 10px; }
+:root[data-theme="paper"] .side-icon.active::before { display: none; }
+:root[data-theme="paper"] .side-icon.active, :root[data-theme="paper"] .side-action.active { background: var(--bg); color: #fff; }
+:root[data-theme="paper"] .agenda-input { border-radius: 9px; padding: 6px 10px; font-size: 13px; }
+:root[data-theme="paper"] .ag-item-main { font: 13px var(--ui); padding: 7px 2px; }
+:root[data-theme="paper"] .ag-cat, :root[data-theme="paper"] .tag-chip { font-family: var(--ui); }
+
+/* the cards */
+:root[data-theme="paper"] .pane-head { padding: 9px 12px 7px 18px; border-bottom: none; background: var(--bg);
+  font: 600 13px/1.4 var(--ui); letter-spacing: 0; min-height: 40px; color: var(--fg); }
+:root[data-theme="paper"] .repl-pane { background: var(--bg); }
+:root[data-theme="paper"] .head-btn { border: none; border-radius: 999px; background: var(--bg-2); color: var(--fg);
+  padding: 4px 12px; font: 500 12px var(--ui); }
+:root[data-theme="paper"] .head-btn:hover { background: var(--bg-3); }
+:root[data-theme="paper"] .head-btn.active, :root[data-theme="paper"] .head-btn[aria-pressed="true"] {
+  background: var(--fg); color: var(--bg); }
+:root[data-theme="paper"] .etabbar { background: var(--bg); border-bottom: none; padding: 0 12px 6px; gap: 2px; }
+:root[data-theme="paper"] .etab { border-right: none; border-radius: 9px; padding: 4px 6px 4px 11px; font: 500 12.5px var(--ui); }
+:root[data-theme="paper"] .etab:hover { background: var(--bg-2); }
+:root[data-theme="paper"] .etab.active { background: var(--bg-2); color: var(--fg); }
+:root[data-theme="paper"] .backlinks-bar { background: var(--bg); font: 12px var(--ui); padding: 8px 18px; }
+:root[data-theme="paper"] .editor-host .cm-content { padding: 6px 8px 24px; }
+
+/* a note, read */
+:root[data-theme="paper"] .preview-host { padding: 18px 34px 40px; font-size: 15px; line-height: 1.6; }
+:root[data-theme="paper"] .markdown-body h1, :root[data-theme="paper"] .markdown-body h2,
+:root[data-theme="paper"] .markdown-body h3 { border-bottom: none; padding-bottom: 0; letter-spacing: -.02em; }
+:root[data-theme="paper"] .markdown-body h1 { font-size: 2.2em; font-weight: 800; margin: .3em 0 .5em; }
+:root[data-theme="paper"] .markdown-body h2 { font-size: 1.45em; margin-top: 1.5em; }
+:root[data-theme="paper"] .markdown-body li.task > input, :root[data-theme="paper"] .markdown-body li.task > p > input {
+  appearance: none; -webkit-appearance: none; width: 18px; height: 18px; margin: 0 .6em 0 0; vertical-align: -3px;
+  border: 2px solid color-mix(in srgb, var(--muted) 65%, transparent); border-radius: 50%; background: none; }
+:root[data-theme="paper"] .markdown-body li.task > input:checked, :root[data-theme="paper"] .markdown-body li.task > p > input:checked {
+  border-color: var(--fg); background: var(--fg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12.5 4.5 4.5L19 7.5'/%3E%3C/svg%3E") center / 12px no-repeat; }
+:root[data-theme="paper"] .markdown-body li.task-done { text-decoration: line-through; }
+:root[data-theme="paper"] .markdown-body .task-cat { border: none; border-radius: 7px; padding: 0 8px; font-weight: 600; }
+
+/* what floats over the page */
+:root[data-theme="paper"] .qo-panel, :root[data-theme="paper"] .cal-panel { border-radius: 16px; background: var(--bg);
+  box-shadow: 0 24px 70px rgba(0,0,0,.35); }
+:root[data-theme="paper"] .qo-row { font-family: var(--ui); }
+:root[data-theme="paper"] .qo-list { padding: 6px; }
+:root[data-theme="paper"] .qo-row { border-radius: 9px; }
+
+/* a window wide enough for panes side by side: each is a card, with the frame showing between them */
+@media (min-width: 901px) {
+  :root[data-theme="paper"] .shell { padding: 8px; gap: 8px; }
+  :root[data-theme="paper"] .side-rail { flex-basis: 38px; padding: 6px 0; background: none; border-right: none; }
+  :root[data-theme="paper"] .sidebar,
+  :root[data-theme="paper"] .shell[data-side-layout="rail"] .sidebar { background: none; border-right: none; }
+  :root[data-theme="paper"] .side-section { border-top: none; }
+  :root[data-theme="paper"] .pane { border-radius: var(--card-radius); overflow: hidden; background: var(--bg); }
+  :root[data-theme="paper"] .editor-pane { border-right: none; }
+  /* Today is two cards of its own */
+  :root[data-theme="paper"] .shell[data-today="on"] .editor-pane { background: none; }
+  :root[data-theme="paper"] .today { background: var(--frame); }
+  :root[data-theme="paper"] .today-grid { gap: 8px; }
+  :root[data-theme="paper"] .today-main, :root[data-theme="paper"] .today-side { border-radius: var(--card-radius); border: none; }
+}
+
+/* ── the title bar ── (main.ts) Our own row above the panes. Shown where the window's title bar is
+   transparent over the page (a Mac: data-titlebar="overlay"), and with the paper theme on a wide
+   screen; elsewhere there is none and --titlebar-h stays 0. */
+.titlebar { display: none; height: 40px; align-items: center; gap: 10px; padding: 0 10px;
+  background: var(--bg-3); border-bottom: 1px solid var(--border); font: 13px var(--ui);
+  user-select: none; -webkit-user-select: none; cursor: default; }
+.titlebar-side { flex: 1 1 0; min-width: 0; height: 100%; display: flex; align-items: center; gap: 6px; }
+.titlebar-right { justify-content: flex-end; }
+.titlebar-search { flex: 0 1 420px; min-width: 0; height: 26px; display: flex; align-items: center; gap: 8px;
+  padding: 0 8px 0 11px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg);
+  color: var(--muted); font: inherit; cursor: pointer; }
+.titlebar-search:hover { color: var(--fg); border-color: var(--muted); }
+.titlebar-search-icon { font-size: 15px; line-height: 1; }
+.titlebar-search-label { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.titlebar-search kbd { font: 11px var(--ui); padding: 1px 6px; border-radius: 6px; background: var(--bg-2); color: var(--muted); }
+.titlebar-btn { height: 26px; padding: 0 11px; border: none; border-radius: 999px; background: none;
+  color: var(--muted); font: inherit; cursor: pointer; white-space: nowrap; }
+.titlebar-btn:hover { background: var(--bg); color: var(--fg); }
+:root[data-titlebar="overlay"] { --titlebar-h: 40px; }
+:root[data-titlebar="overlay"] .titlebar { display: flex; }
+/* the traffic lights */
+:root[data-titlebar="overlay"]:not([data-fullscreen="on"]) .titlebar { padding-left: 82px; }
+:root[data-titlebar="overlay"]:not([data-fullscreen="on"]) .titlebar-right { flex-basis: 72px; }
+
+:root[data-theme="paper"] .titlebar { background: var(--frame); border-bottom: none; color: #a3a09b;
+  --bg: #1c1c1e; --bg-2: #2a2a2d; --fg: #f1efea; --muted: #a3a09b; --border: #2a2a2d; }
+:root[data-theme="paper"] .titlebar-search { border-color: transparent; }
+:root[data-theme="paper"] .titlebar-search:hover { border-color: #3a3a3e; }
+@media (min-width: 901px) {
+  :root[data-theme="paper"] { --titlebar-h: 40px; }
+  :root[data-theme="paper"] .titlebar { display: flex; }
+  :root[data-theme="paper"] .shell { padding-top: 0; }
+}
+
+/* ── the sidebar's sections by name (ui/sidenav.ts, the "nav" layout) ── the rail laid down at the
+   top of the sidebar: a row per section, its icon and its name (the button's aria-label). */
+.shell[data-side-layout="nav"] .sidebar { background: var(--bg-2); }
+.shell[data-side-layout="nav"] .side-section[data-shown="1"] { flex: 1 1 auto; max-height: none; border-top: none; }
+@media (min-width: 901px) {
+  .shell[data-side-layout="nav"] .side-rail { display: flex; flex-direction: column; align-items: stretch; gap: 2px;
+    flex: 0 0 auto; padding: 8px 8px 6px; background: none; border-right: none; border-bottom: 1px solid var(--border); }
+  .shell[data-side-layout="nav"] .side-rail > button { display: flex; align-items: center; justify-content: flex-start;
+    gap: 10px; width: 100%; height: 32px; padding: 0 10px; margin: 0; font: 500 13.5px var(--ui); text-align: left; }
+  .shell[data-side-layout="nav"] .side-rail > button::after { content: attr(aria-label); min-width: 0; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .shell[data-side-layout="nav"] .side-rail > button > svg { flex: none; }
+  .shell[data-side-layout="nav"] .side-icon.active::before { display: none; }
+  .shell[data-side-layout="nav"] .side-icon-letter { flex: none; width: 18px; text-align: center; }
+  :root[data-theme="paper"] .shell[data-side-layout="nav"] .side-rail { padding: 4px 6px 8px; border-bottom: none; }
+  :root[data-theme="paper"] .shell[data-side-layout="nav"] .side-rail > button { height: 34px; }
+  :root[data-theme="paper"] .shell[data-side-layout="nav"] .side-rail > button.active { font-weight: 600; }
+}
+
+/* the sidebar sits on the frame, whichever layout its sections are in */
+:root[data-theme="paper"] .shell[data-side-layout] .sidebar { background: var(--bg-3); }
+
+/* ── a form drawn in the sidebar (the agenda's panel, pim/Side.eeform), paper theme ── the same
+   controls where the form put them, drawn as the sidebar's own rows and pills rather than boxes. */
+:root[data-theme="paper"] .sidebar .formrun.embedded { font: 13px var(--ui); }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-input { border: 1px solid transparent; border-radius: 9px;
+  padding: 0 10px; background: var(--bg-2); font: 13px var(--ui); }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-input:focus { border-color: var(--accent); }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-button { border: none; border-radius: 999px;
+  background: var(--bg); color: var(--fg); font: 500 12.5px var(--ui); }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-button:hover { background: #303033; color: #fff; }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-label { color: var(--muted); font: 12px var(--ui); padding-left: 6px; }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-list { border: none; border-radius: 0; background: none; padding: 0; }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-item { padding: 4px 10px; border-radius: 8px; color: var(--fg); }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-item:hover { background: var(--bg-2); }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-item.selected { background: var(--bg); color: #fff; font-weight: 600; }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-grid { border: none; border-radius: 0; background: none; }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-grid table { table-layout: fixed; font-size: 13px;
+  border-collapse: separate; border-spacing: 0; }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-grid th { background: var(--bg-3); border-bottom: none;
+  color: var(--muted); font: 600 11px var(--ui); letter-spacing: .04em; text-transform: uppercase; padding: 4px 10px; }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-grid th:last-child { width: 80px; }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-grid :is(th, td):last-child { padding-left: 4px; padding-right: 6px; }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-grid td { border-bottom: none; padding: 6px 10px; }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-grid td:first-child { border-radius: 8px 0 0 8px; }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-grid td:last-child { border-radius: 0 8px 8px 0;
+  color: var(--muted); font-size: 12px; }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-grid tbody tr:hover td { background: var(--bg-2); }
+:root[data-theme="paper"] .sidebar .formrun.embedded .formrun-grid tr.selected td { background: var(--bg); color: #fff; }
+/* the notes' tasks under it */
+:root[data-theme="paper"] .ag-notes-head { font: 12px var(--ui); padding: 6px; }
+:root[data-theme="paper"] .ag-note-name { font: 600 11px var(--ui); padding: 8px 6px 2px; }
+:root[data-theme="paper"] .ag-note-task { font: 12.5px var(--ui); padding: 4px 2px 4px 10px; }
+
+/* ── counts beside the sidebar's rows (ui/sidenav.ts `setBadge`): the named rows only ── */
+.side-count { display: none; }
+@media (min-width: 901px) {
+  .shell[data-side-layout="nav"] .side-count { display: block; order: 3; margin-left: auto; padding: 0 7px; border-radius: 999px;
+    background: var(--bg); color: var(--muted); font: 600 11px/18px var(--ui); }
+  .shell[data-side-layout="nav"] .side-rail > button.active .side-count { background: var(--bg-2); color: var(--fg); }
+}
+/* a narrow screen: Today is one of the bottom bar's tabs, and while it shows it is the lit one */
+.shell[data-today="on"] ~ .tabbar .tab[data-view="editor"] { color: var(--muted); }
+.shell[data-today="on"] ~ .tabbar .tab[data-view="today"] { color: var(--accent); }
+:root[data-theme="paper"] .tab { font-family: var(--ui); }
+
+/* ── forms in the paper theme ── a running form's controls (ui/formrun.ts) where its designer put
+   them, with the theme's softer corners and its own type. Not an exported app's (body.runtime). */
+:root[data-theme="paper"] body:not(.runtime) .formrun-window { border-radius: 12px; overflow: hidden; }
+:root[data-theme="paper"] body:not(.runtime) .formrun-title { font-family: var(--ui); background: var(--bg-2); border-bottom: none; border-radius: 0; }
+:root[data-theme="paper"] body:not(.runtime) :is(.formrun-button, .formrun-label, .formrun-check, .formrun-item, .formrun-tab, .formrun-card)
+  { font-family: var(--ui); }
+:root[data-theme="paper"] body:not(.runtime) .formrun-input:not(.mono) { font-family: var(--ui); }
+:root[data-theme="paper"] body:not(.runtime) .formrun-button { border-radius: 8px; border-color: transparent; font-weight: 500; }
+:root[data-theme="paper"] body:not(.runtime) .formrun-button:hover { background: var(--bg-3); border-color: transparent; }
+:root[data-theme="paper"] body:not(.runtime) :is(.formrun-input, .formrun-list, .formrun-grid, .formrun-filter) { border-radius: 8px; }
+:root[data-theme="paper"] body:not(.runtime) .formrun-item { padding: 3px 8px; }
+:root[data-theme="paper"] body:not(.runtime) .formrun-grid :is(th, td) { padding: 5px 8px; }
+:root[data-theme="paper"] body:not(.runtime) .formrun-grid th { color: var(--muted); font: 600 11px var(--ui); letter-spacing: .03em; }
+:root[data-theme="paper"] body:not(.runtime) .formrun-grid td { border-bottom-color: color-mix(in srgb, var(--border) 55%, transparent); }
+:root[data-theme="paper"] body:not(.runtime) :is(.formrun-lane, .formrun-card) { border-radius: 10px; }
+:root[data-theme="paper"] body:not(.runtime) .formrun-tab { border-radius: 8px 8px 0 0; }

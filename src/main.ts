@@ -22,13 +22,15 @@ import { createWorkspaceClient, inTauri, type ExternalFile, type FileNode } from
 import { createEditor, isThemeName, THEMES, type ThemeName } from "./ui/editor";
 import { createRepl } from "./ui/repl";
 import { createSidebar } from "./ui/sidebar";
-import { createSideNav, SIDE_LAYOUTS } from "./ui/sidenav";
+import { createSideNav, setBadge, SIDE_LAYOUTS } from "./ui/sidenav";
 import { createAgendaPanel } from "./ui/agenda";
 import { createQuickOpen } from "./ui/quickopen";
 import { paletteItems, type PaletteItem } from "./core/palette";
 import { createTagsPanel } from "./ui/tagspanel";
 import { createSearch } from "./ui/search";
 import { createCalendar } from "./ui/calendar";
+import { createTodayView, loadItems } from "./ui/today";
+import { isoDate, planDay } from "./core/today";
 import { createAgendaSetup } from "./ui/agenda-setup";
 import { createSnippets } from "./ui/snippets";
 import { openHelp, LISP_HELP } from "./ui/help";
@@ -515,6 +517,7 @@ function main(): void {
 
   function switchTab(idx: number): void {
     if (idx < 0 || idx >= tabs.length) return;
+    hideToday(); // a file was asked for: the editor is what shows it
     if (activeIdx >= 0 && activeIdx < tabs.length) {
       const outgoing = tabs[activeIdx];
       if (!outgoing.sheet) {
@@ -883,6 +886,8 @@ function main(): void {
     agendaRefresh = setTimeout(() => {
       if (!agendaBody.contains(document.activeElement)) void agenda.refresh();
       void refreshPanels();
+      void todayView.refresh();
+      void refreshCounts();
     }, ms);
   };
   const watched = observeEvals(engine, () => {
@@ -964,9 +969,9 @@ function main(): void {
     else toast(`No note matching "${name}"`);
   };
 
-  // the theme flips dark ⇄ light; its button shows the theme you'd switch TO. (A "vb6" saved before
+  // the theme walks dark → light → paper; its button shows the theme you'd switch TO. (A "vb6" saved before
   // that theme went is not a theme any more, so it opens dark.)
-  const THEME_LABEL: Record<ThemeName, string> = { dark: "☾ dark", light: "☀ light" };
+  const THEME_LABEL: Record<ThemeName, string> = { dark: "☾ dark", light: "☀ light", paper: "◐ paper" };
   const nextTheme = (): ThemeName => THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
   const applyTheme = (t: ThemeName): void => {
     theme = t;
@@ -1095,6 +1100,64 @@ function main(): void {
   }
 
   const calendar = createCalendar(engine);
+
+  // ── Today (ui/today.ts): the agenda as a day, over the editor pane until a file is opened ──
+  const todayView = createTodayView(engine, {
+    openDaily: (day) => void openDailyNote(day),
+    hasDaily: (day) => sidebar.files().some((f) => f.path === `${day}.md`),
+    changed: () => refreshAgendaSoon(),
+    close: () => hideToday(true),
+    isShown: () => shell.dataset.today === "on",
+  });
+  (editorPane.body.parentElement as HTMLElement).appendChild(todayView.el);
+  // its way in from the rail: above the sections' icons, since it isn't one of them
+  const todayBtn = document.createElement("button");
+  todayBtn.type = "button";
+  todayBtn.className = "side-action";
+  todayBtn.dataset.action = "today";
+  todayBtn.title = `Today (${keyLabel("Mod-Shift-d", isMacPlatform())})`;
+  todayBtn.setAttribute("aria-label", "Today");
+  todayBtn.setAttribute("aria-pressed", "false");
+  todayBtn.innerHTML =
+    '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></svg>';
+  todayBtn.addEventListener("click", () => toggleToday());
+  shell.querySelector(".side-rail")?.prepend(todayBtn);
+  // a narrow screen has no rail: Today is a tab of the bar at the bottom, and any other tab leaves it
+  tabbar.querySelectorAll<HTMLElement>(".tab").forEach((b) => b.addEventListener("click", () => hideToday()));
+  const todayTab = document.createElement("button");
+  todayTab.className = "tab";
+  todayTab.dataset.view = "today";
+  todayTab.textContent = "Today";
+  todayTab.addEventListener("click", () => showToday());
+  tabbar.prepend(todayTab);
+  // beside the rows' names: what today asks for (due and overdue), and everything still open
+  async function refreshCounts(): Promise<void> {
+    const items = await loadItems(engine).catch(() => []);
+    const now = isoDate(new Date());
+    const plan = planDay(items, now, now);
+    setBadge(todayBtn, plan.due.length + plan.overdue.length);
+    sideNav.setCount("agenda", items.length);
+  }
+  void refreshCounts();
+  function showToday(): void {
+    if (narrow()) setMobileView("editor");
+    shell.dataset.today = "on";
+    todayBtn.classList.add("active");
+    todayBtn.setAttribute("aria-pressed", "true");
+    todayView.reset();
+    todayView.focus();
+  }
+  function hideToday(focus = false): void {
+    if (shell.dataset.today !== "on") return;
+    shell.dataset.today = "off";
+    todayBtn.classList.remove("active");
+    todayBtn.setAttribute("aria-pressed", "false");
+    if (focus) focusDocument();
+  }
+  function toggleToday(): void {
+    if (shell.dataset.today === "on") hideToday(true);
+    else showToday();
+  }
   calBtn.addEventListener("click", () => calendar.open());
   const agendaSetup = createAgendaSetup(engine, () => void agenda.refresh());
   setupBtn.addEventListener("click", () => agendaSetup.open());
@@ -1732,6 +1795,58 @@ function main(): void {
       else void runForm(r.path);
     },
   });
+
+  // ── the title bar ── a row of our own above the panes: the search pill (⌘P) in the middle, Today
+  // on the right. On a Mac the window's own title bar is transparent over it (src-tauri
+  // `overlay_chrome`), so it is also what the window is dragged by, and it keeps clear of the traffic
+  // lights; in a browser it is drawn with the paper theme only (styles.css).
+  const titlebar = document.createElement("div");
+  titlebar.className = "titlebar";
+  titlebar.setAttribute("data-tauri-drag-region", "");
+  const titleSearch = document.createElement("button");
+  titleSearch.className = "titlebar-search";
+  titleSearch.title = "Go to a note, or > for an action";
+  const titleSearchIcon = document.createElement("span");
+  titleSearchIcon.className = "titlebar-search-icon";
+  titleSearchIcon.textContent = "⌕";
+  const titleSearchLabel = document.createElement("span");
+  titleSearchLabel.className = "titlebar-search-label";
+  titleSearchLabel.textContent = "Search notes and actions";
+  const titleSearchKey = document.createElement("kbd");
+  titleSearchKey.textContent = keyLabel("Mod-p", isMacPlatform());
+  titleSearch.append(titleSearchIcon, titleSearchLabel, titleSearchKey);
+  titleSearch.addEventListener("click", () => quickOpen.open());
+  const titleToday = document.createElement("button");
+  titleToday.className = "titlebar-btn";
+  titleToday.dataset.action = "today";
+  titleToday.textContent = "☀ Today";
+  titleToday.title = `Today (${keyLabel("Mod-Shift-d", isMacPlatform())})`;
+  titleToday.addEventListener("click", () => toggleToday());
+  const titleLeft = document.createElement("div");
+  titleLeft.className = "titlebar-side";
+  titleLeft.setAttribute("data-tauri-drag-region", "");
+  const titleRight = document.createElement("div");
+  titleRight.className = "titlebar-side titlebar-right";
+  titleRight.setAttribute("data-tauri-drag-region", "");
+  titleRight.appendChild(titleToday);
+  titlebar.append(titleLeft, titleSearch, titleRight);
+  root.insertBefore(titlebar, shell);
+  if ("__TAURI_INTERNALS__" in (globalThis as Record<string, unknown>)) {
+    void (async () => {
+      const { invoke } = await import("@tauri-apps/api/core");
+      if (!(await invoke<boolean>("overlay_titlebar").catch(() => false))) return;
+      const html = document.documentElement;
+      html.dataset.titlebar = "overlay";
+      // Full screen has no traffic lights to keep clear of.
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      const win = getCurrentWindow();
+      const sync = async (): Promise<void> => {
+        html.dataset.fullscreen = (await win.isFullscreen().catch(() => false)) ? "on" : "off";
+      };
+      void sync();
+      void win.onResized(() => void sync());
+    })();
+  }
   // Search reads a sheet as its values — a row per line — so a match points at a cell.
   const search = createSearch(
     () => sidebar.files(),
@@ -1802,6 +1917,8 @@ function main(): void {
     // something was opened while the workspace was arriving
     const movedOn = (tabs[activeIdx]?.path ?? null) !== inFront;
     if (!movedOn && !(await keys.runStart().catch(() => false))) await openFirstFile();
+    // "Today: open at launch" — over whatever was opened, which is there when Today is closed
+    if (!movedOn && localStorage.getItem("today.launch") === "1") showToday();
     void tags.refresh();
   }
 
@@ -2274,8 +2391,7 @@ function main(): void {
   // Today's note (YYYY-MM-DD.md at the workspace root). A new one starts with a date heading — or
   // with what the keybindings' (daily-template day) returns, or the PIM's pim-daily-template, so the
   // command, ⌘P's "Today's daily note" and a "today" button make the same note ⌘D does.
-  async function openDailyNote(): Promise<void> {
-    const date = todayISO();
+  async function openDailyNote(date: string = todayISO()): Promise<void> {
     const path = `${date}.md`;
     let content = `# ${date}\n\n`;
     if ((await noteText(path)) === null) {
@@ -2307,6 +2423,12 @@ function main(): void {
     "command-palette": () => quickOpen.open(">"),
     search: () => search.open(),
     "daily-note": () => void openDailyNote(),
+    today: () => toggleToday(),
+    "today-at-launch": () => {
+      const on = localStorage.getItem("today.launch") !== "1";
+      localStorage.setItem("today.launch", on ? "1" : "0");
+      toast(on ? "Today opens at launch" : "Launch opens the note, as before");
+    },
     "new-file": () => void newFile(""),
     "new-folder": () => void newFolder(""),
     "new-sheet": () => void newSheet(""),
@@ -2347,6 +2469,7 @@ function main(): void {
     "toggle-theme": () => applyTheme(nextTheme()),
     "theme-dark": () => applyTheme("dark"),
     "theme-light": () => applyTheme("light"),
+    "theme-paper": () => applyTheme("paper"),
     "export-pdf": () => void exportCurrentPdf(),
     "insert-image": () => void images.pick(),
     snippets: () => snippets.open(),

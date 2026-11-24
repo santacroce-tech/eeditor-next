@@ -179,6 +179,7 @@
 ;; toggle-sidebar      show or hide the sidebar (⌘B); drag its edge to make it wider
 ;; sidebar-rail        the sidebar's sections one at a time, by their icons at the left edge (the default)
 ;; sidebar-stacked     every section in the sidebar at once, one under the other
+;; sidebar-nav         a named row per section at the top of the sidebar (the paper theme's default)
 ;; tab-1 … tab-8 · last-tab   go to that tab (what ⌘1…⌘8 and ⌘9 do)
 ;; form-design · form-code · form-run   the active form tab's mode
 ;; mindmap-map · mindmap-text          the active mind map tab: the map, or its markdown outline

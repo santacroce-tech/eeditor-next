@@ -1,14 +1,17 @@
-// The sidebar's sections, reached by icon. Two layouts:
+// The sidebar's sections, reached by icon. Three layouts:
 //
 //   rail    — the default: a narrow column of icons at the window's left edge. One section at a time
 //             fills the sidebar; its icon again (or ⌘B) hides the sidebar, and the rail stays.
 //   stacked — as it used to be: every section, one under the other, no rail.
+//   nav     — the rail laid down inside the sidebar: a row per section, icon and name, at its top,
+//             and the section in front below them. The paper theme's default.
 //
 // The sections themselves are untouched: this only says which is shown (`data-shown` on each) and
-// draws the icons. The layout and the section in front persist in localStorage.
+// draws the icons (a row's name is its aria-label, drawn by the stylesheet). The layout and the
+// section in front persist in localStorage; until one is chosen, the layout follows the theme.
 
-export type SideLayout = "rail" | "stacked";
-export const SIDE_LAYOUTS: SideLayout[] = ["rail", "stacked"];
+export type SideLayout = "rail" | "stacked" | "nav";
+export const SIDE_LAYOUTS: SideLayout[] = ["rail", "stacked", "nav"];
 
 const SVG = (body: string): string =>
   `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
@@ -32,8 +35,10 @@ export interface SideNav {
   remove(key: string): void;
   layout(): SideLayout;
   setLayout(l: SideLayout): void;
-  /** ⌘B on the rail: the section in front's icon. False in the stacked layout — the plain show/hide. */
+  /** ⌘B on the rail: the section in front's icon. False in the other layouts — the plain show/hide. */
   toggle(): boolean;
+  /** A number beside a section's name (the named rows draw it): 0 takes it away. */
+  setCount(key: string, n: number): void;
   /** Bring one section into view: on the rail, make it the one in front and show the sidebar. */
   show(key: string): void;
 }
@@ -55,6 +60,19 @@ const store = {
   },
 };
 
+/** The count on a rail button: a `.side-count` child, there only while there is something to count. */
+export function setBadge(btn: HTMLElement, n: number): void {
+  let badge = btn.querySelector<HTMLElement>(".side-count");
+  if (n <= 0) return void badge?.remove();
+  if (!badge) {
+    badge = document.createElement("span");
+    badge.className = "side-count";
+    badge.setAttribute("aria-hidden", "true");
+    btn.appendChild(badge);
+  }
+  badge.textContent = String(n);
+}
+
 export function createSideNav(
   shell: HTMLElement,
   sidebar: HTMLElement,
@@ -67,25 +85,35 @@ export function createSideNav(
 
   const entries: Entry[] = [];
   const asked = new URLSearchParams(location.search).get("sidebar") ?? store.get("sidebar.layout");
-  let current: SideLayout = SIDE_LAYOUTS.find((l) => l === asked) ?? "rail";
+  /** The layout asked for or chosen — none yet, and it is the theme's. */
+  let chosen: SideLayout | undefined = SIDE_LAYOUTS.find((l) => l === asked);
+  const themes = (): SideLayout => (document.documentElement.dataset.theme === "paper" ? "nav" : "rail");
+  let current: SideLayout = chosen ?? themes();
   let active = store.get("sidebar.rail.active") ?? "files";
 
   function render(): void {
     shell.dataset.sideLayout = current;
+    // the rows live in the sidebar, the rail beside it
+    if (current === "nav") {
+      if (rail.parentElement !== sidebar) sidebar.prepend(rail);
+    } else if (rail.parentElement !== shell) shell.insertBefore(rail, sidebar);
     // the one in front went away (its panel was dropped): the first section takes its place
     const front = entries.some((e) => e.key === active) ? active : (entries[0]?.key ?? "files");
     for (const e of entries) {
       const on = current === "stacked" || e.key === front;
       e.section.dataset.shown = on ? "1" : "0";
-      const lit = current === "rail" && on && vis.visible();
+      const lit = current !== "stacked" && on && vis.visible();
       e.btn.classList.toggle("active", lit);
       e.btn.setAttribute("aria-pressed", String(lit));
     }
   }
 
   function press(key: string): void {
-    if (key === active && vis.visible()) vis.setVisible(false);
-    else {
+    // a row is inside the sidebar: pressing the one in front can't be how the sidebar is hidden
+    if (key === active && vis.visible()) {
+      if (current === "nav") return;
+      vis.setVisible(false);
+    } else {
       active = key;
       store.set("sidebar.rail.active", key);
       vis.setVisible(true);
@@ -121,9 +149,13 @@ export function createSideNav(
       entries.splice(i, 1);
       render();
     },
+    setCount(key, n) {
+      const btn = entries.find((e) => e.key === key)?.btn;
+      if (btn) setBadge(btn, n);
+    },
     layout: () => current,
     setLayout(l) {
-      current = l;
+      current = chosen = l;
       store.set("sidebar.layout", l);
       if (!vis.visible()) vis.setVisible(true);
       render();
@@ -134,7 +166,7 @@ export function createSideNav(
       return true;
     },
     show(key) {
-      if (current === "rail") {
+      if (current !== "stacked") {
         active = key;
         store.set("sidebar.rail.active", key);
       }
@@ -144,5 +176,10 @@ export function createSideNav(
   };
   // the sidebar shown or hidden from elsewhere (the saved state, the stacked layout's ⌘B) relights the rail
   new MutationObserver(render).observe(shell, { attributes: true, attributeFilter: ["data-sidebar"] });
+  new MutationObserver(() => {
+    if (chosen || current === themes()) return;
+    current = themes();
+    render();
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   return nav;
 }

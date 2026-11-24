@@ -18,10 +18,10 @@ import {
 import { codeToRun } from "../core/blocks";
 import { wikiLinkAt } from "../core/wikilink";
 
-export type ThemeName = "dark" | "light";
+export type ThemeName = "dark" | "light" | "paper";
 
 /** The order the theme button walks them in. */
-export const THEMES: readonly ThemeName[] = ["dark", "light"];
+export const THEMES: readonly ThemeName[] = ["dark", "light", "paper"];
 
 export function isThemeName(v: unknown): v is ThemeName {
   return typeof v === "string" && (THEMES as readonly string[]).includes(v);
@@ -62,8 +62,23 @@ const solarizedLight = EditorView.theme(
   { dark: false },
 );
 
+// Paper: ink on warm white, the gutter the page's own colour (styles.css draws the card around it).
+const paper = EditorView.theme(
+  {
+    "&": { backgroundColor: "#fcfbf9", color: "#1b1a19" },
+    ".cm-content": { caretColor: "#1b1a19" },
+    ".cm-gutters": { backgroundColor: "#fcfbf9", color: "#bab6ae", border: "none" },
+    ".cm-activeLine": { backgroundColor: "#f3f1ed99" },
+    ".cm-activeLineGutter": { backgroundColor: "#f3f1ed", color: "#8b877f" },
+    ".cm-selectionBackground, .cm-content ::selection": { backgroundColor: "#dcebe8" },
+    "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground": { backgroundColor: "#cfe5e1" },
+    ".cm-cursor": { borderLeftColor: "#1b1a19" },
+  },
+  { dark: false },
+);
+
 function themeExt(name: ThemeName) {
-  return name === "light" ? solarizedLight : oneDark;
+  return name === "light" ? solarizedLight : name === "paper" ? paper : oneDark;
 }
 
 // Everything the browser will hand focus to. The editor itself is in the list — CodeMirror's
