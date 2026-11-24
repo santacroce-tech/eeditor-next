@@ -303,6 +303,34 @@ fn hosted_app() -> Option<String> {
     hosted().and_then(|h| fs::read_to_string(&h.file).ok())
 }
 
+/// Whether this window's title bar is the page's own (the `.titlebar` row in main.ts): EEditor's
+/// windows on a Mac, whose content runs under a transparent title bar with only the traffic lights
+/// drawn over it. Not an exported app's, and not a form's popped-out screen.
+#[tauri::command]
+fn overlay_titlebar(window: tauri::WebviewWindow) -> bool {
+    cfg!(target_os = "macos") && hosted().is_none() && !window.label().starts_with("screen-")
+}
+
+/// The traffic lights' place in the page's title bar (styles.css `.titlebar`, 40px tall).
+#[cfg(target_os = "macos")]
+fn overlay_chrome<'a, R: Runtime, M: Manager<R>>(b: tauri::WebviewWindowBuilder<'a, R, M>) -> tauri::WebviewWindowBuilder<'a, R, M> {
+    b.title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true)
+        .traffic_light_position(tauri::LogicalPosition::new(14.0, 20.0))
+}
+
+/// The first window, from tauri.conf.json (`create: false` there, so that it is made here): an
+/// exported app keeps the system's title bar, EEditor draws its own.
+fn make_main_window(app: &tauri::AppHandle, overlay: bool) -> tauri::Result<()> {
+    let Some(conf) = app.config().app.windows.first() else { return Ok(()) };
+    let b = tauri::WebviewWindowBuilder::from_config(app, conf)?;
+    #[cfg(target_os = "macos")]
+    let b = if overlay { overlay_chrome(b) } else { b };
+    #[cfg(not(target_os = "macos"))]
+    let _ = overlay;
+    b.build().map(|_| ())
+}
+
 /// An exported app's window takes its form's size, once, at launch (runtime.ts `fillWindow`) — and
 /// may then be made smaller than EEditor's minimum, since a form can be small. EEditor's own windows
 /// are left as they are.
@@ -1580,8 +1608,10 @@ fn window_on(app: &tauri::AppHandle, root: PathBuf) -> Result<(), String> {
     let built = tauri::WebviewWindowBuilder::new(app, &label, tauri::WebviewUrl::App("index.html".into()))
         .title(app.package_info().name.clone())
         .inner_size(1200.0, 800.0)
-        .min_inner_size(720.0, 480.0)
-        .build();
+        .min_inner_size(720.0, 480.0);
+    #[cfg(target_os = "macos")]
+    let built = overlay_chrome(built);
+    let built = built.build();
     match built {
         Ok(w) => {
             set_title(&w, &root);
@@ -1798,6 +1828,7 @@ pub fn run() {
                 load_grants_from(grants);
                 eprintln!("[eeditor] {} — files {}, data {}", h.app.name, root.display(), db.display());
                 open_space_with(app.handle(), "main", root, db.display().to_string());
+                make_main_window(app.handle(), false)?;
                 if let Some(w) = app.get_webview_window("main") {
                     let _ = w.set_title(&h.app.name);
                     if let Ok(url) = w.url().and_then(|u| u.join("runtime.html").map_err(|e| tauri::Error::Anyhow(e.into()))) {
@@ -1811,6 +1842,7 @@ pub fn run() {
             eprintln!("[eeditor] workspace: {}", ws.display());
             // The tables and agenda live in the workspace, so they survive a quit.
             open_space(app.handle(), "main", ws.clone());
+            make_main_window(app.handle(), true)?;
             #[cfg(desktop)]
             {
                 if let Some(w) = app.get_webview_window("main") {
@@ -1857,6 +1889,7 @@ pub fn run() {
             new_window,
             close_window,
             hosted_app,
+            overlay_titlebar,
             fit_window,
             fs_open_with_system,
             export_app

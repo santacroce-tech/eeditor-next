@@ -31,7 +31,7 @@
 html, body, #app { height: 100%; margin: 0; }
 body { background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-serif; }
 
-.shell { display: flex; height: 100%; }
+.shell { display: flex; height: calc(100% - var(--titlebar-h, 0px)); }
 
 /* ── sidebar ── */
 .sidebar { flex: 0 0 var(--sidebar-w, 240px); display: flex; flex-direction: column; min-height: 0;
@@ -462,7 +462,7 @@ button.help-row:focus-visible { outline: 1px solid var(--accent); outline-offset
 @media (max-width: 900px) {
   html, body, #app { height: 100%; }
   .shell {
-    position: absolute; top: 0; left: 0; right: 0;
+    position: absolute; top: var(--titlebar-h, 0px); left: 0; right: 0; height: auto;
     bottom: calc(50px + env(safe-area-inset-bottom));
   }
   /* one pane at a time, chosen by the tab bar */
@@ -1234,4 +1234,38 @@ button.today-check:hover { color: var(--muted); }
   :root[data-theme="paper"] .today { background: var(--frame); }
   :root[data-theme="paper"] .today-grid { gap: 8px; }
   :root[data-theme="paper"] .today-main, :root[data-theme="paper"] .today-side { border-radius: var(--card-radius); border: none; }
+}
+
+/* ── the title bar ── (main.ts) Our own row above the panes. Shown where the window's title bar is
+   transparent over the page (a Mac: data-titlebar="overlay"), and with the paper theme on a wide
+   screen; elsewhere there is none and --titlebar-h stays 0. */
+.titlebar { display: none; height: 40px; align-items: center; gap: 10px; padding: 0 10px;
+  background: var(--bg-3); border-bottom: 1px solid var(--border); font: 13px var(--ui);
+  user-select: none; -webkit-user-select: none; cursor: default; }
+.titlebar-side { flex: 1 1 0; min-width: 0; height: 100%; display: flex; align-items: center; gap: 6px; }
+.titlebar-right { justify-content: flex-end; }
+.titlebar-search { flex: 0 1 420px; min-width: 0; height: 26px; display: flex; align-items: center; gap: 8px;
+  padding: 0 8px 0 11px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg);
+  color: var(--muted); font: inherit; cursor: pointer; }
+.titlebar-search:hover { color: var(--fg); border-color: var(--muted); }
+.titlebar-search-icon { font-size: 15px; line-height: 1; }
+.titlebar-search-label { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.titlebar-search kbd { font: 11px var(--ui); padding: 1px 6px; border-radius: 6px; background: var(--bg-2); color: var(--muted); }
+.titlebar-btn { height: 26px; padding: 0 11px; border: none; border-radius: 999px; background: none;
+  color: var(--muted); font: inherit; cursor: pointer; white-space: nowrap; }
+.titlebar-btn:hover { background: var(--bg); color: var(--fg); }
+:root[data-titlebar="overlay"] { --titlebar-h: 40px; }
+:root[data-titlebar="overlay"] .titlebar { display: flex; }
+/* the traffic lights */
+:root[data-titlebar="overlay"]:not([data-fullscreen="on"]) .titlebar { padding-left: 82px; }
+:root[data-titlebar="overlay"]:not([data-fullscreen="on"]) .titlebar-right { flex-basis: 72px; }
+
+:root[data-theme="paper"] .titlebar { background: var(--frame); border-bottom: none; color: #a3a09b;
+  --bg: #1c1c1e; --bg-2: #2a2a2d; --fg: #f1efea; --muted: #a3a09b; --border: #2a2a2d; }
+:root[data-theme="paper"] .titlebar-search { border-color: transparent; }
+:root[data-theme="paper"] .titlebar-search:hover { border-color: #3a3a3e; }
+@media (min-width: 901px) {
+  :root[data-theme="paper"] { --titlebar-h: 40px; }
+  :root[data-theme="paper"] .titlebar { display: flex; }
+  :root[data-theme="paper"] .shell { padding-top: 0; }
 }

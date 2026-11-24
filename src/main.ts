@@ -1776,6 +1776,58 @@ function main(): void {
       else void runForm(r.path);
     },
   });
+
+  // ── the title bar ── a row of our own above the panes: the search pill (⌘P) in the middle, Today
+  // on the right. On a Mac the window's own title bar is transparent over it (src-tauri
+  // `overlay_chrome`), so it is also what the window is dragged by, and it keeps clear of the traffic
+  // lights; in a browser it is drawn with the paper theme only (styles.css).
+  const titlebar = document.createElement("div");
+  titlebar.className = "titlebar";
+  titlebar.setAttribute("data-tauri-drag-region", "");
+  const titleSearch = document.createElement("button");
+  titleSearch.className = "titlebar-search";
+  titleSearch.title = "Go to a note, or > for an action";
+  const titleSearchIcon = document.createElement("span");
+  titleSearchIcon.className = "titlebar-search-icon";
+  titleSearchIcon.textContent = "⌕";
+  const titleSearchLabel = document.createElement("span");
+  titleSearchLabel.className = "titlebar-search-label";
+  titleSearchLabel.textContent = "Search notes and actions";
+  const titleSearchKey = document.createElement("kbd");
+  titleSearchKey.textContent = keyLabel("Mod-p", isMacPlatform());
+  titleSearch.append(titleSearchIcon, titleSearchLabel, titleSearchKey);
+  titleSearch.addEventListener("click", () => quickOpen.open());
+  const titleToday = document.createElement("button");
+  titleToday.className = "titlebar-btn";
+  titleToday.dataset.action = "today";
+  titleToday.textContent = "☀ Today";
+  titleToday.title = `Today (${keyLabel("Mod-Shift-d", isMacPlatform())})`;
+  titleToday.addEventListener("click", () => toggleToday());
+  const titleLeft = document.createElement("div");
+  titleLeft.className = "titlebar-side";
+  titleLeft.setAttribute("data-tauri-drag-region", "");
+  const titleRight = document.createElement("div");
+  titleRight.className = "titlebar-side titlebar-right";
+  titleRight.setAttribute("data-tauri-drag-region", "");
+  titleRight.appendChild(titleToday);
+  titlebar.append(titleLeft, titleSearch, titleRight);
+  root.insertBefore(titlebar, shell);
+  if ("__TAURI_INTERNALS__" in (globalThis as Record<string, unknown>)) {
+    void (async () => {
+      const { invoke } = await import("@tauri-apps/api/core");
+      if (!(await invoke<boolean>("overlay_titlebar").catch(() => false))) return;
+      const html = document.documentElement;
+      html.dataset.titlebar = "overlay";
+      // Full screen has no traffic lights to keep clear of.
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      const win = getCurrentWindow();
+      const sync = async (): Promise<void> => {
+        html.dataset.fullscreen = (await win.isFullscreen().catch(() => false)) ? "on" : "off";
+      };
+      void sync();
+      void win.onResized(() => void sync());
+    })();
+  }
   // Search reads a sheet as its values — a row per line — so a match points at a cell.
   const search = createSearch(
     () => sidebar.files(),
