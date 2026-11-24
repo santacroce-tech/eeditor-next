@@ -341,6 +341,8 @@ fn fit_window(window: tauri::WebviewWindow, width: f64, height: f64) {
     }
     let _ = window.set_min_size(Some(tauri::LogicalSize::new(320.0, 200.0)));
     let _ = window.set_size(tauri::LogicalSize::new(width.clamp(320.0, 4000.0), height.clamp(200.0, 3000.0)));
+    // a phone's one window fills its screen: there is nowhere to centre it
+    #[cfg(desktop)]
     let _ = window.center();
 }
 
