@@ -1187,7 +1187,10 @@ function main(): void {
   /** How a form opens in its tab — the keybindings' (forms-open …), the designer without one. */
   let formsOpen: FormsOpen = "design";
   /** Open a file in a tab — a form as (forms-open …) says, unless `formMode` says otherwise. */
+  /** How many files have been asked for: launch reads it to know whether one was, meanwhile. */
+  let opensAsked = 0;
   const openFile = async (path: string, formMode?: FormsOpen): Promise<void> => {
+    opensAsked++;
     const existing = tabs.findIndex((t) => t.path === path);
     if (existing >= 0) {
       switchTab(existing);
@@ -1897,6 +1900,7 @@ function main(): void {
     // What is in front now. Opening a workspace takes a moment — the tree, the keys, the engine — and
     // a note opened meanwhile is where the person wants to be: the launch note mustn't replace it.
     const inFront = tabs[activeIdx]?.path ?? null;
+    const asked = opensAsked;
     void agenda.refresh();
     void checkDatabase();
     await sidebar.refresh().catch(() => {}); // an unreadable tree must not cost us the shortcuts
@@ -1914,8 +1918,9 @@ function main(): void {
       if (yes) await addSampleNotes();
     }
     // the config's (on-start …), if it has one, decides what to open instead of openFirstFile — unless
-    // something was opened while the workspace was arriving
-    const movedOn = (tabs[activeIdx]?.path ?? null) !== inFront;
+    // something was opened while the workspace was arriving, or is on its way: a file asked for
+    // is read before its tab is in front, and launch's own note must not land on top of it
+    const movedOn = (tabs[activeIdx]?.path ?? null) !== inFront || opensAsked !== asked;
     if (!movedOn && !(await keys.runStart().catch(() => false))) await openFirstFile();
     // "Today: open at launch" — over whatever was opened, which is there when Today is closed
     if (!movedOn && localStorage.getItem("today.launch") === "1") showToday();
