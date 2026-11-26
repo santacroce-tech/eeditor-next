@@ -57,6 +57,8 @@ test("the form takes the cloud's place; a tag lists its notes and a click opens 
 
 test("⇩ puts the links in the note in front; a note saved with the tag joins them", async ({ page }) => {
   await page.goto("/");
+  // launch opens its own note: wait for it, or it lands in front of the one clicked here
+  await expect(page.locator(".etab.active")).toBeVisible();
   await page.locator(".tree-file", { hasText: "tgz-index.md" }).click();
   await expect(page.locator(".etab.active .etab-label")).toHaveText("tgz-index.md");
   await page.locator(".cm-content").click();
